@@ -213,6 +213,7 @@ export default function HomeCoverageMap() {
     if (!map) return;
 
     const bounds = map.getBounds();
+    if (!bounds) return;
 
     const { data } = await supabase
       .from('accounts')
@@ -249,17 +250,23 @@ export default function HomeCoverageMap() {
   const featureCollection = useMemo(
     () => ({
       type: 'FeatureCollection' as const,
-      features: visibleAccounts.map((row) => ({
-        type: 'Feature' as const,
-        properties: {
-          id: row.id,
-          qualificationStatus: getQualificationStatus(row),
-        },
-        geometry: {
-          type: 'Point' as const,
-          coordinates: [row.longitude!, row.latitude!],
-        },
-      })),
+      features: visibleAccounts
+        .filter(
+          (row) =>
+            typeof row.longitude === 'number' &&
+            typeof row.latitude === 'number'
+        )
+        .map((row) => ({
+          type: 'Feature' as const,
+          properties: {
+            id: row.id,
+            qualificationStatus: getQualificationStatus(row),
+          },
+          geometry: {
+            type: 'Point' as const,
+            coordinates: [row.longitude as number, row.latitude as number],
+          },
+        })),
     }),
     [visibleAccounts]
   );
@@ -271,9 +278,20 @@ export default function HomeCoverageMap() {
     const coords = feature.geometry.coordinates as [number, number];
     const clusterId = feature.properties?.cluster_id;
 
-    const source = mapRef.current?.getSource('accounts') as any;
+    const source = mapRef.current?.getSource('accounts') as
+      | {
+          getClusterExpansionZoom?: (
+            clusterId: number,
+            callback: (err: Error | null, zoom: number) => void
+          ) => void;
+        }
+      | undefined;
 
-    source?.getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
+    if (!source?.getClusterExpansionZoom || typeof clusterId !== 'number') {
+      return;
+    }
+
+    source.getClusterExpansionZoom(clusterId, (err, zoom) => {
       if (err) return;
 
       mapRef.current?.easeTo({
@@ -304,56 +322,177 @@ export default function HomeCoverageMap() {
   );
 
   if (!MAPBOX_TOKEN) {
-    return <div>Missing Mapbox Token</div>;
+    return (
+      <div className="flex h-[440px] items-center justify-center rounded-[28px] border border-amber-200 bg-amber-50 p-8 text-center">
+        <div>
+          <div className="text-lg font-semibold text-amber-950">
+            Mapbox token missing
+          </div>
+          <p className="mt-2 text-sm text-amber-900">
+            Add NEXT_PUBLIC_MAPBOX_TOKEN to your .env.local file and Vercel
+            environment variables.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="rounded-xl overflow-hidden border">
-      <Map
-        ref={mapRef}
-        mapboxAccessToken={MAPBOX_TOKEN}
-        initialViewState={{ longitude: -98, latitude: 39, zoom: 3 }}
-        mapStyle="mapbox://styles/mapbox/streets-v12"
-        interactiveLayerIds={['clusters', 'unclustered-point']}
-        onIdle={() => void loadVisibleAccounts()}
-        onClick={(event) => {
-          const feature = event.features?.[0];
-          if (!feature) return setPopupAccount(null);
+    <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_20px_55px_rgba(15,23,42,0.08)]">
+      <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
+            Repair coverage map
+          </div>
+          <div className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+            Live qualified repair footprint
+          </div>
+        </div>
 
-          const layerId = feature.layer?.id;
+        <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+          {allAccounts.length} mapped businesses
+        </div>
+      </div>
 
-          if (layerId === 'clusters') return handleClusterClick(event);
-          if (layerId === 'unclustered-point')
-            return handlePointClick(event);
-        }}
-      >
-        <NavigationControl position="top-right" />
+      <div className="relative h-[440px]">
+        <Map
+          ref={mapRef}
+          mapboxAccessToken={MAPBOX_TOKEN}
+          initialViewState={{
+            longitude: -98.5795,
+            latitude: 39.8283,
+            zoom: 3,
+          }}
+          mapStyle="mapbox://styles/mapbox/streets-v12"
+          reuseMaps
+          interactiveLayerIds={['clusters', 'unclustered-point']}
+          onIdle={() => {
+            void loadVisibleAccounts();
+          }}
+          onClick={(event) => {
+            const feature = event.features?.[0];
 
-        <Source
-          id="accounts"
-          type="geojson"
-          data={featureCollection}
-          cluster
+            if (!feature) {
+              setPopupAccount(null);
+              return;
+            }
+
+            const layerId = feature.layer?.id;
+
+            if (layerId === 'clusters') {
+              handleClusterClick(event);
+              return;
+            }
+
+            if (layerId === 'unclustered-point') {
+              handlePointClick(event);
+            }
+          }}
         >
-          <Layer {...clusterLayer} />
-          <Layer {...clusterCountLayer} />
-          <Layer {...unclusteredLayer} />
-        </Source>
+          <NavigationControl position="top-right" />
 
-        {popupAccount && (
-          <Popup
-            longitude={popupAccount.longitude!}
-            latitude={popupAccount.latitude!}
-            onClose={() => setPopupAccount(null)}
+          <Source
+            id="accounts"
+            type="geojson"
+            data={featureCollection}
+            cluster
+            clusterMaxZoom={14}
+            clusterRadius={55}
           >
-            <div>
-              <strong>{popupAccount.account_name}</strong>
-              <br />
-              {popupAccount.city}, {popupAccount.state}
-            </div>
-          </Popup>
-        )}
-      </Map>
+            <Layer {...clusterLayer} />
+            <Layer {...clusterCountLayer} />
+            <Layer {...unclusteredLayer} />
+          </Source>
+
+          {popupAccount && popupAccount.longitude && popupAccount.latitude ? (
+            <Popup
+              longitude={popupAccount.longitude}
+              latitude={popupAccount.latitude}
+              anchor="bottom"
+              onClose={() => setPopupAccount(null)}
+              closeButton
+              maxWidth="320px"
+            >
+              <div className="space-y-3 p-1">
+                <div>
+                  <div className="text-base font-semibold text-slate-900">
+                    {popupAccount.account_name}
+                  </div>
+                  <div className="mt-1 text-sm text-slate-600">
+                    {[
+                      popupAccount.street,
+                      popupAccount.city,
+                      popupAccount.state,
+                      popupAccount.postal_code,
+                    ]
+                      .filter(Boolean)
+                      .join(', ')}
+                  </div>
+                </div>
+
+                <div className="space-y-1 text-sm text-slate-700">
+                  {popupAccount.company_phone ? (
+                    <div>{popupAccount.company_phone}</div>
+                  ) : null}
+                  {popupAccount.company_email ? (
+                    <div>{popupAccount.company_email}</div>
+                  ) : null}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div
+                    className={[
+                      'h-2.5 w-2.5 rounded-full',
+                      popupAccount.qualificationStatus === 'green'
+                        ? 'bg-green-600'
+                        : popupAccount.qualificationStatus === 'yellow'
+                          ? 'bg-yellow-500'
+                          : 'bg-red-600',
+                    ].join(' ')}
+                  />
+                  <span className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+                    {popupAccount.qualificationStatus === 'green'
+                      ? 'Insurance-ready'
+                      : popupAccount.qualificationStatus === 'yellow'
+                        ? 'In progress'
+                        : 'Needs review'}
+                  </span>
+                </div>
+
+                <Link
+                  href={`/accounts/${popupAccount.id}`}
+                  className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                >
+                  Open account
+                  <ExternalLink className="h-4 w-4" />
+                </Link>
+              </div>
+            </Popup>
+          ) : null}
+        </Map>
+
+        <div className="pointer-events-none absolute bottom-4 left-4 rounded-2xl border border-white/70 bg-white/90 px-4 py-3 shadow-lg backdrop-blur">
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
+            <MapPinned className="h-4 w-4 text-slate-500" />
+            Zoom to street level and inspect live repair coverage.
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-600">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-green-600" />
+              Insurance-ready
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-yellow-500" />
+              In progress
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-red-600" />
+              Needs review
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
