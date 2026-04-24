@@ -103,8 +103,7 @@ function getQualificationStatus(row: AccountMapRow): 'red' | 'yellow' | 'green' 
   const coreYesCount = coreChecks.filter(Boolean).length;
 
   const hasStrongEngagement =
-    row.outreach_status === 'Qualified' ||
-    row.outreach_status === 'Onboarded';
+    row.outreach_status === 'Qualified' || row.outreach_status === 'Onboarded';
 
   if (coreYesCount === 4) return 'green';
 
@@ -117,8 +116,7 @@ function buildBounds(rows: AccountMapRow[]): LngLatBoundsLike | null {
   const points = rows
     .filter(
       (row) =>
-        typeof row.longitude === 'number' &&
-        typeof row.latitude === 'number'
+        typeof row.longitude === 'number' && typeof row.latitude === 'number'
     )
     .map((row) => [row.longitude as number, row.latitude as number]);
 
@@ -310,7 +308,9 @@ export default function HomeCoverageMap() {
     const feature = event.features?.[0];
     if (!feature || feature.geometry.type !== 'Point') return;
 
+    const coordinates = feature.geometry.coordinates as [number, number];
     const clusterId = feature.properties?.cluster_id;
+
     const source = mapRef.current?.getSource('accounts') as
       | {
           getClusterExpansionZoom?: (
@@ -328,7 +328,7 @@ export default function HomeCoverageMap() {
       if (error || !mapRef.current) return;
 
       mapRef.current.easeTo({
-        center: feature.geometry.coordinates as [number, number],
+        center: coordinates,
         zoom,
         duration: 500,
       });
