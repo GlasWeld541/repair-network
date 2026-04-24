@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Search, ArrowLeft, UserPlus, X, Pencil } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -47,7 +47,7 @@ function normalizePhoneForSave(value?: string | null) {
   return formatPhone(value)?.trim() || null;
 }
 
-export default function ContactsPage() {
+function ContactsPageContent() {
   const [rows, setRows] = useState<Contact[]>([]);
   const [query, setQuery] = useState('');
   const [showContactModal, setShowContactModal] = useState(false);
@@ -80,6 +80,7 @@ export default function ContactsPage() {
       }));
       setRows(normalized);
     }
+
     void load();
   }, [accountIdFilter]);
 
@@ -100,11 +101,15 @@ export default function ContactsPage() {
     if (Object.prototype.hasOwnProperty.call(cleanedPatch, 'phone')) {
       cleanedPatch.phone = normalizePhoneForSave(cleanedPatch.phone);
     }
-    if (Object.prototype.hasOwnProperty.call(cleanedPatch, 'billing_state') && typeof cleanedPatch.billing_state === 'string') {
+    if (
+      Object.prototype.hasOwnProperty.call(cleanedPatch, 'billing_state') &&
+      typeof cleanedPatch.billing_state === 'string'
+    ) {
       cleanedPatch.billing_state = cleanedPatch.billing_state.toUpperCase();
     }
 
     const { data } = await supabase.from('contacts').update(cleanedPatch).eq('id', id).select().single();
+
     if (data) {
       setRows((current) =>
         current.map((row) =>
@@ -151,6 +156,7 @@ export default function ContactsPage() {
     }
 
     setSavingNewContact(true);
+
     try {
       const payload = {
         account_id: newContact.account_id,
@@ -197,11 +203,7 @@ export default function ContactsPage() {
     }
   }
 
-  function renderEditableCell(
-    row: Contact,
-    field: keyof Contact,
-    options?: { phone?: boolean; upper?: boolean }
-  ) {
+  function renderEditableCell(row: Contact, field: keyof Contact, options?: { phone?: boolean; upper?: boolean }) {
     const cellKey = `${row.id}-${String(field)}`;
     const isEditing = editingCell === cellKey;
     const rawValue = String(row[field] ?? '');
@@ -215,9 +217,7 @@ export default function ContactsPage() {
           value={rawValue}
           onChange={(e) => {
             const nextValue = options?.upper ? e.target.value.toUpperCase() : e.target.value;
-            setRows((current) =>
-              current.map((r) => (r.id === row.id ? { ...r, [field]: nextValue } : r))
-            );
+            setRows((current) => current.map((r) => (r.id === row.id ? { ...r, [field]: nextValue } : r)));
           }}
           onBlur={(e) => {
             const nextValue = options?.upper ? e.target.value.toUpperCase() : e.target.value;
@@ -229,9 +229,6 @@ export default function ContactsPage() {
               (e.target as HTMLInputElement).blur();
             }
             if (e.key === 'Escape') {
-              setRows((current) =>
-                current.map((r) => (r.id === row.id ? { ...r, [field]: row[field] } : r))
-              );
               setEditingCell(null);
             }
           }}
@@ -257,35 +254,21 @@ export default function ContactsPage() {
         {accountIdFilter ? (
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <Link
-                href="/accounts"
-                className="mb-2 inline-flex items-center gap-2 text-sm font-medium text-teal-700 hover:text-teal-900"
-              >
+              <Link href="/accounts" className="mb-2 inline-flex items-center gap-2 text-sm font-medium text-teal-700 hover:text-teal-900">
                 <ArrowLeft className="h-4 w-4" />
                 Back to accounts
               </Link>
               <h1 className="text-3xl font-semibold text-ink">Contacts for {accountNameFilter ?? 'Selected Account'}</h1>
-              <p className="mt-1 text-sm text-slate-500">
-                Click a text field to edit it. Notes remain directly editable.
-              </p>
+              <p className="mt-1 text-sm text-slate-500">Click a text field to edit it. Notes remain directly editable.</p>
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="relative min-w-[280px]">
                 <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                <input
-                  className="h-10 w-full rounded-lg pl-9"
-                  placeholder="Search these contacts"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
+                <input className="h-10 w-full rounded-lg pl-9" placeholder="Search these contacts" value={query} onChange={(e) => setQuery(e.target.value)} />
               </div>
 
-              <button
-                type="button"
-                onClick={openAddContactFromPage}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-teal-600 px-3 text-sm font-medium text-white hover:bg-teal-700"
-              >
+              <button type="button" onClick={openAddContactFromPage} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-teal-600 px-3 text-sm font-medium text-white hover:bg-teal-700">
                 <UserPlus className="h-4 w-4" />
                 Add Contact
               </button>
@@ -299,12 +282,7 @@ export default function ContactsPage() {
             </div>
             <div className="relative min-w-[280px]">
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-              <input
-                className="h-10 w-full rounded-lg pl-9"
-                placeholder="Search contacts or accounts"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
+              <input className="h-10 w-full rounded-lg pl-9" placeholder="Search contacts or accounts" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
           </div>
         )}
@@ -314,33 +292,30 @@ export default function ContactsPage() {
         <table className="min-w-[1400px] text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
-              {['Account', 'Contact', 'Email', 'Mobile', 'Phone', 'City', 'State', 'Certified', 'Notes'].map(
-                (head) => (
-                  <th key={head} className="px-4 py-3 font-semibold">
-                    {head}
-                  </th>
-                )
-              )}
+              {['Account', 'Contact', 'Email', 'Mobile', 'Phone', 'City', 'State', 'Certified', 'Notes'].map((head) => (
+                <th key={head} className="px-4 py-3 font-semibold">
+                  {head}
+                </th>
+              ))}
             </tr>
           </thead>
+
           <tbody>
             {filtered.map((row) => (
               <tr key={row.id} className="border-t border-slate-100 align-top">
                 <td className="px-4 py-3 font-medium text-ink">{row.account_name}</td>
-                <td className="px-4 py-3 min-w-[180px]">{renderEditableCell(row, 'full_name')}</td>
-                <td className="px-4 py-3 min-w-[240px]">{renderEditableCell(row, 'email')}</td>
-                <td className="px-4 py-3 min-w-[170px]">{renderEditableCell(row, 'mobile', { phone: true })}</td>
-                <td className="px-4 py-3 min-w-[170px]">{renderEditableCell(row, 'phone', { phone: true })}</td>
-                <td className="px-4 py-3 min-w-[160px]">{renderEditableCell(row, 'billing_city')}</td>
-                <td className="px-4 py-3 min-w-[100px]">{renderEditableCell(row, 'billing_state', { upper: true })}</td>
+                <td className="min-w-[180px] px-4 py-3">{renderEditableCell(row, 'full_name')}</td>
+                <td className="min-w-[240px] px-4 py-3">{renderEditableCell(row, 'email')}</td>
+                <td className="min-w-[170px] px-4 py-3">{renderEditableCell(row, 'mobile', { phone: true })}</td>
+                <td className="min-w-[170px] px-4 py-3">{renderEditableCell(row, 'phone', { phone: true })}</td>
+                <td className="min-w-[160px] px-4 py-3">{renderEditableCell(row, 'billing_city')}</td>
+                <td className="min-w-[100px] px-4 py-3">{renderEditableCell(row, 'billing_state', { upper: true })}</td>
                 <td className="px-4 py-3">{row.glasweld_certified}</td>
                 <td className="px-4 py-3">
                   <textarea
                     className="min-h-20 min-w-[220px]"
                     value={row.notes ?? ''}
-                    onChange={(e) =>
-                      setRows((current) => current.map((r) => (r.id === row.id ? { ...r, notes: e.target.value } : r)))
-                    }
+                    onChange={(e) => setRows((current) => current.map((r) => (r.id === row.id ? { ...r, notes: e.target.value } : r)))}
                     onBlur={(e) => void updateRow(row.id, { notes: e.target.value })}
                   />
                 </td>
@@ -365,11 +340,7 @@ export default function ContactsPage() {
                 <p className="mt-1 text-sm text-slate-500">Create a new contact for {newContact.account_name}.</p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setShowContactModal(false)}
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-              >
+              <button type="button" onClick={() => setShowContactModal(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -377,85 +348,46 @@ export default function ContactsPage() {
             <div className="grid gap-4 px-6 py-5 md:grid-cols-2">
               <label className="space-y-1 md:col-span-2">
                 <span className="text-sm font-medium text-slate-700">Contact Name</span>
-                <input
-                  value={newContact.full_name}
-                  onChange={(e) => setNewContact((c) => ({ ...c, full_name: e.target.value }))}
-                  placeholder="Jane Smith"
-                />
+                <input value={newContact.full_name} onChange={(e) => setNewContact((c) => ({ ...c, full_name: e.target.value }))} placeholder="Jane Smith" />
               </label>
 
               <label className="space-y-1">
                 <span className="text-sm font-medium text-slate-700">Email</span>
-                <input
-                  value={newContact.email}
-                  onChange={(e) => setNewContact((c) => ({ ...c, email: e.target.value }))}
-                  placeholder="jane@example.com"
-                />
+                <input value={newContact.email} onChange={(e) => setNewContact((c) => ({ ...c, email: e.target.value }))} placeholder="jane@example.com" />
               </label>
 
               <label className="space-y-1">
                 <span className="text-sm font-medium text-slate-700">Mobile</span>
-                <input
-                  value={newContact.mobile}
-                  onChange={(e) => setNewContact((c) => ({ ...c, mobile: formatPhone(e.target.value) }))}
-                  placeholder="(555) 555-5555"
-                />
+                <input value={newContact.mobile} onChange={(e) => setNewContact((c) => ({ ...c, mobile: formatPhone(e.target.value) }))} placeholder="(555) 555-5555" />
               </label>
 
               <label className="space-y-1">
                 <span className="text-sm font-medium text-slate-700">Phone</span>
-                <input
-                  value={newContact.phone}
-                  onChange={(e) => setNewContact((c) => ({ ...c, phone: formatPhone(e.target.value) }))}
-                  placeholder="Optional"
-                />
+                <input value={newContact.phone} onChange={(e) => setNewContact((c) => ({ ...c, phone: formatPhone(e.target.value) }))} placeholder="Optional" />
               </label>
 
               <label className="space-y-1">
                 <span className="text-sm font-medium text-slate-700">City</span>
-                <input
-                  value={newContact.billing_city}
-                  onChange={(e) => setNewContact((c) => ({ ...c, billing_city: e.target.value }))}
-                  placeholder="Optional"
-                />
+                <input value={newContact.billing_city} onChange={(e) => setNewContact((c) => ({ ...c, billing_city: e.target.value }))} placeholder="Optional" />
               </label>
 
               <label className="space-y-1">
                 <span className="text-sm font-medium text-slate-700">State</span>
-                <input
-                  value={newContact.billing_state}
-                  onChange={(e) => setNewContact((c) => ({ ...c, billing_state: e.target.value.toUpperCase() }))}
-                  placeholder="WA"
-                  maxLength={2}
-                />
+                <input value={newContact.billing_state} onChange={(e) => setNewContact((c) => ({ ...c, billing_state: e.target.value.toUpperCase() }))} placeholder="WA" maxLength={2} />
               </label>
 
               <label className="space-y-1 md:col-span-2">
                 <span className="text-sm font-medium text-slate-700">Notes</span>
-                <textarea
-                  className="min-h-28"
-                  value={newContact.notes}
-                  onChange={(e) => setNewContact((c) => ({ ...c, notes: e.target.value }))}
-                  placeholder="Anything useful about this contact."
-                />
+                <textarea className="min-h-28" value={newContact.notes} onChange={(e) => setNewContact((c) => ({ ...c, notes: e.target.value }))} placeholder="Anything useful about this contact." />
               </label>
             </div>
 
             <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
-              <button
-                type="button"
-                onClick={() => setShowContactModal(false)}
-                className="rounded-lg border border-slate-200 px-4 py-2 font-medium text-slate-700 hover:bg-slate-50"
-              >
+              <button type="button" onClick={() => setShowContactModal(false)} className="rounded-lg border border-slate-200 px-4 py-2 font-medium text-slate-700 hover:bg-slate-50">
                 Cancel
               </button>
 
-              <button
-                type="button"
-                onClick={() => void addContact()}
-                disabled={savingNewContact}
-                className="rounded-lg bg-teal-600 px-4 py-2 font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
+              <button type="button" onClick={() => void addContact()} disabled={savingNewContact} className="rounded-lg bg-teal-600 px-4 py-2 font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60">
                 {savingNewContact ? 'Saving...' : 'Save Contact'}
               </button>
             </div>
@@ -463,5 +395,13 @@ export default function ContactsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ContactsPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading contacts...</div>}>
+      <ContactsPageContent />
+    </Suspense>
   );
 }
