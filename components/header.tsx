@@ -2,20 +2,103 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
-const STATES = [
-  { value: '', label: 'All states' },
-  { value: 'AL', label: 'Alabama' },
-  // ... (keep your full list exactly as is)
-];
+type StateOption = {
+  value: string;
+  label: string;
+};
+
+const STATE_NAMES: Record<string, string> = {
+  AL: 'Alabama',
+  AK: 'Alaska',
+  AZ: 'Arizona',
+  AR: 'Arkansas',
+  CA: 'California',
+  CO: 'Colorado',
+  CT: 'Connecticut',
+  DE: 'Delaware',
+  FL: 'Florida',
+  GA: 'Georgia',
+  HI: 'Hawaii',
+  ID: 'Idaho',
+  IL: 'Illinois',
+  IN: 'Indiana',
+  IA: 'Iowa',
+  KS: 'Kansas',
+  KY: 'Kentucky',
+  LA: 'Louisiana',
+  ME: 'Maine',
+  MD: 'Maryland',
+  MA: 'Massachusetts',
+  MI: 'Michigan',
+  MN: 'Minnesota',
+  MS: 'Mississippi',
+  MO: 'Missouri',
+  MT: 'Montana',
+  NE: 'Nebraska',
+  NV: 'Nevada',
+  NH: 'New Hampshire',
+  NJ: 'New Jersey',
+  NM: 'New Mexico',
+  NY: 'New York',
+  NC: 'North Carolina',
+  ND: 'North Dakota',
+  OH: 'Ohio',
+  OK: 'Oklahoma',
+  OR: 'Oregon',
+  PA: 'Pennsylvania',
+  RI: 'Rhode Island',
+  SC: 'South Carolina',
+  SD: 'South Dakota',
+  TN: 'Tennessee',
+  TX: 'Texas',
+  UT: 'Utah',
+  VT: 'Vermont',
+  VA: 'Virginia',
+  WA: 'Washington',
+  WV: 'West Virginia',
+  WI: 'Wisconsin',
+  WY: 'Wyoming',
+};
 
 export default function Header() {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [state, setState] = useState('');
+  const [stateOptions, setStateOptions] = useState<StateOption[]>([
+    { value: '', label: 'All states' },
+  ]);
+
+  useEffect(() => {
+    async function loadStates() {
+      const { data } = await supabase
+        .from('accounts')
+        .select('state')
+        .not('state', 'is', null)
+        .order('state');
+
+      const uniqueStates = Array.from(
+        new Set(
+          ((data as { state: string | null }[]) ?? [])
+            .map((row) => row.state?.trim().toUpperCase())
+            .filter((value): value is string => Boolean(value))
+        )
+      ).sort();
+
+      setStateOptions([
+        { value: '', label: 'All states' },
+        ...uniqueStates.map((value) => ({
+          value,
+          label: STATE_NAMES[value] ?? value,
+        })),
+      ]);
+    }
+
+    void loadStates();
+  }, []);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -30,14 +113,13 @@ export default function Header() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.push('/'); // or '/login' if you have one
+    router.push('/login');
+    router.refresh();
   };
 
   return (
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-[1280px] items-center justify-between px-10 py-3">
-
-        {/* LEFT SIDE */}
         <Link href="/" className="flex items-center gap-3">
           <div className="relative h-12 w-[140px]">
             <Image
@@ -59,10 +141,7 @@ export default function Header() {
           </div>
         </Link>
 
-        {/* RIGHT SIDE */}
         <div className="flex items-center gap-5">
-
-          {/* SEARCH */}
           <form onSubmit={handleSubmit} className="hidden items-center gap-3 lg:flex">
             <input
               value={query}
@@ -76,9 +155,9 @@ export default function Header() {
               onChange={(e) => setState(e.target.value)}
               className="h-11 w-[180px] rounded-xl border px-4 text-sm"
             >
-              {STATES.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
+              {stateOptions.map((option) => (
+                <option key={option.value || 'all'} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -88,7 +167,6 @@ export default function Header() {
             </button>
           </form>
 
-          {/* NAV */}
           <nav className="flex items-center gap-6 text-sm font-medium text-teal-700">
             <Link href="/">Dashboard</Link>
             <Link href="/accounts">Accounts</Link>
@@ -96,14 +174,13 @@ export default function Header() {
             <Link href="/jobs">Jobs</Link>
           </nav>
 
-          {/* LOGOUT */}
           <button
-            onClick={handleLogout}
+            type="button"
+            onClick={() => void handleLogout()}
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
             Logout
           </button>
-
         </div>
       </div>
     </header>
