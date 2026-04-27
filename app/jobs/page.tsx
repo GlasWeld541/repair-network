@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
@@ -70,17 +71,6 @@ const PAYMENT_STATUSES = [
   'Insurance Paid',
   'Denied',
   'Written Off',
-];
-
-const FAILURE_REASONS = [
-  '',
-  'Crack spread during repair',
-  'Damage too large',
-  'Edge crack',
-  'Contamination',
-  'Poor prior repair',
-  'Customer declined after inspection',
-  'Other',
 ];
 
 function currency(value: number | null | undefined) {
@@ -298,9 +288,7 @@ export default function JobsPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">Date Range</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Totals are based on invoice date.
-            </p>
+            <p className="mt-1 text-sm text-slate-500">Totals are based on invoice date.</p>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -359,68 +347,15 @@ export default function JobsPage() {
         <h2 className="text-xl font-semibold text-slate-900">Create Job</h2>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <input
-            className="rounded-lg border border-slate-300 px-3 py-2"
-            placeholder="Customer name"
-            value={form.customer_name}
-            onChange={(e) => setForm({ ...form, customer_name: e.target.value })}
-          />
-
-          <input
-            className="rounded-lg border border-slate-300 px-3 py-2"
-            placeholder="Customer phone"
-            value={form.customer_phone}
-            onChange={(e) => setForm({ ...form, customer_phone: e.target.value })}
-          />
-
-          <input
-            className="rounded-lg border border-slate-300 px-3 py-2"
-            placeholder="Customer email"
-            value={form.customer_email}
-            onChange={(e) => setForm({ ...form, customer_email: e.target.value })}
-          />
-
-          <input
-            className="rounded-lg border border-slate-300 px-3 py-2"
-            placeholder="ZIP code"
-            value={form.customer_zip}
-            onChange={(e) => setForm({ ...form, customer_zip: e.target.value })}
-          />
-
-          <input
-            className="rounded-lg border border-slate-300 px-3 py-2"
-            placeholder="Vehicle year"
-            value={form.vehicle_year}
-            onChange={(e) => setForm({ ...form, vehicle_year: e.target.value })}
-          />
-
-          <input
-            className="rounded-lg border border-slate-300 px-3 py-2"
-            placeholder="Vehicle make"
-            value={form.vehicle_make}
-            onChange={(e) => setForm({ ...form, vehicle_make: e.target.value })}
-          />
-
-          <input
-            className="rounded-lg border border-slate-300 px-3 py-2"
-            placeholder="Vehicle model"
-            value={form.vehicle_model}
-            onChange={(e) => setForm({ ...form, vehicle_model: e.target.value })}
-          />
-
-          <input
-            className="rounded-lg border border-slate-300 px-3 py-2"
-            placeholder="Damage type"
-            value={form.damage_type}
-            onChange={(e) => setForm({ ...form, damage_type: e.target.value })}
-          />
-
-          <input
-            className="rounded-lg border border-slate-300 px-3 py-2"
-            placeholder="Invoice amount"
-            value={form.invoice_amount}
-            onChange={(e) => setForm({ ...form, invoice_amount: e.target.value })}
-          />
+          <input className="rounded-lg border border-slate-300 px-3 py-2" placeholder="Customer name" value={form.customer_name} onChange={(e) => setForm({ ...form, customer_name: e.target.value })} />
+          <input className="rounded-lg border border-slate-300 px-3 py-2" placeholder="Customer phone" value={form.customer_phone} onChange={(e) => setForm({ ...form, customer_phone: e.target.value })} />
+          <input className="rounded-lg border border-slate-300 px-3 py-2" placeholder="Customer email" value={form.customer_email} onChange={(e) => setForm({ ...form, customer_email: e.target.value })} />
+          <input className="rounded-lg border border-slate-300 px-3 py-2" placeholder="ZIP code" value={form.customer_zip} onChange={(e) => setForm({ ...form, customer_zip: e.target.value })} />
+          <input className="rounded-lg border border-slate-300 px-3 py-2" placeholder="Vehicle year" value={form.vehicle_year} onChange={(e) => setForm({ ...form, vehicle_year: e.target.value })} />
+          <input className="rounded-lg border border-slate-300 px-3 py-2" placeholder="Vehicle make" value={form.vehicle_make} onChange={(e) => setForm({ ...form, vehicle_make: e.target.value })} />
+          <input className="rounded-lg border border-slate-300 px-3 py-2" placeholder="Vehicle model" value={form.vehicle_model} onChange={(e) => setForm({ ...form, vehicle_model: e.target.value })} />
+          <input className="rounded-lg border border-slate-300 px-3 py-2" placeholder="Damage type" value={form.damage_type} onChange={(e) => setForm({ ...form, damage_type: e.target.value })} />
+          <input className="rounded-lg border border-slate-300 px-3 py-2" placeholder="Invoice amount" value={form.invoice_amount} onChange={(e) => setForm({ ...form, invoice_amount: e.target.value })} />
 
           <textarea
             className="min-h-24 rounded-lg border border-slate-300 px-3 py-2 md:col-span-2 xl:col-span-3"
@@ -442,9 +377,7 @@ export default function JobsPage() {
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-6 py-4">
           <h2 className="text-xl font-semibold text-slate-900">Job Dashboard</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {jobs.length} job{jobs.length === 1 ? '' : 's'} shown.
-          </p>
+          <p className="mt-1 text-sm text-slate-500">{jobs.length} job{jobs.length === 1 ? '' : 's'} shown.</p>
         </div>
 
         <div className="overflow-x-auto">
@@ -452,6 +385,7 @@ export default function JobsPage() {
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
                 <th className="px-4 py-3">Invoice Date</th>
+                <th className="px-4 py-3">Completed</th>
                 <th className="px-4 py-3">Customer</th>
                 <th className="px-4 py-3">Contact</th>
                 <th className="px-4 py-3">Vehicle</th>
@@ -462,7 +396,7 @@ export default function JobsPage() {
                 <th className="px-4 py-3">Invoice Amount</th>
                 <th className="px-4 py-3">Amount Paid</th>
                 <th className="px-4 py-3">Outstanding</th>
-                <th className="px-4 py-3">Could Not Repair</th>
+                <th className="px-4 py-3">Details</th>
               </tr>
             </thead>
 
@@ -480,6 +414,16 @@ export default function JobsPage() {
                   </td>
 
                   <td className="px-4 py-3">
+                    <input
+                      type="date"
+                      className="rounded-lg border border-slate-300 px-2 py-1"
+                      value={job.completed_at || ''}
+                      onChange={(e) => void updateJob(job.id, { completed_at: e.target.value || null })}
+                      disabled={savingId === job.id}
+                    />
+                  </td>
+
+                  <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{job.customer_name || '—'}</div>
                     <div className="text-slate-500">{job.customer_zip || ''}</div>
                   </td>
@@ -489,9 +433,7 @@ export default function JobsPage() {
                     <div className="text-slate-500">{job.customer_email || ''}</div>
                   </td>
 
-                  <td className="px-4 py-3">
-                    {[job.vehicle_year, job.vehicle_make, job.vehicle_model].filter(Boolean).join(' ') || '—'}
-                  </td>
+                  <td className="px-4 py-3">{[job.vehicle_year, job.vehicle_make, job.vehicle_model].filter(Boolean).join(' ') || '—'}</td>
 
                   <td className="px-4 py-3">
                     <div className="font-medium">{job.damage_type || '—'}</div>
@@ -507,9 +449,7 @@ export default function JobsPage() {
                       disabled={savingId === job.id}
                       className="rounded-lg border border-slate-300 px-2 py-1"
                     >
-                      {JOB_STATUSES.map((status) => (
-                        <option key={status} value={status}>{status}</option>
-                      ))}
+                      {JOB_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
                     </select>
                   </td>
 
@@ -520,9 +460,7 @@ export default function JobsPage() {
                       disabled={savingId === job.id}
                       className="rounded-lg border border-slate-300 px-2 py-1"
                     >
-                      {PAYMENT_STATUSES.map((status) => (
-                        <option key={status} value={status}>{status}</option>
-                      ))}
+                      {PAYMENT_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
                     </select>
                   </td>
 
@@ -530,15 +468,7 @@ export default function JobsPage() {
                     <input
                       className="w-28 rounded-lg border border-slate-300 px-2 py-1"
                       value={job.invoice_amount ?? 0}
-                      onChange={(e) =>
-                        setJobs((current) =>
-                          current.map((row) =>
-                            row.id === job.id
-                              ? { ...row, invoice_amount: parseAmount(e.target.value) }
-                              : row
-                          )
-                        )
-                      }
+                      onChange={(e) => setJobs((current) => current.map((row) => row.id === job.id ? { ...row, invoice_amount: parseAmount(e.target.value) } : row))}
                       onBlur={(e) => void updateJob(job.id, { invoice_amount: parseAmount(e.target.value) })}
                       disabled={savingId === job.id}
                     />
@@ -548,66 +478,28 @@ export default function JobsPage() {
                     <input
                       className="w-28 rounded-lg border border-slate-300 px-2 py-1"
                       value={job.amount_paid ?? 0}
-                      onChange={(e) =>
-                        setJobs((current) =>
-                          current.map((row) =>
-                            row.id === job.id
-                              ? { ...row, amount_paid: parseAmount(e.target.value) }
-                              : row
-                          )
-                        )
-                      }
+                      onChange={(e) => setJobs((current) => current.map((row) => row.id === job.id ? { ...row, amount_paid: parseAmount(e.target.value) } : row))}
                       onBlur={(e) => void updateJob(job.id, { amount_paid: parseAmount(e.target.value) })}
                       disabled={savingId === job.id}
                     />
                   </td>
 
-                  <td className="px-4 py-3 font-semibold text-rose-700">
-                    {currency(job.amount_outstanding)}
-                  </td>
+                  <td className="px-4 py-3 font-semibold text-rose-700">{currency(job.amount_outstanding)}</td>
 
                   <td className="px-4 py-3">
-                    {job.job_status === 'Could Not Repair' ? (
-                      <div className="space-y-2">
-                        <select
-                          value={job.failure_reason || ''}
-                          onChange={(e) => void updateJob(job.id, { failure_reason: e.target.value })}
-                          disabled={savingId === job.id}
-                          className="w-full rounded-lg border border-slate-300 px-2 py-1"
-                        >
-                          {FAILURE_REASONS.map((reason) => (
-                            <option key={reason || 'empty'} value={reason}>
-                              {reason || 'Select reason'}
-                            </option>
-                          ))}
-                        </select>
-
-                        <textarea
-                          className="min-h-20 w-full rounded-lg border border-slate-300 px-2 py-1"
-                          placeholder="Failure notes"
-                          value={job.failure_notes || ''}
-                          onChange={(e) =>
-                            setJobs((current) =>
-                              current.map((row) =>
-                                row.id === job.id
-                                  ? { ...row, failure_notes: e.target.value }
-                                  : row
-                              )
-                            )
-                          }
-                          onBlur={(e) => void updateJob(job.id, { failure_notes: e.target.value })}
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
+                    <Link
+                      href={`/jobs/${job.id}`}
+                      className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                    >
+                      Open
+                    </Link>
                   </td>
                 </tr>
               ))}
 
               {!jobs.length ? (
                 <tr>
-                  <td colSpan={12} className="px-4 py-10 text-center text-slate-500">
+                  <td colSpan={13} className="px-4 py-10 text-center text-slate-500">
                     No jobs found for this date range.
                   </td>
                 </tr>
