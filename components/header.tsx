@@ -73,58 +73,54 @@ export default function Header() {
     router.push(`/accounts${params.toString() ? `?${params}` : ''}`);
   };
 
-  // 🔥 FIXED LOGOUT
   const handleLogout = async () => {
     await supabase.auth.signOut();
-
-    // hard redirect avoids middleware weirdness
     window.location.href = '/login';
   };
 
   return (
-    <header className="border-b border-slate-200 bg-white">
+    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-[1280px] items-center justify-between px-10 py-4">
 
-        {/* LEFT SIDE */}
-        <Link href="/" className="flex items-center gap-4">
+        {/* LEFT */}
+        <Link href="/" className="flex items-center gap-4 group">
           
-          {/* 🔥 better logo spacing */}
-          <div className="relative h-12 w-16 flex-shrink-0">
+          <div className="relative h-10 w-10 flex-shrink-0">
             <Image
               src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
               alt="GlasWeld"
               fill
-              className="object-contain object-left"
+              className="object-contain transition-transform duration-200 group-hover:scale-105"
               priority
             />
           </div>
 
-          {/* 🔥 better text spacing */}
           <div className="leading-tight">
-            <div className="text-lg font-semibold text-slate-900">
+            <div className="text-lg font-semibold tracking-tight text-slate-900">
               GlasWeld Repair Network™
             </div>
-            <div className="mt-1 text-[11px] uppercase tracking-[0.22em] text-slate-500">
-              Reducing glass claim costs
+            <div className="mt-0.5 text-[11px] uppercase tracking-[0.22em] text-slate-500">
+              Repair-first claims control
             </div>
           </div>
         </Link>
 
-        {/* RIGHT SIDE */}
+        {/* RIGHT */}
         <div className="flex items-center gap-6">
 
+          {/* SEARCH */}
           <form onSubmit={handleSubmit} className="hidden items-center gap-3 lg:flex">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search business or contact"
-              className="h-11 w-[280px] rounded-xl border px-4 text-sm"
+              className="h-11 w-[260px] rounded-xl border border-slate-200 px-4 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
             />
 
             <select
               value={state}
               onChange={(e) => setState(e.target.value)}
-              className="h-11 w-[180px] rounded-xl border px-4 text-sm"
+              className="h-11 w-[170px] rounded-xl border border-slate-200 px-4 text-sm shadow-sm focus:outline-none"
             >
               {stateOptions.map((option) => (
                 <option key={option.value || 'all'} value={option.value}>
@@ -133,21 +129,33 @@ export default function Header() {
               ))}
             </select>
 
-            <button className="h-11 rounded-xl bg-slate-900 px-5 text-white">
+            <button className="h-11 rounded-xl bg-slate-900 px-5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800">
               Search
             </button>
           </form>
 
-          <nav className="flex items-center gap-6 text-sm font-medium text-teal-700">
-            <Link href="/">Dashboard</Link>
-            <Link href="/accounts">Accounts</Link>
-            <Link href="/contacts">Contacts</Link>
-            <Link href="/jobs">Jobs</Link>
+          {/* NAV */}
+          <nav className="flex items-center gap-6 text-sm font-medium text-slate-600">
+            {[
+              { href: '/', label: 'Dashboard' },
+              { href: '/accounts', label: 'Accounts' },
+              { href: '/contacts', label: 'Contacts' },
+              { href: '/jobs', label: 'Jobs' },
+            ].map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="relative transition hover:text-slate-900"
+              >
+                {item.label}
+              </Link>
+            ))}
           </nav>
 
+          {/* LOGOUT */}
           <button
             onClick={handleLogout}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-100 hover:text-slate-900"
           >
             Logout
           </button>
