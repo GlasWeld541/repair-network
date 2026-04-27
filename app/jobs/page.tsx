@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 type JobRow = {
   id: string;
   created_at: string;
+  updated_at: string | null;
   submitted_by_type: string | null;
   submitted_by_name: string | null;
   submitted_by_email: string | null;
@@ -33,6 +34,11 @@ type JobRow = {
   claim_number: string | null;
   policy_number: string | null;
   loss_date: string | null;
+  invoice_amount: number | null;
+  amount_paid: number | null;
+  amount_outstanding: number | null;
+  completed_at: string | null;
+  invoice_date: string | null;
 };
 
 type ShopUser = {
@@ -77,12 +83,39 @@ const FAILURE_REASONS = [
   'Other',
 ];
 
+function currency(value: number | null | undefined) {
+  const amount = Number(value ?? 0);
+  return amount.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  });
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function thirtyDaysAgoIso() {
+  const date = new Date();
+  date.setDate(date.getDate() - 30);
+  return date.toISOString().slice(0, 10);
+}
+
+function parseAmount(value: string) {
+  const cleaned = value.replace(/[^0-9.]/g, '');
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export default function JobsPage() {
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [shopUser, setShopUser] = useState<ShopUser | null>(null);
   const [userEmail, setUserEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+
+  const [dateFrom, setDateFrom] = useState(thirtyDaysAgoIso());
+  const [dateTo, setDateTo] = useState(todayIso());
 
   const [form, setForm] = useState({
     customer_name: '',
@@ -94,13 +127,22 @@ export default function JobsPage() {
     vehicle_model: '',
     damage_type: '',
     damage_notes: '',
+    invoice_amount: '',
   });
 
   const isShopUser = Boolean(shopUser?.account_id);
 
   useEffect(() => {
     void loadPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      void loadJobs();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, dateTo]);
 
   async function loadPage() {
     setLoading(true);
@@ -139,6 +181,14 @@ export default function JobsPage() {
       query = query.eq('assigned_account_id', currentShopUser.account_id);
     }
 
+    if (dateFrom) {
+      query = query.gte('invoice_date', dateFrom);
+    }
+
+    if (dateTo) {
+      query = query.lte('invoice_date', dateTo);
+    }
+
     const { data, error } = await query;
 
     if (error) {
@@ -150,6 +200,9 @@ export default function JobsPage() {
   }
 
   async function createJob() {
+    const invoiceAmount = parseAmount(form.invoice_amount);
+    const today = todayIso();
+
     const { error } = await supabase.from('jobs').insert({
       submitted_by_type: isShopUser ? 'Shop' : 'GlasWeld',
       submitted_by_email: userEmail || null,
@@ -167,6 +220,9 @@ export default function JobsPage() {
       assigned_account_id: isShopUser ? shopUser?.account_id : null,
       assigned_account_name: isShopUser ? shopUser?.account_name : null,
       payment_status: 'Unpaid',
+      invoice_amount: invoiceAmount,
+      amount_paid: 0,
+      invoice_date: today,
     });
 
     if (error) {
@@ -184,6 +240,7 @@ export default function JobsPage() {
       vehicle_model: '',
       damage_type: '',
       damage_notes: '',
+      invoice_amount: '',
     });
 
     await loadJobs();
@@ -201,9 +258,7 @@ export default function JobsPage() {
       return;
     }
 
-    setJobs((current) =>
-      current.map((job) => (job.id === id ? { ...job, ...patch } : job))
-    );
+    await loadJobs();
   }
 
   const pageTitle = useMemo(() => {
@@ -211,6 +266,18 @@ export default function JobsPage() {
     if (isShopUser) return `${shopUser?.account_name} Jobs`;
     return 'All Jobs';
   }, [loading, isShopUser, shopUser]);
+
+  const totals = useMemo(() => {
+    return jobs.reduce(
+      (sum, job) => {
+        sum.sales += Number(job.invoice_amount ?? 0);
+        sum.paid += Number(job.amount_paid ?? 0);
+        sum.outstanding += Number(job.amount_outstanding ?? 0);
+        return sum;
+      },
+      { sales: 0, paid: 0, outstanding: 0 }
+    );
+  }, [jobs]);
 
   if (loading) {
     return <div className="p-6 text-slate-600">Loading jobs...</div>;
@@ -226,6 +293,67 @@ export default function JobsPage() {
             : 'Admin view: create jobs and monitor all network referrals.'}
         </p>
       </div>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">Date Range</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Totals are based on invoice date.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <label className="space-y-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">From</span>
+              <input
+                type="date"
+                className="rounded-lg border border-slate-300 px-3 py-2"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">To</span>
+              <input
+                type="date"
+                className="rounded-lg border border-slate-300 px-3 py-2"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={() => {
+                setDateFrom('');
+                setDateTo('');
+              }}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 sm:self-end"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Total Sales</div>
+            <div className="mt-2 text-3xl font-semibold text-slate-900">{currency(totals.sales)}</div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Total Paid</div>
+            <div className="mt-2 text-3xl font-semibold text-slate-900">{currency(totals.paid)}</div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Total Outstanding</div>
+            <div className="mt-2 text-3xl font-semibold text-rose-700">{currency(totals.outstanding)}</div>
+          </div>
+        </div>
+      </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-xl font-semibold text-slate-900">Create Job</h2>
@@ -287,6 +415,13 @@ export default function JobsPage() {
             onChange={(e) => setForm({ ...form, damage_type: e.target.value })}
           />
 
+          <input
+            className="rounded-lg border border-slate-300 px-3 py-2"
+            placeholder="Invoice amount"
+            value={form.invoice_amount}
+            onChange={(e) => setForm({ ...form, invoice_amount: e.target.value })}
+          />
+
           <textarea
             className="min-h-24 rounded-lg border border-slate-300 px-3 py-2 md:col-span-2 xl:col-span-3"
             placeholder="Damage notes"
@@ -313,10 +448,10 @@ export default function JobsPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1400px] text-sm">
+          <table className="min-w-[1700px] text-sm">
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
-                <th className="px-4 py-3">Created</th>
+                <th className="px-4 py-3">Invoice Date</th>
                 <th className="px-4 py-3">Customer</th>
                 <th className="px-4 py-3">Contact</th>
                 <th className="px-4 py-3">Vehicle</th>
@@ -324,6 +459,9 @@ export default function JobsPage() {
                 <th className="px-4 py-3">Assigned Shop</th>
                 <th className="px-4 py-3">Job Status</th>
                 <th className="px-4 py-3">Payment</th>
+                <th className="px-4 py-3">Invoice Amount</th>
+                <th className="px-4 py-3">Amount Paid</th>
+                <th className="px-4 py-3">Outstanding</th>
                 <th className="px-4 py-3">Could Not Repair</th>
               </tr>
             </thead>
@@ -331,8 +469,14 @@ export default function JobsPage() {
             <tbody>
               {jobs.map((job) => (
                 <tr key={job.id} className="border-t border-slate-100 align-top">
-                  <td className="px-4 py-3 text-slate-600">
-                    {new Date(job.created_at).toLocaleDateString()}
+                  <td className="px-4 py-3">
+                    <input
+                      type="date"
+                      className="rounded-lg border border-slate-300 px-2 py-1"
+                      value={job.invoice_date || ''}
+                      onChange={(e) => void updateJob(job.id, { invoice_date: e.target.value || null })}
+                      disabled={savingId === job.id}
+                    />
                   </td>
 
                   <td className="px-4 py-3">
@@ -364,9 +508,7 @@ export default function JobsPage() {
                       className="rounded-lg border border-slate-300 px-2 py-1"
                     >
                       {JOB_STATUSES.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
+                        <option key={status} value={status}>{status}</option>
                       ))}
                     </select>
                   </td>
@@ -379,11 +521,49 @@ export default function JobsPage() {
                       className="rounded-lg border border-slate-300 px-2 py-1"
                     >
                       {PAYMENT_STATUSES.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
+                        <option key={status} value={status}>{status}</option>
                       ))}
                     </select>
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <input
+                      className="w-28 rounded-lg border border-slate-300 px-2 py-1"
+                      value={job.invoice_amount ?? 0}
+                      onChange={(e) =>
+                        setJobs((current) =>
+                          current.map((row) =>
+                            row.id === job.id
+                              ? { ...row, invoice_amount: parseAmount(e.target.value) }
+                              : row
+                          )
+                        )
+                      }
+                      onBlur={(e) => void updateJob(job.id, { invoice_amount: parseAmount(e.target.value) })}
+                      disabled={savingId === job.id}
+                    />
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <input
+                      className="w-28 rounded-lg border border-slate-300 px-2 py-1"
+                      value={job.amount_paid ?? 0}
+                      onChange={(e) =>
+                        setJobs((current) =>
+                          current.map((row) =>
+                            row.id === job.id
+                              ? { ...row, amount_paid: parseAmount(e.target.value) }
+                              : row
+                          )
+                        )
+                      }
+                      onBlur={(e) => void updateJob(job.id, { amount_paid: parseAmount(e.target.value) })}
+                      disabled={savingId === job.id}
+                    />
+                  </td>
+
+                  <td className="px-4 py-3 font-semibold text-rose-700">
+                    {currency(job.amount_outstanding)}
                   </td>
 
                   <td className="px-4 py-3">
@@ -427,8 +607,8 @@ export default function JobsPage() {
 
               {!jobs.length ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-slate-500">
-                    No jobs found.
+                  <td colSpan={12} className="px-4 py-10 text-center text-slate-500">
+                    No jobs found for this date range.
                   </td>
                 </tr>
               ) : null}
