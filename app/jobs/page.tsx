@@ -35,8 +35,8 @@ type JobRow = {
   claim_number: string | null;
   policy_number: string | null;
   loss_date: string | null;
-  invoice_amount: number | string | null;
-  amount_paid: number | string | null;
+  invoice_amount: number | null;
+  amount_paid: number | null;
   amount_outstanding: number | null;
   completed_at: string | null;
   invoice_date: string | null;
@@ -91,12 +91,28 @@ function thirtyDaysAgoIso() {
   return date.toISOString().slice(0, 10);
 }
 
+function cleanMoneyInput(value: string) {
+  let cleaned = value.replace(/[^0-9.]/g, '');
+
+  const firstDot = cleaned.indexOf('.');
+  if (firstDot !== -1) {
+    cleaned =
+      cleaned.slice(0, firstDot + 1) +
+      cleaned.slice(firstDot + 1).replace(/\./g, '');
+  }
+
+  return cleaned;
+}
+
 function parseAmount(value: string | number | null | undefined) {
-  const cleaned = String(value ?? '').replace(/[^0-9.]/g, '');
-  const parts = cleaned.split('.');
-  const normalized = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : cleaned;
-  const parsed = Number.parseFloat(normalized);
+  const cleaned = cleanMoneyInput(String(value ?? ''));
+  const parsed = Number.parseFloat(cleaned);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function moneyDraft(value: number | null | undefined) {
+  if (value === null || value === undefined) return '';
+  return String(value);
 }
 
 export default function JobsPage() {
@@ -105,6 +121,9 @@ export default function JobsPage() {
   const [userEmail, setUserEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+
+  const [invoiceDrafts, setInvoiceDrafts] = useState<Record<string, string>>({});
+  const [paidDrafts, setPaidDrafts] = useState<Record<string, string>>({});
 
   const [dateFrom, setDateFrom] = useState(thirtyDaysAgoIso());
   const [dateTo, setDateTo] = useState(todayIso());
@@ -135,6 +154,21 @@ export default function JobsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFrom, dateTo]);
+
+  function setJobsAndDrafts(nextJobs: JobRow[]) {
+    setJobs(nextJobs);
+
+    const nextInvoiceDrafts: Record<string, string> = {};
+    const nextPaidDrafts: Record<string, string> = {};
+
+    nextJobs.forEach((job) => {
+      nextInvoiceDrafts[job.id] = moneyDraft(job.invoice_amount);
+      nextPaidDrafts[job.id] = moneyDraft(job.amount_paid);
+    });
+
+    setInvoiceDrafts(nextInvoiceDrafts);
+    setPaidDrafts(nextPaidDrafts);
+  }
 
   async function loadPage() {
     setLoading(true);
@@ -188,7 +222,7 @@ export default function JobsPage() {
       return;
     }
 
-    setJobs((data as JobRow[]) ?? []);
+    setJobsAndDrafts((data as JobRow[]) ?? []);
   }
 
   async function createJob() {
@@ -262,8 +296,8 @@ export default function JobsPage() {
   const totals = useMemo(() => {
     return jobs.reduce(
       (sum, job) => {
-        const invoiceAmount = parseAmount(job.invoice_amount);
-        const amountPaid = parseAmount(job.amount_paid);
+        const invoiceAmount = parseAmount(invoiceDrafts[job.id] ?? job.invoice_amount);
+        const amountPaid = parseAmount(paidDrafts[job.id] ?? job.amount_paid);
         sum.sales += invoiceAmount;
         sum.paid += amountPaid;
         sum.outstanding += invoiceAmount - amountPaid;
@@ -271,7 +305,7 @@ export default function JobsPage() {
       },
       { sales: 0, paid: 0, outstanding: 0 }
     );
-  }, [jobs]);
+  }, [jobs, invoiceDrafts, paidDrafts]);
 
   if (loading) {
     return <div className="p-6 text-slate-600">Loading jobs...</div>;
@@ -366,7 +400,7 @@ export default function JobsPage() {
             className="rounded-lg border border-slate-300 px-3 py-2"
             placeholder="Invoice amount"
             value={form.invoice_amount}
-            onChange={(e) => setForm({ ...form, invoice_amount: e.target.value })}
+            onChange={(e) => setForm({ ...form, invoice_amount: cleanMoneyInput(e.target.value) })}
           />
 
           <textarea
@@ -414,8 +448,8 @@ export default function JobsPage() {
 
             <tbody>
               {jobs.map((job) => {
-                const invoiceAmount = parseAmount(job.invoice_amount);
-                const amountPaid = parseAmount(job.amount_paid);
+                const invoiceAmount = parseAmount(invoiceDrafts[job.id] ?? job.invoice_amount);
+                const amountPaid = parseAmount(paidDrafts[job.id] ?? job.amount_paid);
                 const liveOutstanding = invoiceAmount - amountPaid;
 
                 return (
@@ -486,16 +520,11 @@ export default function JobsPage() {
                         type="text"
                         inputMode="decimal"
                         className="w-28 rounded-lg border border-slate-300 px-2 py-1"
-                        value={String(job.invoice_amount ?? '')}
-                        onChange={(e) =>
-                          setJobs((current) =>
-                            current.map((row) =>
-                              row.id === job.id
-                                ? { ...row, invoice_amount: e.target.value }
-                                : row
-                            )
-                          )
-                        }
+                        value={invoiceDrafts[job.id] ?? ''}
+                        onChange={(e) => {
+                          const nextValue = cleanMoneyInput(e.target.value);
+                          setInvoiceDrafts((current) => ({ ...current, [job.id]: nextValue }));
+                        }}
                         onBlur={(e) => void updateJob(job.id, { invoice_amount: parseAmount(e.target.value) })}
                         disabled={savingId === job.id}
                       />
@@ -506,16 +535,11 @@ export default function JobsPage() {
                         type="text"
                         inputMode="decimal"
                         className="w-28 rounded-lg border border-slate-300 px-2 py-1"
-                        value={String(job.amount_paid ?? '')}
-                        onChange={(e) =>
-                          setJobs((current) =>
-                            current.map((row) =>
-                              row.id === job.id
-                                ? { ...row, amount_paid: e.target.value }
-                                : row
-                            )
-                          )
-                        }
+                        value={paidDrafts[job.id] ?? ''}
+                        onChange={(e) => {
+                          const nextValue = cleanMoneyInput(e.target.value);
+                          setPaidDrafts((current) => ({ ...current, [job.id]: nextValue }));
+                        }}
                         onBlur={(e) => void updateJob(job.id, { amount_paid: parseAmount(e.target.value) })}
                         disabled={savingId === job.id}
                       />
