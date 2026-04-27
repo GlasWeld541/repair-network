@@ -92,13 +92,13 @@ export default function Header() {
     <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.28)]">
       <div className="mx-auto flex max-w-[1380px] items-center justify-between px-10 py-4">
         <Link href="/" className="group flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white shadow-sm">
-            <div className="relative h-8 w-8">
+          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white shadow-sm">
+            <div className="relative h-14 w-14">
               <Image
                 src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
                 alt="GlasWeld"
                 fill
-                className="object-contain transition-transform duration-200 group-hover:scale-105"
+                className="scale-110 object-cover object-center transition-transform duration-200 group-hover:scale-125"
                 priority
               />
             </div>
