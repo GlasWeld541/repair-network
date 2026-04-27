@@ -135,6 +135,7 @@ export default function Header() {
             <Link href="/">Dashboard</Link>
             <Link href="/accounts">Accounts</Link>
             <Link href="/contacts">Contacts</Link>
+            <Link href="/jobs">Jobs</Link>
           </nav>
         </div>
 
