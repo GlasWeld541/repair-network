@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -76,7 +75,6 @@ export default function Header() {
     e.preventDefault();
 
     const params = new URLSearchParams();
-
     if (query.trim()) params.set('search', query.trim());
     if (state) params.set('state', state);
 
@@ -91,42 +89,40 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.28)]">
       <div className="mx-auto flex max-w-[1380px] items-center justify-between px-10 py-4">
-        <Link href="/" className="group flex items-center gap-4">
-          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white shadow-sm">
-            <div className="relative h-14 w-14">
-              <Image
-                src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
-                alt="GlasWeld"
-                fill
-                className="scale-110 object-cover object-center transition-transform duration-200 group-hover:scale-125"
-                priority
-              />
-            </div>
+
+        {/* LEFT */}
+        <Link href="/" className="flex items-center gap-4">
+          
+          {/* 🔥 CLEAN BRAND MARK */}
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 shadow-lg">
+            <span className="text-sm font-bold text-white">GW</span>
           </div>
 
           <div>
-            <div className="text-[17px] font-semibold leading-tight tracking-tight text-white">
+            <div className="text-[17px] font-semibold tracking-tight text-white">
               GlasWeld Repair Network™
             </div>
-            <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.34em] text-cyan-300/80">
+            <div className="mt-1 text-[10px] uppercase tracking-[0.32em] text-cyan-300/80">
               Claims Control Platform
             </div>
           </div>
         </Link>
 
+        {/* RIGHT */}
         <div className="flex items-center gap-5">
+
           <form onSubmit={handleSubmit} className="hidden items-center gap-3 xl:flex">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search business or contact"
-              className="h-11 w-[290px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white placeholder:text-slate-400 outline-none ring-0 transition focus:border-cyan-300/50 focus:bg-white/15"
+              className="h-11 w-[290px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white placeholder:text-slate-400 focus:border-cyan-300/50 focus:bg-white/15 outline-none"
             />
 
             <select
               value={state}
               onChange={(e) => setState(e.target.value)}
-              className="h-11 w-[175px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white outline-none transition focus:border-cyan-300/50 focus:bg-white/15"
+              className="h-11 w-[175px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white focus:border-cyan-300/50 focus:bg-white/15 outline-none"
             >
               {stateOptions.map((option) => (
                 <option key={option.value || 'all'} value={option.value}>
@@ -135,7 +131,7 @@ export default function Header() {
               ))}
             </select>
 
-            <button className="h-11 rounded-xl bg-cyan-400 px-5 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/30 transition hover:bg-cyan-300">
+            <button className="h-11 rounded-xl bg-cyan-400 px-5 text-sm font-semibold text-slate-950 shadow-lg transition hover:bg-cyan-300">
               Search
             </button>
           </form>
@@ -151,12 +147,11 @@ export default function Header() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={[
-                    'rounded-xl px-4 py-2 transition',
+                  className={`rounded-xl px-4 py-2 transition ${
                     isActive
-                      ? 'bg-white text-slate-950 shadow-sm'
-                      : 'hover:bg-white/10 hover:text-white',
-                  ].join(' ')}
+                      ? 'bg-white text-slate-950'
+                      : 'hover:bg-white/10 hover:text-white'
+                  }`}
                 >
                   {item.label}
                 </Link>
@@ -165,12 +160,12 @@ export default function Header() {
           </nav>
 
           <button
-            type="button"
             onClick={handleLogout}
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/10 hover:text-white"
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200 hover:bg-white/10"
           >
             Logout
           </button>
+
         </div>
       </div>
     </header>
