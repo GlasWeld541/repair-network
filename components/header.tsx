@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 type StateOption = {
@@ -28,8 +28,17 @@ const STATE_NAMES: Record<string, string> = {
   WI: 'Wisconsin', WY: 'Wyoming',
 };
 
+const NAV_ITEMS = [
+  { href: '/', label: 'Dashboard' },
+  { href: '/accounts', label: 'Accounts' },
+  { href: '/contacts', label: 'Contacts' },
+  { href: '/jobs', label: 'Jobs' },
+];
+
 export default function Header() {
   const router = useRouter();
+  const pathname = usePathname();
+
   const [query, setQuery] = useState('');
   const [state, setState] = useState('');
   const [stateOptions, setStateOptions] = useState<StateOption[]>([
@@ -47,7 +56,7 @@ export default function Header() {
         new Set(
           ((data as { state: string | null }[]) ?? [])
             .map((row) => row.state?.trim().toUpperCase())
-            .filter((v): v is string => Boolean(v))
+            .filter((value): value is string => Boolean(value))
         )
       ).sort();
 
@@ -67,10 +76,11 @@ export default function Header() {
     e.preventDefault();
 
     const params = new URLSearchParams();
+
     if (query.trim()) params.set('search', query.trim());
     if (state) params.set('state', state);
 
-    router.push(`/accounts${params.toString() ? `?${params}` : ''}`);
+    router.push(`/accounts${params.toString() ? `?${params.toString()}` : ''}`);
   };
 
   const handleLogout = async () => {
@@ -79,48 +89,44 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex max-w-[1280px] items-center justify-between px-10 py-4">
-
-        {/* LEFT */}
-        <Link href="/" className="flex items-center gap-4 group">
-          
-          <div className="relative h-10 w-10 flex-shrink-0">
-            <Image
-              src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
-              alt="GlasWeld"
-              fill
-              className="object-contain transition-transform duration-200 group-hover:scale-105"
-              priority
-            />
+    <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.28)]">
+      <div className="mx-auto flex max-w-[1380px] items-center justify-between px-10 py-4">
+        <Link href="/" className="group flex items-center gap-4">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white shadow-sm">
+            <div className="relative h-8 w-8">
+              <Image
+                src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
+                alt="GlasWeld"
+                fill
+                className="object-contain transition-transform duration-200 group-hover:scale-105"
+                priority
+              />
+            </div>
           </div>
 
-          <div className="leading-tight">
-            <div className="text-lg font-semibold tracking-tight text-slate-900">
+          <div>
+            <div className="text-[17px] font-semibold leading-tight tracking-tight text-white">
               GlasWeld Repair Network™
             </div>
-            <div className="mt-0.5 text-[11px] uppercase tracking-[0.22em] text-slate-500">
-              Repair-first claims control
+            <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.34em] text-cyan-300/80">
+              Claims Control Platform
             </div>
           </div>
         </Link>
 
-        {/* RIGHT */}
-        <div className="flex items-center gap-6">
-
-          {/* SEARCH */}
-          <form onSubmit={handleSubmit} className="hidden items-center gap-3 lg:flex">
+        <div className="flex items-center gap-5">
+          <form onSubmit={handleSubmit} className="hidden items-center gap-3 xl:flex">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search business or contact"
-              className="h-11 w-[260px] rounded-xl border border-slate-200 px-4 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              className="h-11 w-[290px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white placeholder:text-slate-400 outline-none ring-0 transition focus:border-cyan-300/50 focus:bg-white/15"
             />
 
             <select
               value={state}
               onChange={(e) => setState(e.target.value)}
-              className="h-11 w-[170px] rounded-xl border border-slate-200 px-4 text-sm shadow-sm focus:outline-none"
+              className="h-11 w-[175px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white outline-none transition focus:border-cyan-300/50 focus:bg-white/15"
             >
               {stateOptions.map((option) => (
                 <option key={option.value || 'all'} value={option.value}>
@@ -129,37 +135,42 @@ export default function Header() {
               ))}
             </select>
 
-            <button className="h-11 rounded-xl bg-slate-900 px-5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800">
+            <button className="h-11 rounded-xl bg-cyan-400 px-5 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/30 transition hover:bg-cyan-300">
               Search
             </button>
           </form>
 
-          {/* NAV */}
-          <nav className="flex items-center gap-6 text-sm font-medium text-slate-600">
-            {[
-              { href: '/', label: 'Dashboard' },
-              { href: '/accounts', label: 'Accounts' },
-              { href: '/contacts', label: 'Contacts' },
-              { href: '/jobs', label: 'Jobs' },
-            ].map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="relative transition hover:text-slate-900"
-              >
-                {item.label}
-              </Link>
-            ))}
+          <nav className="flex items-center rounded-2xl border border-white/10 bg-white/5 p-1 text-sm font-medium text-slate-300">
+            {NAV_ITEMS.map((item) => {
+              const isActive =
+                item.href === '/'
+                  ? pathname === '/'
+                  : pathname.startsWith(item.href);
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={[
+                    'rounded-xl px-4 py-2 transition',
+                    isActive
+                      ? 'bg-white text-slate-950 shadow-sm'
+                      : 'hover:bg-white/10 hover:text-white',
+                  ].join(' ')}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
           </nav>
 
-          {/* LOGOUT */}
           <button
+            type="button"
             onClick={handleLogout}
-            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-100 hover:text-slate-900"
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/10 hover:text-white"
           >
             Logout
           </button>
-
         </div>
       </div>
     </header>
