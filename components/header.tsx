@@ -4,59 +4,12 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 
 const STATES = [
   { value: '', label: 'All states' },
   { value: 'AL', label: 'Alabama' },
-  { value: 'AK', label: 'Alaska' },
-  { value: 'AZ', label: 'Arizona' },
-  { value: 'AR', label: 'Arkansas' },
-  { value: 'CA', label: 'California' },
-  { value: 'CO', label: 'Colorado' },
-  { value: 'CT', label: 'Connecticut' },
-  { value: 'DE', label: 'Delaware' },
-  { value: 'FL', label: 'Florida' },
-  { value: 'GA', label: 'Georgia' },
-  { value: 'HI', label: 'Hawaii' },
-  { value: 'ID', label: 'Idaho' },
-  { value: 'IL', label: 'Illinois' },
-  { value: 'IN', label: 'Indiana' },
-  { value: 'IA', label: 'Iowa' },
-  { value: 'KS', label: 'Kansas' },
-  { value: 'KY', label: 'Kentucky' },
-  { value: 'LA', label: 'Louisiana' },
-  { value: 'ME', label: 'Maine' },
-  { value: 'MD', label: 'Maryland' },
-  { value: 'MA', label: 'Massachusetts' },
-  { value: 'MI', label: 'Michigan' },
-  { value: 'MN', label: 'Minnesota' },
-  { value: 'MS', label: 'Mississippi' },
-  { value: 'MO', label: 'Missouri' },
-  { value: 'MT', label: 'Montana' },
-  { value: 'NE', label: 'Nebraska' },
-  { value: 'NV', label: 'Nevada' },
-  { value: 'NH', label: 'New Hampshire' },
-  { value: 'NJ', label: 'New Jersey' },
-  { value: 'NM', label: 'New Mexico' },
-  { value: 'NY', label: 'New York' },
-  { value: 'NC', label: 'North Carolina' },
-  { value: 'ND', label: 'North Dakota' },
-  { value: 'OH', label: 'Ohio' },
-  { value: 'OK', label: 'Oklahoma' },
-  { value: 'OR', label: 'Oregon' },
-  { value: 'PA', label: 'Pennsylvania' },
-  { value: 'RI', label: 'Rhode Island' },
-  { value: 'SC', label: 'South Carolina' },
-  { value: 'SD', label: 'South Dakota' },
-  { value: 'TN', label: 'Tennessee' },
-  { value: 'TX', label: 'Texas' },
-  { value: 'UT', label: 'Utah' },
-  { value: 'VT', label: 'Vermont' },
-  { value: 'VA', label: 'Virginia' },
-  { value: 'WA', label: 'Washington' },
-  { value: 'WV', label: 'West Virginia' },
-  { value: 'WI', label: 'Wisconsin' },
-  { value: 'WY', label: 'Wyoming' },
+  // ... (keep your full list exactly as is)
 ];
 
 export default function Header() {
@@ -75,14 +28,17 @@ export default function Header() {
     router.push(`/accounts${params.toString() ? `?${params.toString()}` : ''}`);
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/'); // or '/login' if you have one
+  };
+
   return (
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-[1280px] items-center justify-between px-10 py-3">
 
         {/* LEFT SIDE */}
         <Link href="/" className="flex items-center gap-3">
-
-          {/* 🔥 Bigger logo (using hosted image) */}
           <div className="relative h-12 w-[140px]">
             <Image
               src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
@@ -101,11 +57,12 @@ export default function Header() {
               Reducing glass claim costs for carriers and subscribers
             </div>
           </div>
-
         </Link>
 
         {/* RIGHT SIDE */}
         <div className="flex items-center gap-5">
+
+          {/* SEARCH */}
           <form onSubmit={handleSubmit} className="hidden items-center gap-3 lg:flex">
             <input
               value={query}
@@ -131,14 +88,23 @@ export default function Header() {
             </button>
           </form>
 
+          {/* NAV */}
           <nav className="flex items-center gap-6 text-sm font-medium text-teal-700">
             <Link href="/">Dashboard</Link>
             <Link href="/accounts">Accounts</Link>
             <Link href="/contacts">Contacts</Link>
             <Link href="/jobs">Jobs</Link>
           </nav>
-        </div>
 
+          {/* LOGOUT */}
+          <button
+            onClick={handleLogout}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Logout
+          </button>
+
+        </div>
       </div>
     </header>
   );
