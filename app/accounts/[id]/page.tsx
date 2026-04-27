@@ -20,7 +20,6 @@ type AccountRow = {
   uses_onyx: string | null;
   uses_zoom_injector: string | null;
   repair_only: string | null;
-  network_fit: string | null;
   outreach_status: string | null;
   notes: string | null;
 };
@@ -51,7 +50,6 @@ type NewContactForm = {
 
 const YES_NO_UNKNOWN = ['Unknown', 'Yes', 'No'] as const;
 const REPAIR_ONLY_OPTIONS = ['Unknown', 'Likely Yes', 'Yes', 'No'] as const;
-const NETWORK_FIT_OPTIONS = ['Unscored', 'High', 'Medium', 'Low'] as const;
 const OUTREACH_OPTIONS = ['Not Contacted', 'Contacted', 'Replied', 'Qualified', 'Onboarded', 'Not a Fit'] as const;
 
 const EMPTY_CONTACT: NewContactForm = {
@@ -94,7 +92,13 @@ export default function AccountDetailPage() {
   useEffect(() => {
     async function load() {
       const [{ data: accountData }, { data: contactData }] = await Promise.all([
-        supabase.from('accounts').select('*').eq('id', id).single(),
+        supabase
+          .from('accounts')
+          .select(
+            'id, account_name, street, city, state, postal_code, company_phone, company_email, glasweld_certified, insurance, uses_onyx, uses_zoom_injector, repair_only, outreach_status, notes'
+          )
+          .eq('id', id)
+          .single(),
         supabase.from('contacts').select('*').eq('account_id', id).order('full_name'),
       ]);
 
@@ -125,13 +129,13 @@ export default function AccountDetailPage() {
 
   const headerStatus = useMemo(() => {
     if (!account) return 'Unknown';
+
     const fullyQualified =
       account.glasweld_certified === 'Yes' &&
       account.insurance === 'Yes' &&
       account.uses_onyx === 'Yes' &&
       account.uses_zoom_injector === 'Yes' &&
       account.repair_only === 'Yes' &&
-      account.network_fit === 'High' &&
       account.outreach_status === 'Onboarded';
 
     if (fullyQualified) return 'Fully Qualified';
@@ -150,7 +154,15 @@ export default function AccountDetailPage() {
       cleanedPatch.state = cleanedPatch.state.toUpperCase();
     }
 
-    const { data } = await supabase.from('accounts').update(cleanedPatch).eq('id', account.id).select().single();
+    const { data } = await supabase
+      .from('accounts')
+      .update(cleanedPatch)
+      .eq('id', account.id)
+      .select(
+        'id, account_name, street, city, state, postal_code, company_phone, company_email, glasweld_certified, insurance, uses_onyx, uses_zoom_injector, repair_only, outreach_status, notes'
+      )
+      .single();
+
     if (data) {
       setAccount({
         ...(data as AccountRow),
@@ -429,16 +441,6 @@ export default function AccountDetailPage() {
               onChange={(e) => void updateAccount({ repair_only: e.target.value as AccountRow['repair_only'] })}
             >
               {REPAIR_ONLY_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Network Fit</div>
-            <select
-              value={account.network_fit ?? 'Unscored'}
-              onChange={(e) => void updateAccount({ network_fit: e.target.value as AccountRow['network_fit'] })}
-            >
-              {NETWORK_FIT_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
             </select>
           </div>
 
