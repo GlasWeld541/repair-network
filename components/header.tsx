@@ -75,6 +75,7 @@ export default function Header() {
     e.preventDefault();
 
     const params = new URLSearchParams();
+
     if (query.trim()) params.set('search', query.trim());
     if (state) params.set('state', state);
 
@@ -92,8 +93,6 @@ export default function Header() {
 
         {/* LEFT */}
         <Link href="/" className="flex items-center gap-4">
-          
-          {/* 🔥 CLEAN BRAND MARK */}
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 shadow-lg">
             <span className="text-sm font-bold text-white">GW</span>
           </div>
