@@ -12,56 +12,20 @@ type StateOption = {
 };
 
 const STATE_NAMES: Record<string, string> = {
-  AL: 'Alabama',
-  AK: 'Alaska',
-  AZ: 'Arizona',
-  AR: 'Arkansas',
-  CA: 'California',
-  CO: 'Colorado',
-  CT: 'Connecticut',
-  DE: 'Delaware',
-  FL: 'Florida',
-  GA: 'Georgia',
-  HI: 'Hawaii',
-  ID: 'Idaho',
-  IL: 'Illinois',
-  IN: 'Indiana',
-  IA: 'Iowa',
-  KS: 'Kansas',
-  KY: 'Kentucky',
-  LA: 'Louisiana',
-  ME: 'Maine',
-  MD: 'Maryland',
-  MA: 'Massachusetts',
-  MI: 'Michigan',
-  MN: 'Minnesota',
-  MS: 'Mississippi',
-  MO: 'Missouri',
-  MT: 'Montana',
-  NE: 'Nebraska',
-  NV: 'Nevada',
-  NH: 'New Hampshire',
-  NJ: 'New Jersey',
-  NM: 'New Mexico',
-  NY: 'New York',
-  NC: 'North Carolina',
-  ND: 'North Dakota',
-  OH: 'Ohio',
-  OK: 'Oklahoma',
-  OR: 'Oregon',
-  PA: 'Pennsylvania',
-  RI: 'Rhode Island',
-  SC: 'South Carolina',
-  SD: 'South Dakota',
-  TN: 'Tennessee',
-  TX: 'Texas',
-  UT: 'Utah',
-  VT: 'Vermont',
-  VA: 'Virginia',
-  WA: 'Washington',
-  WV: 'West Virginia',
-  WI: 'Wisconsin',
-  WY: 'Wyoming',
+  AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas',
+  CA: 'California', CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware',
+  FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho',
+  IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas',
+  KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
+  MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi',
+  MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada',
+  NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico',
+  NY: 'New York', NC: 'North Carolina', ND: 'North Dakota',
+  OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania',
+  RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota',
+  TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont',
+  VA: 'Virginia', WA: 'Washington', WV: 'West Virginia',
+  WI: 'Wisconsin', WY: 'Wyoming',
 };
 
 export default function Header() {
@@ -77,14 +41,13 @@ export default function Header() {
       const { data } = await supabase
         .from('accounts')
         .select('state')
-        .not('state', 'is', null)
-        .order('state');
+        .not('state', 'is', null);
 
       const uniqueStates = Array.from(
         new Set(
           ((data as { state: string | null }[]) ?? [])
             .map((row) => row.state?.trim().toUpperCase())
-            .filter((value): value is string => Boolean(value))
+            .filter((v): v is string => Boolean(v))
         )
       ).sort();
 
@@ -100,28 +63,33 @@ export default function Header() {
     void loadStates();
   }, []);
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     const params = new URLSearchParams();
-
     if (query.trim()) params.set('search', query.trim());
     if (state) params.set('state', state);
 
-    router.push(`/accounts${params.toString() ? `?${params.toString()}` : ''}`);
+    router.push(`/accounts${params.toString() ? `?${params}` : ''}`);
   };
 
+  // 🔥 FIXED LOGOUT
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.push('/login');
-    router.refresh();
+
+    // hard redirect avoids middleware weirdness
+    window.location.href = '/login';
   };
 
   return (
     <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-[1280px] items-center justify-between px-10 py-3">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="relative h-12 w-[140px]">
+      <div className="mx-auto flex max-w-[1280px] items-center justify-between px-10 py-4">
+
+        {/* LEFT SIDE */}
+        <Link href="/" className="flex items-center gap-4">
+          
+          {/* 🔥 better logo spacing */}
+          <div className="relative h-12 w-16 flex-shrink-0">
             <Image
               src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
               alt="GlasWeld"
@@ -131,17 +99,20 @@ export default function Header() {
             />
           </div>
 
-          <div>
-            <div className="text-[16px] font-semibold text-slate-900">
+          {/* 🔥 better text spacing */}
+          <div className="leading-tight">
+            <div className="text-lg font-semibold text-slate-900">
               GlasWeld Repair Network™
             </div>
-            <div className="mt-1 text-[11px] uppercase tracking-[0.28em] text-slate-500">
-              Reducing glass claim costs for carriers and subscribers
+            <div className="mt-1 text-[11px] uppercase tracking-[0.22em] text-slate-500">
+              Reducing glass claim costs
             </div>
           </div>
         </Link>
 
-        <div className="flex items-center gap-5">
+        {/* RIGHT SIDE */}
+        <div className="flex items-center gap-6">
+
           <form onSubmit={handleSubmit} className="hidden items-center gap-3 lg:flex">
             <input
               value={query}
@@ -175,12 +146,12 @@ export default function Header() {
           </nav>
 
           <button
-            type="button"
-            onClick={() => void handleLogout()}
+            onClick={handleLogout}
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
             Logout
           </button>
+
         </div>
       </div>
     </header>
