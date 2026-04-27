@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
@@ -36,25 +37,51 @@ export default function JobsPage() {
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Invoice</th>
               <th className="px-4 py-3">Paid</th>
+              <th className="px-4 py-3"></th>
             </tr>
           </thead>
 
           <tbody>
             {jobs.map((j) => (
-              <tr key={j.id} className="border-t">
-                <td className="px-4 py-3">{j.customer_name}</td>
+              <tr
+                key={j.id}
+                className="border-t hover:bg-slate-50 cursor-pointer"
+                onClick={() => (window.location.href = `/jobs/${j.id}`)}
+              >
+                <td className="px-4 py-3 font-medium text-slate-900">
+                  {j.customer_name || '—'}
+                </td>
+
                 <td className="px-4 py-3">
                   {j.vehicle_year} {j.vehicle_make} {j.vehicle_model}
                 </td>
+
                 <td className="px-4 py-3">{j.job_status}</td>
-                <td className="px-4 py-3">${j.invoice_amount || 0}</td>
-                <td className="px-4 py-3">${j.amount_paid || 0}</td>
+
+                <td className="px-4 py-3">
+                  ${Number(j.invoice_amount || 0).toFixed(2)}
+                </td>
+
+                <td className="px-4 py-3">
+                  ${Number(j.amount_paid || 0).toFixed(2)}
+                </td>
+
+                {/* 🔥 OPEN BUTTON */}
+                <td className="px-4 py-3 text-right">
+                  <Link
+                    href={`/jobs/${j.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800"
+                  >
+                    Open
+                  </Link>
+                </td>
               </tr>
             ))}
 
             {!jobs.length && (
               <tr>
-                <td colSpan={5} className="text-center py-10 text-slate-500">
+                <td colSpan={6} className="text-center py-10 text-slate-500">
                   No jobs found
                 </td>
               </tr>
