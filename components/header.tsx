@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 type StateOption = {
@@ -36,8 +36,8 @@ const NAV_ITEMS = [
 ];
 
 export default function Header() {
-  const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const [query, setQuery] = useState('');
   const [state, setState] = useState('');
@@ -72,6 +72,13 @@ export default function Header() {
     void loadStates();
   }, []);
 
+  useEffect(() => {
+    if (pathname !== '/accounts') return;
+
+    setQuery(searchParams.get('search') || '');
+    setState(searchParams.get('state') || '');
+  }, [pathname, searchParams]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -80,7 +87,7 @@ export default function Header() {
     if (query.trim()) params.set('search', query.trim());
     if (state) params.set('state', state);
 
-    router.push(`/accounts${params.toString() ? `?${params.toString()}` : ''}`);
+    window.location.href = `/accounts${params.toString() ? `?${params.toString()}` : ''}`;
   };
 
   const handleLogout = async () => {
@@ -91,11 +98,7 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.28)]">
       <div className="mx-auto flex max-w-[1380px] items-center justify-between px-10 py-4">
-
-        {/* LEFT */}
         <Link href="/" className="flex items-center gap-6 group">
-
-          {/* 🔥 3X BIGGER LOGO */}
           <div className="relative h-14 w-14 flex-shrink-0">
             <Image
               src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
@@ -116,9 +119,7 @@ export default function Header() {
           </div>
         </Link>
 
-        {/* RIGHT */}
         <div className="flex items-center gap-5">
-
           <form onSubmit={handleSubmit} className="hidden items-center gap-3 xl:flex">
             <input
               value={query}
@@ -173,7 +174,6 @@ export default function Header() {
           >
             Logout
           </button>
-
         </div>
       </div>
     </header>
