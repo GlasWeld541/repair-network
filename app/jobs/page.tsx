@@ -15,6 +15,13 @@ type JobRow = {
   invoice_amount: number | null;
   amount_paid: number | null;
   invoice_date: string | null;
+  assigned_account_id: string | null;
+  assigned_account_name: string | null;
+};
+
+type ShopUser = {
+  account_id: string;
+  account_name: string | null;
 };
 
 function todayIso() {
@@ -37,6 +44,7 @@ function money(value: number | null | undefined) {
 export default function JobsPage() {
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [shopUser, setShopUser] = useState<ShopUser | null>(null);
 
   const [dateFrom, setDateFrom] = useState(startOfCurrentMonthIso());
   const [dateTo, setDateTo] = useState(todayIso());
@@ -46,13 +54,35 @@ export default function JobsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFrom, dateTo]);
 
+  async function getShopUserForCurrentLogin() {
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData.user?.email?.toLowerCase() || '';
+
+    if (!email) return null;
+
+    const { data } = await supabase
+      .from('shop_users')
+      .select('account_id, account_name')
+      .eq('user_email', email)
+      .maybeSingle();
+
+    return (data as ShopUser | null) || null;
+  }
+
   async function loadJobs() {
     setLoading(true);
+
+    const currentShopUser = await getShopUserForCurrentLogin();
+    setShopUser(currentShopUser);
 
     let query = supabase
       .from('jobs')
       .select('*')
       .order('created_at', { ascending: false });
+
+    if (currentShopUser?.account_id) {
+      query = query.eq('assigned_account_id', currentShopUser.account_id);
+    }
 
     if (dateFrom) {
       query = query.gte('invoice_date', dateFrom);
@@ -94,9 +124,13 @@ export default function JobsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Jobs</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">
+            {shopUser?.account_name ? `${shopUser.account_name} Jobs` : 'Jobs'}
+          </h1>
           <p className="text-sm text-slate-500">
-            Track job volume, sales, payments, and unpaid balances.
+            {shopUser
+              ? 'This view only shows jobs assigned to your business.'
+              : 'Track job volume, sales, payments, and unpaid balances.'}
           </p>
         </div>
 
@@ -194,6 +228,7 @@ export default function JobsPage() {
               <th className="px-4 py-3">Invoice Date</th>
               <th className="px-4 py-3">Customer</th>
               <th className="px-4 py-3">Vehicle</th>
+              {!shopUser ? <th className="px-4 py-3">Assigned Shop</th> : null}
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Invoice</th>
               <th className="px-4 py-3">Paid</th>
@@ -205,7 +240,10 @@ export default function JobsPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="py-10 text-center text-slate-500">
+                <td
+                  colSpan={shopUser ? 8 : 9}
+                  className="py-10 text-center text-slate-500"
+                >
                   Loading jobs...
                 </td>
               </tr>
@@ -235,6 +273,12 @@ export default function JobsPage() {
                         .join(' ') || '—'}
                     </td>
 
+                    {!shopUser ? (
+                      <td className="px-4 py-3">
+                        {job.assigned_account_name || 'Unassigned'}
+                      </td>
+                    ) : null}
+
                     <td className="px-4 py-3">{job.job_status || '—'}</td>
 
                     <td className="px-4 py-3">{money(invoiceAmount)}</td>
@@ -261,7 +305,10 @@ export default function JobsPage() {
 
             {!loading && !jobs.length ? (
               <tr>
-                <td colSpan={8} className="py-10 text-center text-slate-500">
+                <td
+                  colSpan={shopUser ? 8 : 9}
+                  className="py-10 text-center text-slate-500"
+                >
                   No jobs found for this date range.
                 </td>
               </tr>
