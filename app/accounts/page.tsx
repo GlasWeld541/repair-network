@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { Search } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -26,13 +25,21 @@ type AccountRow = {
   outreach_status: string | null;
 };
 
-export default function AccountsPage() {
-  const searchParams = useSearchParams();
+function getInitialSearch() {
+  if (typeof window === 'undefined') return '';
+  return new URLSearchParams(window.location.search).get('search') || '';
+}
 
+function getInitialState() {
+  if (typeof window === 'undefined') return 'all';
+  return new URLSearchParams(window.location.search).get('state') || 'all';
+}
+
+export default function AccountsPage() {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [adding, setAdding] = useState(false);
-  const [query, setQuery] = useState('');
-  const [stateFilter, setStateFilter] = useState('all');
+  const [query, setQuery] = useState(getInitialSearch);
+  const [stateFilter, setStateFilter] = useState(getInitialState);
 
   const [newAccount, setNewAccount] = useState({
     account_name: '',
@@ -52,18 +59,18 @@ export default function AccountsPage() {
 
   useEffect(() => {
     void loadAccounts();
+
+    const params = new URLSearchParams(window.location.search);
+    setQuery(params.get('search') || '');
+    setStateFilter(params.get('state') || 'all');
   }, []);
 
-  useEffect(() => {
-    const searchFromUrl = searchParams.get('search') || '';
-    const stateFromUrl = searchParams.get('state') || 'all';
-
-    setQuery(searchFromUrl);
-    setStateFilter(stateFromUrl);
-  }, [searchParams]);
-
   async function loadAccounts() {
-    const { data } = await supabase.from('accounts').select('*').order('account_name');
+    const { data } = await supabase
+      .from('accounts')
+      .select('*')
+      .order('account_name');
+
     setAccounts((data as AccountRow[]) || []);
   }
 
@@ -71,7 +78,9 @@ export default function AccountsPage() {
     await supabase.from('accounts').update({ [field]: value }).eq('id', id);
 
     setAccounts((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, [field]: value } : a))
+      prev.map((account) =>
+        account.id === id ? { ...account, [field]: value } : account
+      )
     );
   }
 
@@ -115,32 +124,36 @@ export default function AccountsPage() {
     return Array.from(
       new Set(
         accounts
-          .map((a) => a.state?.trim().toUpperCase())
+          .map((account) => account.state?.trim().toUpperCase())
           .filter((value): value is string => Boolean(value))
       )
     ).sort();
   }, [accounts]);
 
   const filteredAccounts = useMemo(() => {
-    return accounts.filter((a) => {
-      const normalizedAccountState = a.state?.trim().toUpperCase() || '';
-      const normalizedSelectedState = stateFilter.trim().toUpperCase();
+    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedSelectedState = stateFilter.trim().toUpperCase();
+
+    return accounts.filter((account) => {
+      const normalizedAccountState = account.state?.trim().toUpperCase() || '';
 
       const haystack = [
-        a.account_name ?? '',
-        a.street ?? '',
-        a.city ?? '',
-        a.state ?? '',
-        a.postal_code ?? '',
-        a.company_phone ?? '',
-        a.company_email ?? '',
+        account.account_name ?? '',
+        account.street ?? '',
+        account.city ?? '',
+        account.state ?? '',
+        account.postal_code ?? '',
+        account.company_phone ?? '',
+        account.company_email ?? '',
       ]
         .join(' ')
         .toLowerCase();
 
-      const matchesQuery = haystack.includes(query.trim().toLowerCase());
+      const matchesQuery = !normalizedQuery || haystack.includes(normalizedQuery);
       const matchesState =
-        stateFilter === 'all' || normalizedAccountState === normalizedSelectedState;
+        normalizedSelectedState === 'ALL' ||
+        normalizedSelectedState === '' ||
+        normalizedAccountState === normalizedSelectedState;
 
       return matchesQuery && matchesState;
     });
@@ -200,6 +213,7 @@ export default function AccountsPage() {
               }
               className="rounded border px-3 py-2"
             />
+
             <input
               placeholder="Street"
               value={newAccount.street}
@@ -208,6 +222,7 @@ export default function AccountsPage() {
               }
               className="rounded border px-3 py-2"
             />
+
             <input
               placeholder="City"
               value={newAccount.city}
@@ -216,15 +231,20 @@ export default function AccountsPage() {
               }
               className="rounded border px-3 py-2"
             />
+
             <input
               placeholder="State"
               value={newAccount.state}
               onChange={(e) =>
-                setNewAccount({ ...newAccount, state: e.target.value.toUpperCase() })
+                setNewAccount({
+                  ...newAccount,
+                  state: e.target.value.toUpperCase(),
+                })
               }
               className="rounded border px-3 py-2"
               maxLength={2}
             />
+
             <input
               placeholder="Zip"
               value={newAccount.postal_code}
@@ -233,6 +253,7 @@ export default function AccountsPage() {
               }
               className="rounded border px-3 py-2"
             />
+
             <input
               placeholder="Phone"
               value={newAccount.company_phone}
@@ -241,6 +262,7 @@ export default function AccountsPage() {
               }
               className="rounded border px-3 py-2"
             />
+
             <input
               placeholder="Email"
               value={newAccount.company_email}
@@ -258,6 +280,7 @@ export default function AccountsPage() {
             >
               Save Account
             </button>
+
             <button
               onClick={() => setAdding(false)}
               className="rounded-lg border px-4 py-2 text-sm font-medium text-slate-700"
@@ -285,100 +308,100 @@ export default function AccountsPage() {
           </thead>
 
           <tbody>
-            {filteredAccounts.map((a) => (
-              <tr key={a.id} className="border-t hover:bg-slate-50">
+            {filteredAccounts.map((account) => (
+              <tr key={account.id} className="border-t hover:bg-slate-50">
                 <td className="px-4 py-3 font-medium text-slate-900">
                   <Link
-                    href={`/accounts/${a.id}`}
+                    href={`/accounts/${account.id}`}
                     className="text-blue-600 hover:underline"
                   >
-                    {a.account_name}
+                    {account.account_name}
                   </Link>
                 </td>
 
-                <td className="px-4 py-3">{a.city}</td>
-                <td className="px-4 py-3">{a.state}</td>
+                <td className="px-4 py-3">{account.city}</td>
+                <td className="px-4 py-3">{account.state}</td>
 
                 <td className="px-4 py-3">
                   <select
-                    value={a.glasweld_certified || 'Unknown'}
+                    value={account.glasweld_certified || 'Unknown'}
                     onChange={(e) =>
-                      updateAccount(a.id, 'glasweld_certified', e.target.value)
+                      updateAccount(account.id, 'glasweld_certified', e.target.value)
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {YES_NO_UNKNOWN.map((opt) => (
-                      <option key={opt}>{opt}</option>
+                    {YES_NO_UNKNOWN.map((option) => (
+                      <option key={option}>{option}</option>
                     ))}
                   </select>
                 </td>
 
                 <td className="px-4 py-3">
                   <select
-                    value={a.insurance || 'Unknown'}
+                    value={account.insurance || 'Unknown'}
                     onChange={(e) =>
-                      updateAccount(a.id, 'insurance', e.target.value)
+                      updateAccount(account.id, 'insurance', e.target.value)
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {YES_NO_UNKNOWN.map((opt) => (
-                      <option key={opt}>{opt}</option>
+                    {YES_NO_UNKNOWN.map((option) => (
+                      <option key={option}>{option}</option>
                     ))}
                   </select>
                 </td>
 
                 <td className="px-4 py-3">
                   <select
-                    value={a.uses_onyx || 'Unknown'}
+                    value={account.uses_onyx || 'Unknown'}
                     onChange={(e) =>
-                      updateAccount(a.id, 'uses_onyx', e.target.value)
+                      updateAccount(account.id, 'uses_onyx', e.target.value)
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {YES_NO_UNKNOWN.map((opt) => (
-                      <option key={opt}>{opt}</option>
+                    {YES_NO_UNKNOWN.map((option) => (
+                      <option key={option}>{option}</option>
                     ))}
                   </select>
                 </td>
 
                 <td className="px-4 py-3">
                   <select
-                    value={a.uses_zoom_injector || 'Unknown'}
+                    value={account.uses_zoom_injector || 'Unknown'}
                     onChange={(e) =>
-                      updateAccount(a.id, 'uses_zoom_injector', e.target.value)
+                      updateAccount(account.id, 'uses_zoom_injector', e.target.value)
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {YES_NO_UNKNOWN.map((opt) => (
-                      <option key={opt}>{opt}</option>
+                    {YES_NO_UNKNOWN.map((option) => (
+                      <option key={option}>{option}</option>
                     ))}
                   </select>
                 </td>
 
                 <td className="px-4 py-3">
                   <select
-                    value={a.repair_only || 'Unknown'}
+                    value={account.repair_only || 'Unknown'}
                     onChange={(e) =>
-                      updateAccount(a.id, 'repair_only', e.target.value)
+                      updateAccount(account.id, 'repair_only', e.target.value)
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {YES_NO_UNKNOWN.map((opt) => (
-                      <option key={opt}>{opt}</option>
+                    {YES_NO_UNKNOWN.map((option) => (
+                      <option key={option}>{option}</option>
                     ))}
                   </select>
                 </td>
 
                 <td className="px-4 py-3">
                   <select
-                    value={a.outreach_status || 'Not Contacted'}
+                    value={account.outreach_status || 'Not Contacted'}
                     onChange={(e) =>
-                      updateAccount(a.id, 'outreach_status', e.target.value)
+                      updateAccount(account.id, 'outreach_status', e.target.value)
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {OUTREACH_OPTIONS.map((opt) => (
-                      <option key={opt}>{opt}</option>
+                    {OUTREACH_OPTIONS.map((option) => (
+                      <option key={option}>{option}</option>
                     ))}
                   </select>
                 </td>
