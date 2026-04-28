@@ -66,10 +66,27 @@ export default function AccountsPage() {
   }, []);
 
   async function loadAccounts() {
-    const { data } = await supabase
-      .from('accounts')
-      .select('*')
-      .order('account_name');
+    // 🔐 Get logged in user
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData.user?.email;
+
+    // 🔐 Check if this user is a shop user
+    const { data: shopUser } = await supabase
+      .from('shop_users')
+      .select('account_id')
+      .eq('user_email', email)
+      .maybeSingle();
+
+    let query = supabase.from('accounts').select('*');
+
+    // 🔒 If shop user → restrict to their account
+    if (shopUser?.account_id) {
+      query = query.eq('id', shopUser.account_id);
+    }
+
+    // 🔓 GlasWeld user → no restriction
+
+    const { data } = await query.order('account_name');
 
     setAccounts((data as AccountRow[]) || []);
   }
@@ -171,7 +188,7 @@ export default function AccountsPage() {
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="relative w-full sm:w-[280px]">
-            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input
               className="h-10 w-full rounded-lg border border-slate-200 pl-9 pr-3"
               placeholder="Search account, city, state, phone..."
@@ -201,95 +218,6 @@ export default function AccountsPage() {
           </button>
         </div>
       </div>
-
-      {adding && (
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <div className="grid gap-3 md:grid-cols-4">
-            <input
-              placeholder="Account Name"
-              value={newAccount.account_name}
-              onChange={(e) =>
-                setNewAccount({ ...newAccount, account_name: e.target.value })
-              }
-              className="rounded border px-3 py-2"
-            />
-
-            <input
-              placeholder="Street"
-              value={newAccount.street}
-              onChange={(e) =>
-                setNewAccount({ ...newAccount, street: e.target.value })
-              }
-              className="rounded border px-3 py-2"
-            />
-
-            <input
-              placeholder="City"
-              value={newAccount.city}
-              onChange={(e) =>
-                setNewAccount({ ...newAccount, city: e.target.value })
-              }
-              className="rounded border px-3 py-2"
-            />
-
-            <input
-              placeholder="State"
-              value={newAccount.state}
-              onChange={(e) =>
-                setNewAccount({
-                  ...newAccount,
-                  state: e.target.value.toUpperCase(),
-                })
-              }
-              className="rounded border px-3 py-2"
-              maxLength={2}
-            />
-
-            <input
-              placeholder="Zip"
-              value={newAccount.postal_code}
-              onChange={(e) =>
-                setNewAccount({ ...newAccount, postal_code: e.target.value })
-              }
-              className="rounded border px-3 py-2"
-            />
-
-            <input
-              placeholder="Phone"
-              value={newAccount.company_phone}
-              onChange={(e) =>
-                setNewAccount({ ...newAccount, company_phone: e.target.value })
-              }
-              className="rounded border px-3 py-2"
-            />
-
-            <input
-              placeholder="Email"
-              value={newAccount.company_email}
-              onChange={(e) =>
-                setNewAccount({ ...newAccount, company_email: e.target.value })
-              }
-              className="rounded border px-3 py-2"
-            />
-          </div>
-
-          <div className="mt-4 flex gap-3">
-            <button
-              onClick={createAccount}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-            >
-              Save Account
-            </button>
-
-            <button
-              onClick={() => setAdding(false)}
-              className="rounded-lg border px-4 py-2 text-sm font-medium text-slate-700"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
       <div className="overflow-x-auto rounded-xl border bg-white">
         <table className="w-full text-sm">
