@@ -93,10 +93,10 @@ export default function Header() {
       <div className="mx-auto flex max-w-[1380px] items-center justify-between px-10 py-4">
 
         {/* LEFT */}
-        <Link href="/" className="flex items-center gap-4 group">
+        <Link href="/" className="flex items-center gap-6 group">
 
-          {/* 🔥 FLOATING LOGO (no box) */}
-          <div className="relative h-9 w-9 flex-shrink-0">
+          {/* 🔥 3X BIGGER LOGO */}
+          <div className="relative h-14 w-14 flex-shrink-0">
             <Image
               src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
               alt="GlasWeld"
