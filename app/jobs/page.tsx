@@ -8,20 +8,46 @@ type JobRow = {
   id: string;
   created_at: string;
   customer_name: string | null;
+  customer_phone: string | null;
+  customer_email: string | null;
   vehicle_year: string | null;
   vehicle_make: string | null;
   vehicle_model: string | null;
+  vehicle_vin: string | null;
+  damage_type: string | null;
+  damage_notes: string | null;
   job_status: string | null;
   invoice_amount: number | null;
   amount_paid: number | null;
   invoice_date: string | null;
   assigned_account_id: string | null;
   assigned_account_name: string | null;
+  insurance_carrier: string | null;
+  claim_number: string | null;
+  policy_number: string | null;
+  loss_date: string | null;
 };
 
 type ShopUser = {
   account_id: string;
   account_name: string | null;
+};
+
+type AccountRow = {
+  id: string;
+  account_name: string | null;
+  street: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  company_email: string | null;
+  company_phone: string | null;
+};
+
+type PaymentSettingsRow = {
+  gateway_provider: string | null;
+  gateway_account_id: string | null;
+  insurance_submission_method: string | null;
 };
 
 function todayIso() {
@@ -41,10 +67,15 @@ function money(value: number | null | undefined) {
   });
 }
 
+function invoiceNumber() {
+  return `INV-${Date.now()}`;
+}
+
 export default function JobsPage() {
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [shopUser, setShopUser] = useState<ShopUser | null>(null);
+  const [creatingInvoiceId, setCreatingInvoiceId] = useState<string | null>(null);
 
   const [dateFrom, setDateFrom] = useState(startOfCurrentMonthIso());
   const [dateTo, setDateTo] = useState(todayIso());
@@ -98,6 +129,104 @@ export default function JobsPage() {
     setLoading(false);
   }
 
+  async function generateInvoice(job: JobRow) {
+    setCreatingInvoiceId(job.id);
+
+    try {
+      const { data: existingInvoice } = await supabase
+        .from('invoices')
+        .select('id')
+        .eq('job_id', job.id)
+        .maybeSingle();
+
+      if (existingInvoice?.id) {
+        window.location.href = `/jobs/${job.id}`;
+        return;
+      }
+
+      let account: AccountRow | null = null;
+      let settings: PaymentSettingsRow | null = null;
+
+      if (job.assigned_account_id) {
+        const [{ data: accountData }, { data: settingsData }] = await Promise.all([
+          supabase
+            .from('accounts')
+            .select('id, account_name, street, city, state, postal_code, company_email, company_phone')
+            .eq('id', job.assigned_account_id)
+            .maybeSingle(),
+          supabase
+            .from('account_payment_settings')
+            .select('gateway_provider, gateway_account_id, insurance_submission_method')
+            .eq('account_id', job.assigned_account_id)
+            .maybeSingle(),
+        ]);
+
+        account = (accountData as AccountRow | null) || null;
+        settings = (settingsData as PaymentSettingsRow | null) || null;
+      }
+
+      const vehicle = [job.vehicle_year, job.vehicle_make, job.vehicle_model]
+        .filter(Boolean)
+        .join(' ');
+
+      const { data: invoiceData, error } = await supabase
+        .from('invoices')
+        .insert({
+          invoice_number: invoiceNumber(),
+          job_id: job.id,
+          account_id: job.assigned_account_id,
+
+          account_name: account?.account_name || job.assigned_account_name,
+          account_street: account?.street || null,
+          account_city: account?.city || null,
+          account_state: account?.state || null,
+          account_postal_code: account?.postal_code || null,
+          account_email: account?.company_email || null,
+          account_phone: account?.company_phone || null,
+
+          customer_name: job.customer_name,
+          customer_email: job.customer_email,
+          customer_phone: job.customer_phone,
+
+          vehicle,
+          vin: job.vehicle_vin,
+          damage_type: job.damage_type,
+          damage_notes: job.damage_notes,
+
+          invoice_amount: Number(job.invoice_amount || 0),
+          amount_paid: Number(job.amount_paid || 0),
+
+          insurance_carrier: job.insurance_carrier,
+          claim_number: job.claim_number,
+          policy_number: job.policy_number,
+          loss_date: job.loss_date,
+
+          submission_method: settings?.insurance_submission_method || 'Not Set',
+          gateway_provider: settings?.gateway_provider || null,
+          gateway_account_id: settings?.gateway_account_id || null,
+        })
+        .select('id')
+        .single();
+
+      if (error) {
+        window.alert('Could not generate invoice.');
+        return;
+      }
+
+      if (invoiceData?.id) {
+        await supabase.from('invoice_events').insert({
+          invoice_id: invoiceData.id,
+          event_type: 'Created',
+          note: 'Invoice generated from Jobs screen.',
+        });
+      }
+
+      window.location.href = `/jobs/${job.id}`;
+    } finally {
+      setCreatingInvoiceId(null);
+    }
+  }
+
   const totals = useMemo(() => {
     return jobs.reduce(
       (sum, job) => {
@@ -130,7 +259,7 @@ export default function JobsPage() {
           <p className="text-sm text-slate-500">
             {shopUser
               ? 'This view only shows jobs assigned to your business.'
-              : 'Track job volume, sales, payments, and unpaid balances.'}
+              : 'Track jobs, invoices, insurance submission, and future payment collection.'}
           </p>
         </div>
 
@@ -233,7 +362,7 @@ export default function JobsPage() {
               <th className="px-4 py-3">Invoice</th>
               <th className="px-4 py-3">Paid</th>
               <th className="px-4 py-3">Unpaid</th>
-              <th className="px-4 py-3"></th>
+              <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
 
@@ -289,14 +418,28 @@ export default function JobsPage() {
                       {money(unpaid)}
                     </td>
 
-                    <td className="px-4 py-3 text-right">
-                      <Link
-                        href={`/jobs/${job.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800"
-                      >
-                        Open
-                      </Link>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled={creatingInvoiceId === job.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void generateInvoice(job);
+                          }}
+                          className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {creatingInvoiceId === job.id ? 'Creating...' : 'Invoice'}
+                        </button>
+
+                        <Link
+                          href={`/jobs/${job.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800"
+                        >
+                          Open
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 );
