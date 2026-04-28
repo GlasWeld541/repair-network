@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -92,9 +93,17 @@ export default function Header() {
       <div className="mx-auto flex max-w-[1380px] items-center justify-between px-10 py-4">
 
         {/* LEFT */}
-        <Link href="/" className="flex items-center gap-4">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 shadow-lg">
-            <span className="text-sm font-bold text-white">GW</span>
+        <Link href="/" className="flex items-center gap-4 group">
+
+          {/* 🔥 FLOATING LOGO (no box) */}
+          <div className="relative h-9 w-9 flex-shrink-0">
+            <Image
+              src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
+              alt="GlasWeld"
+              fill
+              className="object-contain object-left transition-transform duration-200 group-hover:scale-105"
+              priority
+            />
           </div>
 
           <div>
