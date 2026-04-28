@@ -28,7 +28,7 @@ export default function JobDetailPage() {
   const [working, setWorking] = useState(false);
 
   useEffect(() => {
-    loadPage();
+    void loadPage();
   }, [id]);
 
   async function loadPage() {
@@ -79,7 +79,7 @@ export default function JobDetailPage() {
       url: data.publicUrl,
     });
 
-    loadPage();
+    void loadPage();
   }
 
   async function generateInvoice() {
@@ -134,59 +134,86 @@ export default function JobDetailPage() {
 
       <h1 className="text-2xl font-semibold">{job.customer_name}</h1>
 
-      {/* JOB SUMMARY */}
       <div className="rounded-xl border bg-white p-6 space-y-2">
         <div><strong>Shop:</strong> {job.assigned_account_name}</div>
         <div><strong>Status:</strong> {job.job_status}</div>
-        <div><strong>Vehicle:</strong> {[job.vehicle_year, job.vehicle_make, job.vehicle_model].join(' ')}</div>
+        <div>
+          <strong>Vehicle:</strong>{' '}
+          {[job.vehicle_year, job.vehicle_make, job.vehicle_model]
+            .filter(Boolean)
+            .join(' ')}
+        </div>
         <div><strong>Damage:</strong> {job.damage_type}</div>
         <div><strong>Invoice:</strong> {money(job.invoice_amount)}</div>
         <div><strong>Paid:</strong> {money(job.amount_paid)}</div>
         <div><strong>Outstanding:</strong> {money(outstanding)}</div>
       </div>
 
-      {/* PHOTOS */}
       <div className="rounded-xl border bg-white p-6">
         <h2 className="text-lg font-semibold mb-4">Photos</h2>
 
         <div className="grid grid-cols-2 gap-6">
           <div>
             <h3 className="font-semibold">Before</h3>
-            <input type="file" onChange={(e) => {
-              if (e.target.files?.[0]) uploadPhoto(e.target.files[0], 'before');
-            }} />
+            <input
+              type="file"
+              onChange={(e) => {
+                if (e.target.files?.[0]) {
+                  void uploadPhoto(e.target.files[0], 'before');
+                }
+              }}
+            />
             <div className="grid grid-cols-2 gap-2 mt-2">
-              {photos.filter(p => p.type === 'before').map(p => (
-                <img key={p.id} src={p.url} className="rounded" />
-              ))}
+              {photos
+                .filter((photo) => photo.type === 'before')
+                .map((photo) => (
+                  <img
+                    key={photo.id}
+                    src={photo.url}
+                    className="rounded"
+                    alt="Before repair"
+                  />
+                ))}
             </div>
           </div>
 
           <div>
             <h3 className="font-semibold">After</h3>
-            <input type="file" onChange={(e) => {
-              if (e.target.files?.[0]) uploadPhoto(e.target.files[0], 'after');
-            }} />
+            <input
+              type="file"
+              onChange={(e) => {
+                if (e.target.files?.[0]) {
+                  void uploadPhoto(e.target.files[0], 'after');
+                }
+              }}
+            />
             <div className="grid grid-cols-2 gap-2 mt-2">
-              {photos.filter(p => p.type === 'after').map(p => (
-                <img key={p.id} src={p.url} className="rounded" />
-              ))}
+              {photos
+                .filter((photo) => photo.type === 'after')
+                .map((photo) => (
+                  <img
+                    key={photo.id}
+                    src={photo.url}
+                    className="rounded"
+                    alt="After repair"
+                  />
+                ))}
             </div>
           </div>
         </div>
       </div>
 
-      {/* INVOICE */}
-      {!invoice && (
+      {!invoice ? (
         <button
-          onClick={generateInvoice}
-          className="bg-indigo-600 text-white px-4 py-2 rounded"
+          onClick={() => void generateInvoice()}
+          disabled={working}
+          className="rounded bg-indigo-600 px-4 py-2 text-white disabled:opacity-60"
         >
-          Generate Invoice
+          {working ? 'Generating...' : 'Generate Invoice'}
         </button>
-      )}
+      ) : null}
 
-      {invoice && (
+      {invoice ? (
         <div className="rounded-xl border bg-white p-6 space-y-4">
           <h2 className="text-lg font-semibold">
             Invoice {invoice.invoice_number}
@@ -195,10 +222,16 @@ export default function JobDetailPage() {
           <div className="flex gap-3">
             <Link
               href={`/invoices/${invoice.id}`}
-              target="_blank"
-              className="bg-black text-white px-4 py-2 rounded"
+              className="rounded bg-black px-4 py-2 text-white"
             >
-              View / Print PDF
+              Open Invoice
+            </Link>
+
+            <Link
+              href={`/api/invoices/${invoice.id}/pdf`}
+              className="rounded border px-4 py-2"
+            >
+              Open PDF
             </Link>
           </div>
 
@@ -209,7 +242,7 @@ export default function JobDetailPage() {
             <strong>Amount:</strong> {money(invoice.invoice_amount)}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -47,15 +47,7 @@ export default function InvoicePage() {
   async function downloadPdf() {
     setDownloading(true);
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    const response = await fetch(`/api/invoices/${id}/pdf`, {
-      headers: {
-        Authorization: `Bearer ${session?.access_token || ''}`,
-      },
-    });
+    const response = await fetch(`/api/invoices/${id}/pdf`);
 
     if (!response.ok) {
       window.alert('Could not generate PDF.');
@@ -77,6 +69,10 @@ export default function InvoicePage() {
     setDownloading(false);
   }
 
+  function openPdf() {
+    window.location.href = `/api/invoices/${id}/pdf`;
+  }
+
   if (loading) return <div className="p-6">Loading...</div>;
   if (!invoice) return <div className="p-6">Invoice not found</div>;
 
@@ -85,25 +81,17 @@ export default function InvoicePage() {
     Number(invoice.amount_paid || 0);
 
   return (
-    <div className="min-h-screen bg-white p-10 print:p-6">
+    <div className="min-h-screen bg-white p-10">
       <div className="mx-auto max-w-4xl space-y-8">
         <div className="flex items-start justify-between border-b pb-4">
           <div>
-            <h1 className="text-2xl font-bold">
-              GlasWeld Repair Network
-            </h1>
-            <div className="text-sm text-gray-500">
-              Claims Control Platform
-            </div>
+            <h1 className="text-2xl font-bold">GlasWeld Repair Network</h1>
+            <div className="text-sm text-gray-500">Claims Control Platform</div>
           </div>
 
           <div className="text-right">
-            <div className="text-xl font-semibold">
-              Invoice
-            </div>
-            <div className="text-gray-600">
-              {invoice.invoice_number}
-            </div>
+            <div className="text-xl font-semibold">Invoice</div>
+            <div className="text-gray-600">{invoice.invoice_number}</div>
             <div className="text-sm text-gray-500">
               {new Date(invoice.created_at).toLocaleDateString()}
             </div>
@@ -160,18 +148,32 @@ export default function InvoicePage() {
             <div>
               <div className="mb-2 font-semibold">Before</div>
               <div className="grid grid-cols-3 gap-2">
-                {photos.filter((photo) => photo.type === 'before').map((photo) => (
-                  <img key={photo.id} src={photo.url} className="rounded" alt="Before repair" />
-                ))}
+                {photos
+                  .filter((photo) => photo.type === 'before')
+                  .map((photo) => (
+                    <img
+                      key={photo.id}
+                      src={photo.url}
+                      className="rounded"
+                      alt="Before repair"
+                    />
+                  ))}
               </div>
             </div>
 
             <div>
               <div className="mb-2 font-semibold">After</div>
               <div className="grid grid-cols-3 gap-2">
-                {photos.filter((photo) => photo.type === 'after').map((photo) => (
-                  <img key={photo.id} src={photo.url} className="rounded" alt="After repair" />
-                ))}
+                {photos
+                  .filter((photo) => photo.type === 'after')
+                  .map((photo) => (
+                    <img
+                      key={photo.id}
+                      src={photo.url}
+                      className="rounded"
+                      alt="After repair"
+                    />
+                  ))}
               </div>
             </div>
           </div>
@@ -183,7 +185,7 @@ export default function InvoicePage() {
           <div><strong>Outstanding:</strong> {money(outstanding)}</div>
         </div>
 
-        <div className="flex gap-3 print:hidden">
+        <div className="flex gap-3">
           <button
             onClick={() => void downloadPdf()}
             disabled={downloading}
@@ -193,10 +195,10 @@ export default function InvoicePage() {
           </button>
 
           <button
-            onClick={() => window.print()}
+            onClick={openPdf}
             className="rounded border px-4 py-2"
           >
-            Print / Save PDF
+            Open PDF
           </button>
         </div>
       </div>
