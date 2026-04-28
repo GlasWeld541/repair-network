@@ -18,9 +18,10 @@ export default function InvoicePage() {
   const [invoice, setInvoice] = useState<any>(null);
   const [photos, setPhotos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [id]);
 
   async function loadData() {
@@ -43,6 +44,39 @@ export default function InvoicePage() {
     setLoading(false);
   }
 
+  async function downloadPdf() {
+    setDownloading(true);
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const response = await fetch(`/api/invoices/${id}/pdf`, {
+      headers: {
+        Authorization: `Bearer ${session?.access_token || ''}`,
+      },
+    });
+
+    if (!response.ok) {
+      window.alert('Could not generate PDF.');
+      setDownloading(false);
+      return;
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${invoice?.invoice_number || 'invoice'}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.URL.revokeObjectURL(url);
+    setDownloading(false);
+  }
+
   if (loading) return <div className="p-6">Loading...</div>;
   if (!invoice) return <div className="p-6">Invoice not found</div>;
 
@@ -51,11 +85,9 @@ export default function InvoicePage() {
     Number(invoice.amount_paid || 0);
 
   return (
-    <div className="bg-white min-h-screen p-10 print:p-6">
-      <div className="max-w-4xl mx-auto space-y-8">
-
-        {/* HEADER */}
-        <div className="flex justify-between items-start border-b pb-4">
+    <div className="min-h-screen bg-white p-10 print:p-6">
+      <div className="mx-auto max-w-4xl space-y-8">
+        <div className="flex items-start justify-between border-b pb-4">
           <div>
             <h1 className="text-2xl font-bold">
               GlasWeld Repair Network
@@ -78,10 +110,9 @@ export default function InvoicePage() {
           </div>
         </div>
 
-        {/* ACCOUNT + CUSTOMER */}
         <div className="grid grid-cols-2 gap-6">
           <div>
-            <h2 className="font-semibold mb-2">From</h2>
+            <h2 className="mb-2 font-semibold">From</h2>
             <div>{invoice.account_name}</div>
             <div className="text-sm text-gray-500">
               {invoice.account_email || '—'}
@@ -95,7 +126,7 @@ export default function InvoicePage() {
           </div>
 
           <div>
-            <h2 className="font-semibold mb-2">To</h2>
+            <h2 className="mb-2 font-semibold">To</h2>
             <div>{invoice.customer_name}</div>
             <div className="text-sm text-gray-500">
               {invoice.customer_email || '—'}
@@ -106,8 +137,7 @@ export default function InvoicePage() {
           </div>
         </div>
 
-        {/* JOB INFO */}
-        <div className="border rounded-xl p-4 space-y-2">
+        <div className="space-y-2 rounded-xl border p-4">
           <h2 className="font-semibold">Job Details</h2>
           <div><strong>Vehicle:</strong> {invoice.vehicle}</div>
           <div><strong>VIN:</strong> {invoice.vin || '—'}</div>
@@ -115,8 +145,7 @@ export default function InvoicePage() {
           <div><strong>Notes:</strong> {invoice.damage_notes || '—'}</div>
         </div>
 
-        {/* INSURANCE */}
-        <div className="border rounded-xl p-4 space-y-2">
+        <div className="space-y-2 rounded-xl border p-4">
           <h2 className="font-semibold">Insurance</h2>
           <div><strong>Carrier:</strong> {invoice.insurance_carrier || '—'}</div>
           <div><strong>Claim #:</strong> {invoice.claim_number || '—'}</div>
@@ -124,48 +153,52 @@ export default function InvoicePage() {
           <div><strong>Loss Date:</strong> {invoice.loss_date || '—'}</div>
         </div>
 
-        {/* PHOTOS */}
-        {photos.length > 0 && (
-          <div className="border rounded-xl p-4 space-y-4">
+        {photos.length > 0 ? (
+          <div className="space-y-4 rounded-xl border p-4">
             <h2 className="font-semibold">Repair Photos</h2>
 
             <div>
-              <div className="font-semibold mb-2">Before</div>
+              <div className="mb-2 font-semibold">Before</div>
               <div className="grid grid-cols-3 gap-2">
-                {photos.filter(p => p.type === 'before').map(p => (
-                  <img key={p.id} src={p.url} className="rounded" />
+                {photos.filter((photo) => photo.type === 'before').map((photo) => (
+                  <img key={photo.id} src={photo.url} className="rounded" alt="Before repair" />
                 ))}
               </div>
             </div>
 
             <div>
-              <div className="font-semibold mb-2">After</div>
+              <div className="mb-2 font-semibold">After</div>
               <div className="grid grid-cols-3 gap-2">
-                {photos.filter(p => p.type === 'after').map(p => (
-                  <img key={p.id} src={p.url} className="rounded" />
+                {photos.filter((photo) => photo.type === 'after').map((photo) => (
+                  <img key={photo.id} src={photo.url} className="rounded" alt="After repair" />
                 ))}
               </div>
             </div>
           </div>
-        )}
+        ) : null}
 
-        {/* TOTALS */}
-        <div className="border-t pt-4 space-y-2 text-lg">
+        <div className="space-y-2 border-t pt-4 text-lg">
           <div><strong>Total:</strong> {money(invoice.invoice_amount)}</div>
           <div><strong>Paid:</strong> {money(invoice.amount_paid)}</div>
           <div><strong>Outstanding:</strong> {money(outstanding)}</div>
         </div>
 
-        {/* PRINT BUTTON */}
-        <div>
+        <div className="flex gap-3 print:hidden">
+          <button
+            onClick={() => void downloadPdf()}
+            disabled={downloading}
+            className="rounded bg-black px-4 py-2 text-white disabled:opacity-60"
+          >
+            {downloading ? 'Generating...' : 'Download PDF'}
+          </button>
+
           <button
             onClick={() => window.print()}
-            className="bg-black text-white px-4 py-2 rounded"
+            className="rounded border px-4 py-2"
           >
             Print / Save PDF
           </button>
         </div>
-
       </div>
     </div>
   );
