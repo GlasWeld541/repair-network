@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 type StateOption = {
@@ -37,7 +37,6 @@ const NAV_ITEMS = [
 
 export default function Header() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   const [query, setQuery] = useState('');
   const [state, setState] = useState('');
@@ -73,11 +72,14 @@ export default function Header() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     if (pathname !== '/accounts') return;
 
-    setQuery(searchParams.get('search') || '');
-    setState(searchParams.get('state') || '');
-  }, [pathname, searchParams]);
+    const params = new URLSearchParams(window.location.search);
+
+    setQuery(params.get('search') || '');
+    setState(params.get('state') || '');
+  }, [pathname]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
