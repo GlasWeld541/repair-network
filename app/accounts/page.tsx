@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Search } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -26,6 +27,8 @@ type AccountRow = {
 };
 
 export default function AccountsPage() {
+  const searchParams = useSearchParams();
+
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState('');
@@ -50,6 +53,14 @@ export default function AccountsPage() {
   useEffect(() => {
     void loadAccounts();
   }, []);
+
+  useEffect(() => {
+    const searchFromUrl = searchParams.get('search') || '';
+    const stateFromUrl = searchParams.get('state') || 'all';
+
+    setQuery(searchFromUrl);
+    setStateFilter(stateFromUrl);
+  }, [searchParams]);
 
   async function loadAccounts() {
     const { data } = await supabase.from('accounts').select('*').order('account_name');
@@ -102,12 +113,19 @@ export default function AccountsPage() {
 
   const states = useMemo(() => {
     return Array.from(
-      new Set(accounts.map((a) => a.state).filter(Boolean))
-    ).sort() as string[];
+      new Set(
+        accounts
+          .map((a) => a.state?.trim().toUpperCase())
+          .filter((value): value is string => Boolean(value))
+      )
+    ).sort();
   }, [accounts]);
 
   const filteredAccounts = useMemo(() => {
     return accounts.filter((a) => {
+      const normalizedAccountState = a.state?.trim().toUpperCase() || '';
+      const normalizedSelectedState = stateFilter.trim().toUpperCase();
+
       const haystack = [
         a.account_name ?? '',
         a.street ?? '',
@@ -120,8 +138,9 @@ export default function AccountsPage() {
         .join(' ')
         .toLowerCase();
 
-      const matchesQuery = haystack.includes(query.toLowerCase());
-      const matchesState = stateFilter === 'all' || a.state === stateFilter;
+      const matchesQuery = haystack.includes(query.trim().toLowerCase());
+      const matchesState =
+        stateFilter === 'all' || normalizedAccountState === normalizedSelectedState;
 
       return matchesQuery && matchesState;
     });
