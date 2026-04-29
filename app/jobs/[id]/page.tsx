@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
+import heic2any from 'heic2any';
 import { supabase } from '@/lib/supabase';
 
 function money(value: number | null | undefined) {
@@ -15,6 +16,13 @@ function money(value: number | null | undefined) {
 
 function invoiceNumber() {
   return `INV-${Date.now()}`;
+}
+
+function cleanFileName(fileName: string) {
+  return fileName
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9.\-_]/g, '')
+    .toLowerCase();
 }
 
 export default function JobDetailPage() {
@@ -66,27 +74,74 @@ export default function JobDetailPage() {
     setLoading(false);
   }
 
-  async function uploadPhoto(file: File, type: 'before' | 'after') {
-    const path = `${id}/${Date.now()}-${file.name}`;
+  async function preparePhotoForUpload(file: File) {
+    const fileName = file.name.toLowerCase();
+    const isHeic =
+      file.type === 'image/heic' ||
+      file.type === 'image/heif' ||
+      fileName.endsWith('.heic') ||
+      fileName.endsWith('.heif');
 
-    const { error } = await supabase.storage
-      .from('job-photos')
-      .upload(path, file);
-
-    if (error) {
-      alert('Upload failed');
-      return;
+    if (!isHeic) {
+      return file;
     }
 
-    const { data } = supabase.storage.from('job-photos').getPublicUrl(path);
-
-    await supabase.from('job_photos').insert({
-      job_id: id,
-      type,
-      url: data.publicUrl,
+    const converted = await heic2any({
+      blob: file,
+      toType: 'image/jpeg',
+      quality: 0.9,
     });
 
-    await loadPage();
+    const convertedBlob = Array.isArray(converted) ? converted[0] : converted;
+
+    return new File(
+      [convertedBlob],
+      file.name.replace(/\.(heic|heif)$/i, '.jpg'),
+      { type: 'image/jpeg' }
+    );
+  }
+
+  async function uploadPhoto(file: File, type: 'before' | 'after') {
+    try {
+      setWorking(true);
+
+      const uploadFile = await preparePhotoForUpload(file);
+      const cleanName = cleanFileName(uploadFile.name || 'photo.jpg');
+      const path = `${id}/${Date.now()}-${cleanName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('job-photos')
+        .upload(path, uploadFile, {
+          contentType: uploadFile.type || 'image/jpeg',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        alert(`Upload failed: ${uploadError.message}`);
+        setWorking(false);
+        return;
+      }
+
+      const { data } = supabase.storage.from('job-photos').getPublicUrl(path);
+
+      const { error: insertError } = await supabase.from('job_photos').insert({
+        job_id: id,
+        type,
+        url: data.publicUrl,
+      });
+
+      if (insertError) {
+        alert(`Photo saved to storage, but could not attach to job: ${insertError.message}`);
+        setWorking(false);
+        return;
+      }
+
+      await loadPage();
+      setWorking(false);
+    } catch (err: any) {
+      alert(`Upload error: ${err?.message || String(err)}`);
+      setWorking(false);
+    }
   }
 
   async function generateInvoice() {
@@ -245,9 +300,12 @@ export default function JobDetailPage() {
             <h3 className="font-semibold">Before</h3>
             <input
               type="file"
+              accept="image/*,.heic,.heif"
+              disabled={working}
               onChange={(e) => {
                 if (e.target.files?.[0]) {
                   void uploadPhoto(e.target.files[0], 'before');
+                  e.currentTarget.value = '';
                 }
               }}
             />
@@ -269,9 +327,12 @@ export default function JobDetailPage() {
             <h3 className="font-semibold">After</h3>
             <input
               type="file"
+              accept="image/*,.heic,.heif"
+              disabled={working}
               onChange={(e) => {
                 if (e.target.files?.[0]) {
                   void uploadPhoto(e.target.files[0], 'after');
+                  e.currentTarget.value = '';
                 }
               }}
             />
@@ -289,6 +350,12 @@ export default function JobDetailPage() {
             </div>
           </div>
         </div>
+
+        {working ? (
+          <div className="mt-4 text-sm text-slate-500">
+            Working...
+          </div>
+        ) : null}
       </div>
 
       {!invoice ? (
