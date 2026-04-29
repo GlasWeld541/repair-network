@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 type StateOption = {
@@ -37,6 +37,7 @@ const NAV_ITEMS = [
 
 export default function Header() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const [query, setQuery] = useState('');
   const [state, setState] = useState('');
@@ -72,16 +73,13 @@ export default function Header() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
     if (pathname !== '/accounts') return;
 
-    const params = new URLSearchParams(window.location.search);
+    setQuery(searchParams.get('search') || '');
+    setState(searchParams.get('state') || '');
+  }, [pathname, searchParams]);
 
-    setQuery(params.get('search') || '');
-    setState(params.get('state') || '');
-  }, [pathname]);
-
-  const handleSubmit = (e: React.FormEvent) => {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     const params = new URLSearchParams();
@@ -89,19 +87,21 @@ export default function Header() {
     if (query.trim()) params.set('search', query.trim());
     if (state) params.set('state', state);
 
-    window.location.href = `/accounts${params.toString() ? `?${params.toString()}` : ''}`;
-  };
+    const target = `/accounts${params.toString() ? `?${params.toString()}` : ''}`;
 
-  const handleLogout = async () => {
+    window.location.assign(target);
+  }
+
+  async function handleLogout() {
     await supabase.auth.signOut();
     window.location.href = '/login';
-  };
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.28)]">
       <div className="mx-auto flex max-w-[1380px] items-center justify-between px-10 py-4">
-        <Link href="/" className="flex items-center gap-6 group">
-          <div className="relative h-14 w-14 flex-shrink-0">
+        <Link href="/" className="group flex items-center gap-6">
+          <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden">
             <Image
               src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
               alt="GlasWeld"
@@ -127,13 +127,13 @@ export default function Header() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search business or contact"
-              className="h-11 w-[290px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white placeholder:text-slate-400 focus:border-cyan-300/50 focus:bg-white/15 outline-none"
+              className="h-11 w-[290px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white placeholder:text-slate-400 outline-none focus:border-cyan-300/50 focus:bg-white/15"
             />
 
             <select
               value={state}
               onChange={(e) => setState(e.target.value)}
-              className="h-11 w-[175px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white focus:border-cyan-300/50 focus:bg-white/15 outline-none"
+              className="h-11 w-[175px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white outline-none focus:border-cyan-300/50 focus:bg-white/15"
             >
               {stateOptions.map((option) => (
                 <option key={option.value || 'all'} value={option.value}>
@@ -171,6 +171,7 @@ export default function Header() {
           </nav>
 
           <button
+            type="button"
             onClick={handleLogout}
             className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200 hover:bg-white/10"
           >
