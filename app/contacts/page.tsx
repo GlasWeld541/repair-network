@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Suspense, useEffect, useMemo, useState } from 'react';
-import { Search, ArrowLeft, UserPlus, X, Pencil } from 'lucide-react';
+import { Search, ArrowLeft, UserPlus, X, Pencil, Check } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import type { Contact } from '@/lib/types';
@@ -24,6 +24,11 @@ type ShopUser = {
   account_name: string | null;
 };
 
+type EditingCell = {
+  id: string;
+  field: keyof Contact;
+} | null;
+
 const EMPTY_CONTACT_FORM: NewContactForm = {
   account_id: '',
   account_name: '',
@@ -41,7 +46,7 @@ function formatPhone(value?: string | null) {
   if (!digits) return '';
 
   if (digits.length === 11 && digits.startsWith('1')) {
-    return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7, 11)}`;
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7, 11)}`;
   }
 
   if (digits.length === 10) {
@@ -49,6 +54,14 @@ function formatPhone(value?: string | null) {
   }
 
   return value ?? '';
+}
+
+function formatPhoneInput(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 10);
+
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
 function normalizePhoneForSave(value?: string | null) {
@@ -66,7 +79,10 @@ function ContactsPageContent() {
   const [shopUser, setShopUser] = useState<ShopUser | null>(null);
   const [showContactModal, setShowContactModal] = useState(false);
   const [savingNewContact, setSavingNewContact] = useState(false);
-  const [editingCell, setEditingCell] = useState<string | null>(null);
+
+  const [editingCell, setEditingCell] = useState<EditingCell>(null);
+  const [draftValue, setDraftValue] = useState('');
+  const [savedMessage, setSavedMessage] = useState('');
 
   const [newContact, setNewContact] = useState<NewContactForm>({
     ...EMPTY_CONTACT_FORM,
@@ -75,48 +91,54 @@ function ContactsPageContent() {
   });
 
   useEffect(() => {
-    async function load() {
-      const { data: userData } = await supabase.auth.getUser();
-      const email = userData.user?.email?.toLowerCase() || '';
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountIdFilter]);
 
-      let currentShopUser: ShopUser | null = null;
+  function flashSaved() {
+    setSavedMessage('Saved');
+    window.setTimeout(() => setSavedMessage(''), 1200);
+  }
 
-      if (email) {
-        const { data: shopData } = await supabase
-          .from('shop_users')
-          .select('account_id, account_name')
-          .eq('user_email', email)
-          .maybeSingle();
+  async function load() {
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData.user?.email?.toLowerCase() || '';
 
-        currentShopUser = (shopData as ShopUser | null) || null;
-        setShopUser(currentShopUser);
-      }
+    let currentShopUser: ShopUser | null = null;
 
-      let queryBuilder = supabase
-        .from('contacts')
-        .select('*')
-        .order('account_name')
-        .limit(2000);
+    if (email) {
+      const { data: shopData } = await supabase
+        .from('shop_users')
+        .select('account_id, account_name')
+        .eq('user_email', email)
+        .maybeSingle();
 
-      if (currentShopUser?.account_id) {
-        queryBuilder = queryBuilder.eq('account_id', currentShopUser.account_id);
-      } else if (accountIdFilter) {
-        queryBuilder = queryBuilder.eq('account_id', accountIdFilter);
-      }
-
-      const { data } = await queryBuilder;
-
-      const normalized = ((data as Contact[]) ?? []).map((row) => ({
-        ...row,
-        mobile: formatPhone(row.mobile),
-        phone: formatPhone(row.phone),
-      }));
-
-      setRows(normalized);
+      currentShopUser = (shopData as ShopUser | null) || null;
+      setShopUser(currentShopUser);
     }
 
-    void load();
-  }, [accountIdFilter]);
+    let queryBuilder = supabase
+      .from('contacts')
+      .select('*')
+      .order('account_name')
+      .limit(2000);
+
+    if (currentShopUser?.account_id) {
+      queryBuilder = queryBuilder.eq('account_id', currentShopUser.account_id);
+    } else if (accountIdFilter) {
+      queryBuilder = queryBuilder.eq('account_id', accountIdFilter);
+    }
+
+    const { data } = await queryBuilder;
+
+    const normalized = ((data as Contact[]) ?? []).map((row) => ({
+      ...row,
+      mobile: formatPhone(row.mobile),
+      phone: formatPhone(row.phone),
+    }));
+
+    setRows(normalized);
+  }
 
   const filtered = useMemo(() => {
     return rows.filter((row) =>
@@ -151,12 +173,17 @@ function ContactsPageContent() {
       cleanedPatch.billing_state = cleanedPatch.billing_state.toUpperCase();
     }
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('contacts')
       .update(cleanedPatch)
       .eq('id', id)
       .select()
       .single();
+
+    if (error) {
+      window.alert(`Could not save contact: ${error.message}`);
+      return;
+    }
 
     if (data) {
       setRows((current) =>
@@ -172,6 +199,8 @@ function ContactsPageContent() {
         )
       );
     }
+
+    flashSaved();
   }
 
   function openAddContactFromPage() {
@@ -256,7 +285,7 @@ function ContactsPageContent() {
         account_name: forcedAccountName,
       });
 
-      window.alert('Contact added.');
+      flashSaved();
     } catch {
       window.alert('That contact could not be added. Check the required fields and try again.');
     } finally {
@@ -264,13 +293,33 @@ function ContactsPageContent() {
     }
   }
 
+  function startEdit(row: Contact, field: keyof Contact, options?: { phone?: boolean }) {
+    const rawValue = String(row[field] ?? '');
+
+    setEditingCell({ id: row.id, field });
+    setDraftValue(options?.phone ? formatPhoneInput(rawValue) : rawValue);
+  }
+
+  function cancelEdit() {
+    setEditingCell(null);
+    setDraftValue('');
+  }
+
+  async function saveEdit(row: Contact, field: keyof Contact, options?: { upper?: boolean }) {
+    const nextValue = options?.upper ? draftValue.toUpperCase() : draftValue;
+
+    setEditingCell(null);
+    setDraftValue('');
+
+    await updateRow(row.id, { [field]: nextValue } as Partial<Contact>);
+  }
+
   function renderEditableCell(
     row: Contact,
     field: keyof Contact,
-    options?: { phone?: boolean; upper?: boolean }
+    options?: { phone?: boolean; upper?: boolean; email?: boolean }
   ) {
-    const cellKey = `${row.id}-${String(field)}`;
-    const isEditing = editingCell === cellKey;
+    const isEditing = editingCell?.id === row.id && editingCell.field === field;
     const rawValue = String(row[field] ?? '');
     const displayValue = options?.phone ? formatPhone(rawValue) : rawValue;
 
@@ -278,28 +327,25 @@ function ContactsPageContent() {
       return (
         <input
           autoFocus
-          className="w-full"
-          value={rawValue}
+          className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          value={draftValue}
           onChange={(e) => {
-            const nextValue = options?.upper ? e.target.value.toUpperCase() : e.target.value;
-            setRows((current) =>
-              current.map((rowItem) =>
-                rowItem.id === row.id ? { ...rowItem, [field]: nextValue } : rowItem
-              )
-            );
+            const nextValue = options?.phone
+              ? formatPhoneInput(e.target.value)
+              : options?.upper
+                ? e.target.value.toUpperCase()
+                : e.target.value;
+
+            setDraftValue(nextValue);
           }}
-          onBlur={(e) => {
-            const nextValue = options?.upper ? e.target.value.toUpperCase() : e.target.value;
-            void updateRow(row.id, { [field]: nextValue } as Partial<Contact>);
-            setEditingCell(null);
-          }}
+          onBlur={() => void saveEdit(row, field, options)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
-              (e.target as HTMLInputElement).blur();
+              e.currentTarget.blur();
             }
 
             if (e.key === 'Escape') {
-              setEditingCell(null);
+              cancelEdit();
             }
           }}
         />
@@ -307,14 +353,42 @@ function ContactsPageContent() {
     }
 
     return (
-      <button
-        type="button"
-        onClick={() => setEditingCell(cellKey)}
-        className="group flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left hover:bg-slate-50"
-      >
-        <span className="truncate text-slate-800">{displayValue || '—'}</span>
-        <Pencil className="h-3.5 w-3.5 shrink-0 text-slate-400 opacity-0 transition group-hover:opacity-100" />
-      </button>
+      <div className="flex items-center gap-2">
+        {options?.phone && rawValue ? (
+          <a
+            href={`tel:${rawValue}`}
+            className="rounded px-1 py-1 text-sm text-blue-700 hover:bg-slate-100"
+          >
+            {displayValue}
+          </a>
+        ) : options?.email && rawValue ? (
+          <a
+            href={`mailto:${rawValue}`}
+            className="rounded px-1 py-1 text-sm text-blue-700 hover:bg-slate-100"
+          >
+            {rawValue}
+          </a>
+        ) : (
+          <button
+            type="button"
+            onClick={() => startEdit(row, field, options)}
+            className="rounded px-1 py-1 text-left text-sm hover:bg-slate-100"
+          >
+            {displayValue || '—'}
+          </button>
+        )}
+
+        {(options?.phone || options?.email) && (
+          <button
+            type="button"
+            onClick={() => startEdit(row, field, options)}
+            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            title="Edit"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
     );
   }
 
@@ -339,11 +413,21 @@ function ContactsPageContent() {
               </Link>
             ) : null}
 
-            <h1 className="text-3xl font-semibold text-ink">{title}</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-semibold text-ink">{title}</h1>
+
+              {savedMessage ? (
+                <div className="flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+                  <Check className="h-4 w-4" />
+                  {savedMessage}
+                </div>
+              ) : null}
+            </div>
+
             <p className="mt-1 text-sm text-slate-500">
               {shopUser
                 ? 'This view only shows contacts tied to your business.'
-                : 'Click a text field to edit it. Notes remain directly editable.'}
+                : 'Click any field to edit. Press Enter to save or Escape to cancel.'}
             </p>
           </div>
 
@@ -351,7 +435,7 @@ function ContactsPageContent() {
             <div className="relative min-w-[280px]">
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
-                className="h-10 w-full rounded-lg pl-9"
+                className="h-10 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm"
                 placeholder="Search contacts or accounts"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -390,16 +474,36 @@ function ContactsPageContent() {
             {filtered.map((row) => (
               <tr key={row.id} className="border-t border-slate-100 align-top">
                 <td className="px-4 py-3 font-medium text-ink">{row.account_name}</td>
-                <td className="min-w-[180px] px-4 py-3">{renderEditableCell(row, 'full_name')}</td>
-                <td className="min-w-[240px] px-4 py-3">{renderEditableCell(row, 'email')}</td>
-                <td className="min-w-[170px] px-4 py-3">{renderEditableCell(row, 'mobile', { phone: true })}</td>
-                <td className="min-w-[170px] px-4 py-3">{renderEditableCell(row, 'phone', { phone: true })}</td>
-                <td className="min-w-[160px] px-4 py-3">{renderEditableCell(row, 'billing_city')}</td>
-                <td className="min-w-[100px] px-4 py-3">{renderEditableCell(row, 'billing_state', { upper: true })}</td>
+
+                <td className="min-w-[180px] px-4 py-3">
+                  {renderEditableCell(row, 'full_name')}
+                </td>
+
+                <td className="min-w-[240px] px-4 py-3">
+                  {renderEditableCell(row, 'email', { email: true })}
+                </td>
+
+                <td className="min-w-[170px] px-4 py-3">
+                  {renderEditableCell(row, 'mobile', { phone: true })}
+                </td>
+
+                <td className="min-w-[170px] px-4 py-3">
+                  {renderEditableCell(row, 'phone', { phone: true })}
+                </td>
+
+                <td className="min-w-[160px] px-4 py-3">
+                  {renderEditableCell(row, 'billing_city')}
+                </td>
+
+                <td className="min-w-[100px] px-4 py-3">
+                  {renderEditableCell(row, 'billing_state', { upper: true })}
+                </td>
+
                 <td className="px-4 py-3">{row.glasweld_certified}</td>
+
                 <td className="px-4 py-3">
                   <textarea
-                    className="min-h-20 min-w-[220px]"
+                    className="min-h-20 min-w-[220px] rounded border border-slate-300 px-3 py-2 text-sm"
                     value={row.notes ?? ''}
                     onChange={(e) =>
                       setRows((current) =>
@@ -462,6 +566,7 @@ function ContactsPageContent() {
                     setNewContact((current) => ({ ...current, full_name: e.target.value }))
                   }
                   placeholder="Jane Smith"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
                 />
               </label>
 
@@ -473,6 +578,7 @@ function ContactsPageContent() {
                     setNewContact((current) => ({ ...current, email: e.target.value }))
                   }
                   placeholder="jane@example.com"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
                 />
               </label>
 
@@ -483,10 +589,11 @@ function ContactsPageContent() {
                   onChange={(e) =>
                     setNewContact((current) => ({
                       ...current,
-                      mobile: formatPhone(e.target.value),
+                      mobile: formatPhoneInput(e.target.value),
                     }))
                   }
                   placeholder="(555) 555-5555"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
                 />
               </label>
 
@@ -497,10 +604,11 @@ function ContactsPageContent() {
                   onChange={(e) =>
                     setNewContact((current) => ({
                       ...current,
-                      phone: formatPhone(e.target.value),
+                      phone: formatPhoneInput(e.target.value),
                     }))
                   }
                   placeholder="Optional"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
                 />
               </label>
 
@@ -515,6 +623,7 @@ function ContactsPageContent() {
                     }))
                   }
                   placeholder="Optional"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
                 />
               </label>
 
@@ -530,13 +639,14 @@ function ContactsPageContent() {
                   }
                   placeholder="WA"
                   maxLength={2}
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
                 />
               </label>
 
               <label className="space-y-1 md:col-span-2">
                 <span className="text-sm font-medium text-slate-700">Notes</span>
                 <textarea
-                  className="min-h-28"
+                  className="min-h-28 w-full rounded border border-slate-300 px-3 py-2 text-sm"
                   value={newContact.notes}
                   onChange={(e) =>
                     setNewContact((current) => ({ ...current, notes: e.target.value }))
