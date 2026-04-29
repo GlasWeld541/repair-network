@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Check, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 type AccountRow = {
@@ -26,6 +26,18 @@ type ContactRow = {
   phone: string | null;
 };
 
+type JobRow = {
+  id: string;
+  invoice_date: string | null;
+  customer_name: string | null;
+  vehicle_year: string | null;
+  vehicle_make: string | null;
+  vehicle_model: string | null;
+  job_status: string | null;
+  invoice_amount: number | null;
+  amount_paid: number | null;
+};
+
 type EditingTarget =
   | { type: 'account'; field: keyof AccountRow }
   | { type: 'contact'; id: string; field: keyof ContactRow }
@@ -45,17 +57,34 @@ function formatPhone(value: string | null) {
   return value || '—';
 }
 
+function formatPhoneInput(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 10);
+
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+function money(value: number | null | undefined) {
+  return Number(value || 0).toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  });
+}
+
 export default function AccountDetailPage() {
   const params = useParams();
   const id = params.id as string;
 
   const [account, setAccount] = useState<AccountRow | null>(null);
   const [contacts, setContacts] = useState<ContactRow[]>([]);
+  const [jobs, setJobs] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [blocked, setBlocked] = useState(false);
 
   const [editing, setEditing] = useState<EditingTarget>(null);
   const [draftValue, setDraftValue] = useState('');
+  const [savedMessage, setSavedMessage] = useState('');
 
   const [newContactName, setNewContactName] = useState('');
   const [newContactEmail, setNewContactEmail] = useState('');
@@ -64,6 +93,11 @@ export default function AccountDetailPage() {
   useEffect(() => {
     void load();
   }, [id]);
+
+  function flashSaved() {
+    setSavedMessage('Saved');
+    window.setTimeout(() => setSavedMessage(''), 1200);
+  }
 
   async function load() {
     setLoading(true);
@@ -91,14 +125,25 @@ export default function AccountDetailPage() {
       return;
     }
 
-    const { data: contactData } = await supabase
-      .from('contacts')
-      .select('id, account_id, full_name, email, mobile, phone')
-      .eq('account_id', id)
-      .order('full_name');
+    const [{ data: contactData }, { data: jobData }] = await Promise.all([
+      supabase
+        .from('contacts')
+        .select('id, account_id, full_name, email, mobile, phone')
+        .eq('account_id', id)
+        .order('full_name'),
+      supabase
+        .from('jobs')
+        .select(
+          'id, invoice_date, customer_name, vehicle_year, vehicle_make, vehicle_model, job_status, invoice_amount, amount_paid'
+        )
+        .eq('assigned_account_id', id)
+        .order('created_at', { ascending: false })
+        .limit(5),
+    ]);
 
     setAccount(accountData as AccountRow);
     setContacts((contactData as ContactRow[]) || []);
+    setJobs((jobData as JobRow[]) || []);
     setLoading(false);
   }
 
@@ -109,6 +154,7 @@ export default function AccountDetailPage() {
       .eq('id', id);
 
     setEditing(null);
+    flashSaved();
     await load();
   }
 
@@ -119,6 +165,7 @@ export default function AccountDetailPage() {
       .eq('id', contactId);
 
     setEditing(null);
+    flashSaved();
     await load();
   }
 
@@ -138,12 +185,15 @@ export default function AccountDetailPage() {
     setNewContactName('');
     setNewContactEmail('');
     setNewContactPhone('');
+    flashSaved();
     await load();
   }
 
   function startAccountEdit(field: keyof AccountRow, value: string | null) {
     setEditing({ type: 'account', field });
-    setDraftValue(value || '');
+    setDraftValue(
+      field === 'company_phone' ? formatPhoneInput(value || '') : value || ''
+    );
   }
 
   function startContactEdit(
@@ -152,7 +202,9 @@ export default function AccountDetailPage() {
     value: string | null
   ) {
     setEditing({ type: 'contact', id: contactId, field });
-    setDraftValue(value || '');
+    setDraftValue(
+      field === 'mobile' || field === 'phone' ? formatPhoneInput(value || '') : value || ''
+    );
   }
 
   function AccountField({
@@ -160,11 +212,13 @@ export default function AccountDetailPage() {
     field,
     value,
     isPhone = false,
+    isEmail = false,
   }: {
     label: string;
     field: keyof AccountRow;
     value: string | null;
     isPhone?: boolean;
+    isEmail?: boolean;
   }) {
     const isEditing = editing?.type === 'account' && editing.field === field;
 
@@ -178,21 +232,47 @@ export default function AccountDetailPage() {
           <input
             autoFocus
             value={draftValue}
-            onChange={(e) => setDraftValue(e.target.value)}
+            onChange={(e) =>
+              setDraftValue(isPhone ? formatPhoneInput(e.target.value) : e.target.value)
+            }
             onBlur={() => void saveAccountField(field)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') setEditing(null);
             }}
             className="rounded border border-slate-300 px-3 py-2 text-sm"
           />
         ) : (
-          <button
-            type="button"
-            onClick={() => startAccountEdit(field, value)}
-            className="rounded px-1 py-1 text-left text-sm hover:bg-slate-100"
-          >
-            {isPhone ? formatPhone(value) : value || '—'}
-          </button>
+          <div className="flex items-center gap-2">
+            {isPhone && value ? (
+              <a href={`tel:${value}`} className="rounded px-1 py-1 text-sm text-blue-700 hover:bg-slate-100">
+                {formatPhone(value)}
+              </a>
+            ) : isEmail && value ? (
+              <a href={`mailto:${value}`} className="rounded px-1 py-1 text-sm text-blue-700 hover:bg-slate-100">
+                {value}
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => startAccountEdit(field, value)}
+                className="rounded px-1 py-1 text-left text-sm hover:bg-slate-100"
+              >
+                {value || '—'}
+              </button>
+            )}
+
+            {(isPhone || isEmail) && (
+              <button
+                type="button"
+                onClick={() => startAccountEdit(field, value)}
+                className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                title="Edit"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         )}
       </div>
     );
@@ -202,10 +282,12 @@ export default function AccountDetailPage() {
     contact,
     field,
     isPhone = false,
+    isEmail = false,
   }: {
     contact: ContactRow;
     field: keyof ContactRow;
     isPhone?: boolean;
+    isEmail?: boolean;
   }) {
     const value = contact[field] as string | null;
     const isEditing =
@@ -218,10 +300,13 @@ export default function AccountDetailPage() {
         <input
           autoFocus
           value={draftValue}
-          onChange={(e) => setDraftValue(e.target.value)}
+          onChange={(e) =>
+            setDraftValue(isPhone ? formatPhoneInput(e.target.value) : e.target.value)
+          }
           onBlur={() => void saveContactField(contact.id, field)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') e.currentTarget.blur();
+            if (e.key === 'Escape') setEditing(null);
           }}
           className="rounded border border-slate-300 px-3 py-2 text-sm"
         />
@@ -229,13 +314,36 @@ export default function AccountDetailPage() {
     }
 
     return (
-      <button
-        type="button"
-        onClick={() => startContactEdit(contact.id, field, value)}
-        className="rounded px-1 py-1 text-left text-sm hover:bg-slate-100"
-      >
-        {isPhone ? formatPhone(value) : value || '—'}
-      </button>
+      <div className="flex items-center gap-2">
+        {isPhone && value ? (
+          <a href={`tel:${value}`} className="rounded px-1 py-1 text-sm text-blue-700 hover:bg-slate-100">
+            {formatPhone(value)}
+          </a>
+        ) : isEmail && value ? (
+          <a href={`mailto:${value}`} className="rounded px-1 py-1 text-sm text-blue-700 hover:bg-slate-100">
+            {value}
+          </a>
+        ) : (
+          <button
+            type="button"
+            onClick={() => startContactEdit(contact.id, field, value)}
+            className="rounded px-1 py-1 text-left text-sm hover:bg-slate-100"
+          >
+            {isPhone ? formatPhone(value) : value || '—'}
+          </button>
+        )}
+
+        {(isPhone || isEmail) && (
+          <button
+            type="button"
+            onClick={() => startContactEdit(contact.id, field, value)}
+            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            title="Edit"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
     );
   }
 
@@ -262,10 +370,19 @@ export default function AccountDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Link href="/accounts" className="flex items-center gap-2 text-blue-600">
-        <ArrowLeft className="h-4 w-4" />
-        Back to accounts
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link href="/accounts" className="flex items-center gap-2 text-blue-600">
+          <ArrowLeft className="h-4 w-4" />
+          Back to accounts
+        </Link>
+
+        {savedMessage ? (
+          <div className="flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+            <Check className="h-4 w-4" />
+            {savedMessage}
+          </div>
+        ) : null}
+      </div>
 
       <div>
         {titleEditing ? (
@@ -276,6 +393,7 @@ export default function AccountDetailPage() {
             onBlur={() => void saveAccountField('account_name')}
             onKeyDown={(e) => {
               if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') setEditing(null);
             }}
             className="rounded border border-slate-300 px-3 py-2 text-2xl font-semibold"
           />
@@ -308,6 +426,7 @@ export default function AccountDetailPage() {
             label="Business Email"
             field="company_email"
             value={account.company_email}
+            isEmail
           />
         </div>
       </div>
@@ -332,7 +451,7 @@ export default function AccountDetailPage() {
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Email
                 </div>
-                <ContactField contact={contact} field="email" />
+                <ContactField contact={contact} field="email" isEmail />
               </div>
 
               <div>
@@ -376,7 +495,7 @@ export default function AccountDetailPage() {
 
             <input
               value={newContactPhone}
-              onChange={(e) => setNewContactPhone(e.target.value)}
+              onChange={(e) => setNewContactPhone(formatPhoneInput(e.target.value))}
               placeholder="Contact phone"
               className="rounded border border-slate-300 px-3 py-2 text-sm"
             />
@@ -390,6 +509,55 @@ export default function AccountDetailPage() {
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="rounded-xl border bg-white p-6">
+        <h2 className="mb-4 text-lg font-semibold">Recent Jobs</h2>
+
+        {jobs.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-left text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Date</th>
+                  <th className="px-3 py-2">Customer</th>
+                  <th className="px-3 py-2">Vehicle</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Invoice</th>
+                  <th className="px-3 py-2">Paid</th>
+                  <th className="px-3 py-2">Open</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {jobs.map((job) => (
+                  <tr key={job.id} className="border-t">
+                    <td className="px-3 py-2">{job.invoice_date || '—'}</td>
+                    <td className="px-3 py-2">{job.customer_name || '—'}</td>
+                    <td className="px-3 py-2">
+                      {[job.vehicle_year, job.vehicle_make, job.vehicle_model]
+                        .filter(Boolean)
+                        .join(' ') || '—'}
+                    </td>
+                    <td className="px-3 py-2">{job.job_status || '—'}</td>
+                    <td className="px-3 py-2">{money(job.invoice_amount)}</td>
+                    <td className="px-3 py-2">{money(job.amount_paid)}</td>
+                    <td className="px-3 py-2">
+                      <Link
+                        href={`/jobs/${job.id}`}
+                        className="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+                      >
+                        Open
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-sm text-slate-500">No recent jobs for this account.</div>
+        )}
       </div>
     </div>
   );
