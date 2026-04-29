@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 type StateOption = {
@@ -17,7 +17,7 @@ const STATE_NAMES: Record<string, string> = {
   FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho',
   IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas',
   KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
-  MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi',
+  MA: 'Massachusetts', MI: 'Michigan', MN: 'Mississippi', MS: 'Mississippi',
   MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada',
   NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico',
   NY: 'New York', NC: 'North Carolina', ND: 'North Dakota',
@@ -37,7 +37,6 @@ const NAV_ITEMS = [
 
 export default function Header() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   const [query, setQuery] = useState('');
   const [state, setState] = useState('');
@@ -73,11 +72,15 @@ export default function Header() {
   }, []);
 
   useEffect(() => {
-    if (pathname !== '/accounts') return;
+    if (typeof window === 'undefined') return;
 
-    setQuery(searchParams.get('search') || '');
-    setState(searchParams.get('state') || '');
-  }, [pathname, searchParams]);
+    const params = new URLSearchParams(window.location.search);
+
+    if (pathname === '/accounts') {
+      setQuery(params.get('search') || '');
+      setState(params.get('state') || '');
+    }
+  }, [pathname]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -87,9 +90,7 @@ export default function Header() {
     if (query.trim()) params.set('search', query.trim());
     if (state) params.set('state', state);
 
-    const target = `/accounts${params.toString() ? `?${params.toString()}` : ''}`;
-
-    window.location.assign(target);
+    window.location.href = `/accounts${params.toString() ? `?${params.toString()}` : ''}`;
   }
 
   async function handleLogout() {
@@ -100,8 +101,8 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.28)]">
       <div className="mx-auto flex max-w-[1380px] items-center justify-between px-10 py-4">
-        <Link href="/" className="group flex items-center gap-6">
-          <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden">
+        <Link href="/" className="group flex items-center gap-5">
+          <div className="relative h-16 w-16 flex-shrink-0">
             <Image
               src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
               alt="GlasWeld"
