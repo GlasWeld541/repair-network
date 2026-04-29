@@ -28,6 +28,20 @@ type JobRow = {
   loss_date: string | null;
 };
 
+type InvoiceRow = {
+  id: string;
+  job_id: string;
+  invoice_amount: number | null;
+  amount_paid: number | null;
+  status: string | null;
+  payment_status: string | null;
+  submission_status: string | null;
+};
+
+type JobWithInvoice = JobRow & {
+  invoice: InvoiceRow | null;
+};
+
 type ShopUser = {
   account_id: string;
   account_name: string | null;
@@ -71,8 +85,20 @@ function invoiceNumber() {
   return `INV-${Date.now()}`;
 }
 
+function displayInvoiceAmount(job: JobWithInvoice) {
+  return Number(job.invoice?.invoice_amount ?? job.invoice_amount ?? 0);
+}
+
+function displayAmountPaid(job: JobWithInvoice) {
+  return Number(job.invoice?.amount_paid ?? job.amount_paid ?? 0);
+}
+
+function displayUnpaid(job: JobWithInvoice) {
+  return Math.max(displayInvoiceAmount(job) - displayAmountPaid(job), 0);
+}
+
 export default function JobsPage() {
-  const [jobs, setJobs] = useState<JobRow[]>([]);
+  const [jobs, setJobs] = useState<JobWithInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [shopUser, setShopUser] = useState<ShopUser | null>(null);
   const [creatingInvoiceId, setCreatingInvoiceId] = useState<string | null>(null);
@@ -123,13 +149,41 @@ export default function JobsPage() {
       query = query.lte('invoice_date', dateTo);
     }
 
-    const { data } = await query;
+    const { data: jobData } = await query;
+    const baseJobs = (jobData as JobRow[]) || [];
 
-    setJobs((data as JobRow[]) || []);
+    if (!baseJobs.length) {
+      setJobs([]);
+      setLoading(false);
+      return;
+    }
+
+    const jobIds = baseJobs.map((job) => job.id);
+
+    const { data: invoiceData } = await supabase
+      .from('invoices')
+      .select(
+        'id, job_id, invoice_amount, amount_paid, status, payment_status, submission_status'
+      )
+      .in('job_id', jobIds);
+
+    const invoices = (invoiceData as InvoiceRow[]) || [];
+    const invoiceByJobId = new Map<string, InvoiceRow>();
+
+    invoices.forEach((invoice) => {
+      invoiceByJobId.set(invoice.job_id, invoice);
+    });
+
+    const mergedJobs: JobWithInvoice[] = baseJobs.map((job) => ({
+      ...job,
+      invoice: invoiceByJobId.get(job.id) || null,
+    }));
+
+    setJobs(mergedJobs);
     setLoading(false);
   }
 
-  async function generateInvoice(job: JobRow) {
+  async function generateInvoice(job: JobWithInvoice) {
     setCreatingInvoiceId(job.id);
 
     try {
@@ -151,7 +205,9 @@ export default function JobsPage() {
         const [{ data: accountData }, { data: settingsData }] = await Promise.all([
           supabase
             .from('accounts')
-            .select('id, account_name, street, city, state, postal_code, company_email, company_phone')
+            .select(
+              'id, account_name, street, city, state, postal_code, company_email, company_phone'
+            )
             .eq('id', job.assigned_account_id)
             .maybeSingle(),
           supabase
@@ -230,13 +286,13 @@ export default function JobsPage() {
   const totals = useMemo(() => {
     return jobs.reduce(
       (sum, job) => {
-        const invoiceAmount = Number(job.invoice_amount || 0);
-        const amountPaid = Number(job.amount_paid || 0);
+        const invoiceAmount = displayInvoiceAmount(job);
+        const amountPaid = displayAmountPaid(job);
 
         sum.jobCount += 1;
         sum.totalSales += invoiceAmount;
         sum.totalPaid += amountPaid;
-        sum.totalUnpaid += invoiceAmount - amountPaid;
+        sum.totalUnpaid += Math.max(invoiceAmount - amountPaid, 0);
 
         return sum;
       },
@@ -378,9 +434,9 @@ export default function JobsPage() {
               </tr>
             ) : (
               jobs.map((job) => {
-                const invoiceAmount = Number(job.invoice_amount || 0);
-                const amountPaid = Number(job.amount_paid || 0);
-                const unpaid = invoiceAmount - amountPaid;
+                const invoiceAmount = displayInvoiceAmount(job);
+                const amountPaid = displayAmountPaid(job);
+                const unpaid = displayUnpaid(job);
 
                 return (
                   <tr
