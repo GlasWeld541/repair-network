@@ -2,55 +2,22 @@
 
 import Link from 'next/link';
 import { Suspense, useEffect, useMemo, useState } from 'react';
-import { Search, ArrowLeft, UserPlus, X, Pencil, Check } from 'lucide-react';
+import { Search, Pencil, Check } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import type { Contact } from '@/lib/types';
-
-type NewContactForm = {
-  account_id: string;
-  account_name: string;
-  billing_city: string;
-  billing_state: string;
-  full_name: string;
-  email: string;
-  mobile: string;
-  phone: string;
-  notes: string;
-};
-
-type ShopUser = {
-  account_id: string;
-  account_name: string | null;
-};
 
 type EditingCell = {
   id: string;
   field: keyof Contact;
 } | null;
 
-const EMPTY_CONTACT_FORM: NewContactForm = {
-  account_id: '',
-  account_name: '',
-  billing_city: '',
-  billing_state: '',
-  full_name: '',
-  email: '',
-  mobile: '',
-  phone: '',
-  notes: '',
-};
-
 function formatPhone(value?: string | null) {
   const digits = String(value ?? '').replace(/\D/g, '');
   if (!digits) return '';
 
-  if (digits.length === 11 && digits.startsWith('1')) {
-    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7, 11)}`;
-  }
-
   if (digits.length === 10) {
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
 
   return value ?? '';
@@ -58,247 +25,181 @@ function formatPhone(value?: string | null) {
 
 function formatPhoneInput(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 10);
-
   if (digits.length <= 3) return digits;
   if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
-function normalizePhoneForSave(value?: string | null) {
-  return formatPhone(value)?.trim() || null;
-}
-
 function ContactsPageContent() {
   const searchParams = useSearchParams();
 
-  const accountIdFilter = searchParams.get('accountId');
-  const accountNameFilter = searchParams.get('accountName');
-
   const [rows, setRows] = useState<Contact[]>([]);
   const [query, setQuery] = useState('');
-  const [shopUser, setShopUser] = useState<ShopUser | null>(null);
-  const [showContactModal, setShowContactModal] = useState(false);
-  const [savingNewContact, setSavingNewContact] = useState(false);
-
-  const [editingCell, setEditingCell] = useState<EditingCell>(null);
-  const [draftValue, setDraftValue] = useState('');
-  const [savedMessage, setSavedMessage] = useState('');
-
-  const [newContact, setNewContact] = useState<NewContactForm>({
-    ...EMPTY_CONTACT_FORM,
-    account_id: accountIdFilter ?? '',
-    account_name: accountNameFilter ?? '',
-  });
+  const [editing, setEditing] = useState<EditingCell>(null);
+  const [draft, setDraft] = useState('');
+  const [saved, setSaved] = useState('');
 
   useEffect(() => {
     void load();
-  }, [accountIdFilter]);
-
-  function flashSaved() {
-    setSavedMessage('Saved');
-    window.setTimeout(() => setSavedMessage(''), 1200);
-  }
+  }, []);
 
   async function load() {
-    const { data: userData } = await supabase.auth.getUser();
-    const email = userData.user?.email?.toLowerCase() || '';
-
-    let currentShopUser: ShopUser | null = null;
-
-    if (email) {
-      const { data: shopData } = await supabase
-        .from('shop_users')
-        .select('account_id, account_name')
-        .eq('user_email', email)
-        .maybeSingle();
-
-      currentShopUser = (shopData as ShopUser | null) || null;
-      setShopUser(currentShopUser);
-    }
-
-    let queryBuilder = supabase
+    const { data } = await supabase
       .from('contacts')
       .select('*')
       .order('account_name')
       .limit(2000);
 
-    if (currentShopUser?.account_id) {
-      queryBuilder = queryBuilder.eq('account_id', currentShopUser.account_id);
-    } else if (accountIdFilter) {
-      queryBuilder = queryBuilder.eq('account_id', accountIdFilter);
-    }
-
-    const { data } = await queryBuilder;
-
-    const normalized = ((data as Contact[]) ?? []).map((row) => ({
-      ...row,
-      mobile: formatPhone(row.mobile),
-      phone: formatPhone(row.phone),
-    }));
-
-    setRows(normalized);
+    setRows((data as Contact[]) || []);
   }
 
-  const filtered = useMemo(() => {
-    return rows.filter((row) =>
-      `${row.account_name} ${row.full_name ?? ''} ${row.email ?? ''} ${row.mobile ?? ''} ${row.phone ?? ''} ${row.billing_city ?? ''} ${row.billing_state ?? ''}`
-        .toLowerCase()
-        .includes(query.toLowerCase())
-    );
-  }, [rows, query]);
+  function flashSaved() {
+    setSaved('Saved');
+    setTimeout(() => setSaved(''), 1200);
+  }
 
-  async function updateRow(id: string, patch: Partial<Contact>) {
-    const rowBeingEdited = rows.find((row) => row.id === id);
+  async function save(row: Contact, field: keyof Contact) {
+    setEditing(null);
 
-    if (shopUser?.account_id && rowBeingEdited?.account_id !== shopUser.account_id) {
-      window.alert('You do not have permission to edit this contact.');
-      return;
-    }
-
-    const cleanedPatch: Partial<Contact> = { ...patch };
-
-    if (Object.prototype.hasOwnProperty.call(cleanedPatch, 'mobile')) {
-      cleanedPatch.mobile = normalizePhoneForSave(cleanedPatch.mobile);
-    }
-
-    if (Object.prototype.hasOwnProperty.call(cleanedPatch, 'phone')) {
-      cleanedPatch.phone = normalizePhoneForSave(cleanedPatch.phone);
-    }
-
-    const { data } = await supabase
+    await supabase
       .from('contacts')
-      .update(cleanedPatch)
-      .eq('id', id)
-      .select()
-      .single();
+      .update({ [field]: draft })
+      .eq('id', row.id);
 
-    if (data) {
-      setRows((current) =>
-        current.map((row) =>
-          row.id === id
-            ? {
-                ...row,
-                ...(data as Contact),
-                mobile: formatPhone((data as Contact).mobile),
-                phone: formatPhone((data as Contact).phone),
-              }
-            : row
-        )
-      );
-    }
+    setRows((r) =>
+      r.map((x) =>
+        x.id === row.id ? { ...x, [field]: draft } : x
+      )
+    );
 
     flashSaved();
   }
 
-  function startEdit(row: Contact, field: keyof Contact, options?: { phone?: boolean }) {
-    const rawValue = String(row[field] ?? '');
-    setEditingCell({ id: row.id, field });
-    setDraftValue(options?.phone ? formatPhoneInput(rawValue) : rawValue);
+  function startEdit(row: Contact, field: keyof Contact, isPhone?: boolean) {
+    setEditing({ id: row.id, field });
+    setDraft(isPhone ? formatPhoneInput(String(row[field] || '')) : String(row[field] || ''));
   }
 
-  function cancelEdit() {
-    setEditingCell(null);
-    setDraftValue('');
-  }
-
-  async function saveEdit(row: Contact, field: keyof Contact) {
-    setEditingCell(null);
-    setDraftValue('');
-    await updateRow(row.id, { [field]: draftValue });
-  }
-
-  function renderEditableCell(
-    row: Contact,
-    field: keyof Contact,
-    options?: { phone?: boolean; email?: boolean }
-  ) {
-    const isEditing = editingCell?.id === row.id && editingCell.field === field;
-    const rawValue = String(row[field] ?? '');
+  function renderCell(row: Contact, field: keyof Contact, opts?: { phone?: boolean; email?: boolean }) {
+    const isEditing = editing?.id === row.id && editing.field === field;
+    const value = String(row[field] || '');
 
     if (isEditing) {
       return (
         <input
           autoFocus
-          value={draftValue}
+          value={draft}
           onChange={(e) =>
-            setDraftValue(options?.phone ? formatPhoneInput(e.target.value) : e.target.value)
+            setDraft(opts?.phone ? formatPhoneInput(e.target.value) : e.target.value)
           }
-          onBlur={() => void saveEdit(row, field)}
+          onBlur={() => save(row, field)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') e.currentTarget.blur();
-            if (e.key === 'Escape') cancelEdit();
+            if (e.key === 'Escape') setEditing(null);
           }}
-          className="rounded border px-2 py-1 text-sm"
+          className="border rounded px-2 py-1 text-sm"
         />
       );
     }
 
     return (
-      <div className="flex items-center gap-2">
-        {options?.phone && rawValue ? (
-          <a href={`tel:${rawValue}`} className="text-blue-700">
-            {formatPhone(rawValue)}
+      <div className="flex items-center gap-1">
+        {opts?.phone && value ? (
+          <a href={`tel:${value}`} className="text-blue-700">
+            {formatPhone(value)}
           </a>
-        ) : options?.email && rawValue ? (
-          <a href={`mailto:${rawValue}`} className="text-blue-700">
-            {rawValue}
+        ) : opts?.email && value ? (
+          <a href={`mailto:${value}`} className="text-blue-700">
+            {value}
           </a>
         ) : (
-          <button onClick={() => startEdit(row, field)}>{rawValue || '—'}</button>
+          <button onClick={() => startEdit(row, field, opts?.phone)}>
+            {value || '—'}
+          </button>
         )}
-        <Pencil className="h-3 w-3" />
+        <Pencil className="h-3 w-3 opacity-50" />
       </div>
     );
   }
 
+  const filtered = useMemo(() => {
+    return rows.filter((r) =>
+      `${r.account_name} ${r.full_name} ${r.email}`
+        .toLowerCase()
+        .includes(query.toLowerCase())
+    );
+  }, [rows, query]);
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Contacts</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-semibold">Contacts</h1>
 
-      <table className="w-full text-sm">
-        <thead>
-          <tr>
-            <th>Account</th>
-            <th>Contact</th>
-            <th>Email</th>
-            <th>Mobile</th>
-            <th>Phone</th>
-            <th>City</th>
-          </tr>
-        </thead>
+        <div className="flex items-center gap-3">
+          {saved && (
+            <div className="flex items-center gap-1 text-green-600 text-sm">
+              <Check className="h-4 w-4" /> {saved}
+            </div>
+          )}
 
-        <tbody>
-          {filtered.map((row) => (
-            <tr key={row.id}>
-              <td>
-                {row.account_id ? (
-                  <Link
-                    href={`/accounts/${row.account_id}`}
-                    className="text-blue-700 hover:underline"
-                  >
-                    {row.account_name}
-                  </Link>
-                ) : (
-                  row.account_name
-                )}
-              </td>
+          <div className="relative">
+            <Search className="absolute left-2 top-2 h-4 w-4 text-gray-400" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-8 border rounded px-3 py-2 text-sm"
+              placeholder="Search"
+            />
+          </div>
+        </div>
+      </div>
 
-              <td>{renderEditableCell(row, 'full_name')}</td>
-              <td>{renderEditableCell(row, 'email', { email: true })}</td>
-              <td>{renderEditableCell(row, 'mobile', { phone: true })}</td>
-              <td>{renderEditableCell(row, 'phone', { phone: true })}</td>
-              <td>{renderEditableCell(row, 'billing_city')}</td>
+      <div className="border rounded-xl overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-gray-500">
+            <tr>
+              <th className="px-4 py-2 text-left">Account</th>
+              <th className="px-4 py-2 text-left">Contact</th>
+              <th className="px-4 py-2 text-left">Email</th>
+              <th className="px-4 py-2 text-left">Mobile</th>
+              <th className="px-4 py-2 text-left">Phone</th>
+              <th className="px-4 py-2 text-left">City</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+
+          <tbody>
+            {filtered.map((row) => (
+              <tr key={row.id} className="border-t">
+                <td className="px-4 py-2">
+                  {row.account_id ? (
+                    <Link
+                      href={`/accounts/${row.account_id}`}
+                      className="text-blue-700 hover:underline"
+                    >
+                      {row.account_name}
+                    </Link>
+                  ) : (
+                    row.account_name
+                  )}
+                </td>
+
+                <td className="px-4 py-2">{renderCell(row, 'full_name')}</td>
+                <td className="px-4 py-2">{renderCell(row, 'email', { email: true })}</td>
+                <td className="px-4 py-2">{renderCell(row, 'mobile', { phone: true })}</td>
+                <td className="px-4 py-2">{renderCell(row, 'phone', { phone: true })}</td>
+                <td className="px-4 py-2">{renderCell(row, 'billing_city')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
 export default function ContactsPage() {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense fallback={<div className="p-6">Loading...</div>}>
       <ContactsPageContent />
     </Suspense>
   );
