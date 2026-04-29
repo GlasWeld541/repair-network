@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 const YES_NO_UNKNOWN = ['Unknown', 'Yes', 'No'] as const;
@@ -25,19 +26,21 @@ type AccountRow = {
   outreach_status: string | null;
 };
 
-export default function AccountsPage() {
+function AccountsPageContent() {
+  const searchParams = useSearchParams();
+
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [query, setQuery] = useState('');
   const [stateFilter, setStateFilter] = useState('');
 
   useEffect(() => {
     void loadAccounts();
-
-    // ✅ READ URL PARAMS (THIS WAS MISSING)
-    const params = new URLSearchParams(window.location.search);
-    setQuery(params.get('search') || '');
-    setStateFilter((params.get('state') || '').toUpperCase());
   }, []);
+
+  useEffect(() => {
+    setQuery(searchParams.get('search') || '');
+    setStateFilter((searchParams.get('state') || '').toUpperCase());
+  }, [searchParams]);
 
   async function loadAccounts() {
     const { data } = await supabase
@@ -60,14 +63,21 @@ export default function AccountsPage() {
 
   const filteredAccounts = useMemo(() => {
     return accounts.filter((account) => {
-      const matchesSearch =
-        `${account.account_name} ${account.city} ${account.state}`
-          .toLowerCase()
-          .includes(query.toLowerCase());
+      const haystack = [
+        account.account_name ?? '',
+        account.street ?? '',
+        account.city ?? '',
+        account.state ?? '',
+        account.postal_code ?? '',
+        account.company_phone ?? '',
+        account.company_email ?? '',
+      ]
+        .join(' ')
+        .toLowerCase();
 
+      const matchesSearch = !query.trim() || haystack.includes(query.trim().toLowerCase());
       const matchesState =
-        !stateFilter ||
-        (account.state || '').toUpperCase() === stateFilter;
+        !stateFilter || (account.state || '').trim().toUpperCase() === stateFilter;
 
       return matchesSearch && matchesState;
     });
@@ -75,7 +85,6 @@ export default function AccountsPage() {
 
   return (
     <div className="space-y-6">
-      {/* HEADER */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-3xl font-semibold text-ink">Accounts</h1>
@@ -97,7 +106,6 @@ export default function AccountsPage() {
         </div>
       </div>
 
-      {/* CARD */}
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-soft">
         <table className="min-w-[1000px] text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
@@ -137,8 +145,8 @@ export default function AccountsPage() {
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {YES_NO_UNKNOWN.map((o) => (
-                      <option key={o}>{o}</option>
+                    {YES_NO_UNKNOWN.map((option) => (
+                      <option key={option}>{option}</option>
                     ))}
                   </select>
                 </td>
@@ -151,8 +159,8 @@ export default function AccountsPage() {
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {YES_NO_UNKNOWN.map((o) => (
-                      <option key={o}>{o}</option>
+                    {YES_NO_UNKNOWN.map((option) => (
+                      <option key={option}>{option}</option>
                     ))}
                   </select>
                 </td>
@@ -165,8 +173,8 @@ export default function AccountsPage() {
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {YES_NO_UNKNOWN.map((o) => (
-                      <option key={o}>{o}</option>
+                    {YES_NO_UNKNOWN.map((option) => (
+                      <option key={option}>{option}</option>
                     ))}
                   </select>
                 </td>
@@ -179,8 +187,8 @@ export default function AccountsPage() {
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {YES_NO_UNKNOWN.map((o) => (
-                      <option key={o}>{o}</option>
+                    {YES_NO_UNKNOWN.map((option) => (
+                      <option key={option}>{option}</option>
                     ))}
                   </select>
                 </td>
@@ -193,8 +201,8 @@ export default function AccountsPage() {
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {YES_NO_UNKNOWN.map((o) => (
-                      <option key={o}>{o}</option>
+                    {YES_NO_UNKNOWN.map((option) => (
+                      <option key={option}>{option}</option>
                     ))}
                   </select>
                 </td>
@@ -207,16 +215,32 @@ export default function AccountsPage() {
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {OUTREACH_OPTIONS.map((o) => (
-                      <option key={o}>{o}</option>
+                    {OUTREACH_OPTIONS.map((option) => (
+                      <option key={option}>{option}</option>
                     ))}
                   </select>
                 </td>
               </tr>
             ))}
+
+            {!filteredAccounts.length ? (
+              <tr>
+                <td colSpan={9} className="px-4 py-10 text-center text-slate-500">
+                  No accounts found.
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>
     </div>
+  );
+}
+
+export default function AccountsPage() {
+  return (
+    <Suspense fallback={<div className="p-6">Loading accounts...</div>}>
+      <AccountsPageContent />
+    </Suspense>
   );
 }
