@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import HomeCoverageMap from '@/components/home-coverage-map';
@@ -30,6 +30,10 @@ const overviewCards = [
 export default function HomePage() {
   const router = useRouter();
 
+  const [totalLocations, setTotalLocations] = useState(0);
+  const [statesCovered, setStatesCovered] = useState(0);
+  const [repairOnlyCount, setRepairOnlyCount] = useState(0);
+
   useEffect(() => {
     const run = async () => {
       const {
@@ -52,9 +56,36 @@ export default function HomePage() {
     run();
   }, [router]);
 
+  useEffect(() => {
+    async function loadCounters() {
+      const { data } = await supabase
+        .from('accounts')
+        .select('id, state, repair_only');
+
+      const rows = data || [];
+
+      setTotalLocations(rows.length);
+
+      setStatesCovered(
+        new Set(
+          rows
+            .map((row) => row.state?.trim().toUpperCase())
+            .filter(Boolean)
+        ).size
+      );
+
+      setRepairOnlyCount(
+        rows.filter(
+          (row) => row.repair_only?.trim().toLowerCase() === 'yes'
+        ).length
+      );
+    }
+
+    void loadCounters();
+  }, []);
+
   return (
     <div className="space-y-10">
-      {/* HERO */}
       <section className="overflow-hidden rounded-[30px] bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 px-10 py-12 text-white shadow-[0_25px_60px_rgba(15,23,42,0.45)] lg:px-14 lg:py-14">
         <div className="grid gap-10 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
           <div>
@@ -62,7 +93,6 @@ export default function HomePage() {
               Repair-first network
             </div>
 
-            {/* 🔥 STRONGER HEADLINE */}
             <h1 className="mt-5 max-w-none text-4xl font-semibold leading-[1.06] tracking-[-0.035em] lg:text-[58px]">
               Reduce glass claim costs by eliminating unnecessary replacements.
             </h1>
@@ -74,16 +104,40 @@ export default function HomePage() {
               higher-quality customer experience.
             </p>
 
-            {/* 🔥 OPTIONAL PROOF METRIC (high impact) */}
-            <div className="mt-6 text-sm text-teal-300 font-medium tracking-wide">
-              85+ verified repair-only locations nationwide
+            <div className="mt-8 grid max-w-2xl gap-4 sm:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="text-3xl font-semibold text-white">
+                  {totalLocations}
+                </div>
+                <div className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-teal-300">
+                  Mapped locations
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="text-3xl font-semibold text-white">
+                  {statesCovered}
+                </div>
+                <div className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-teal-300">
+                  States covered
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="text-3xl font-semibold text-white">
+                  {repairOnlyCount}
+                </div>
+                <div className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-teal-300">
+                  Repair-only shops
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* RIGHT SIDE CARDS */}
           <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
             {overviewCards.map((card) => {
               const Icon = card.icon;
+
               return (
                 <div
                   key={card.title}
@@ -106,7 +160,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* MAP SECTION */}
       <section className="space-y-4">
         <div className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-600">
           Real-time repair coverage footprint
