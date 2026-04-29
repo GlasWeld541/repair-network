@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Search, Pencil, Check } from 'lucide-react';
-import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import type { Contact } from '@/lib/types';
 
@@ -31,8 +30,6 @@ function formatPhoneInput(value: string) {
 }
 
 function ContactsPageContent() {
-  const searchParams = useSearchParams();
-
   const [rows, setRows] = useState<Contact[]>([]);
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<EditingCell>(null);
@@ -97,27 +94,30 @@ function ContactsPageContent() {
             if (e.key === 'Enter') e.currentTarget.blur();
             if (e.key === 'Escape') setEditing(null);
           }}
-          className="border rounded px-2 py-1 text-sm"
+          className="h-9 w-full rounded border border-slate-300 px-3 text-sm"
         />
       );
     }
 
     return (
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         {opts?.phone && value ? (
-          <a href={`tel:${value}`} className="text-blue-700">
+          <a href={`tel:${value}`} className="text-blue-700 hover:underline">
             {formatPhone(value)}
           </a>
         ) : opts?.email && value ? (
-          <a href={`mailto:${value}`} className="text-blue-700">
+          <a href={`mailto:${value}`} className="text-blue-700 hover:underline">
             {value}
           </a>
         ) : (
-          <button onClick={() => startEdit(row, field, opts?.phone)}>
+          <button
+            onClick={() => startEdit(row, field, opts?.phone)}
+            className="text-left hover:bg-slate-100 rounded px-1 py-1"
+          >
             {value || '—'}
           </button>
         )}
-        <Pencil className="h-3 w-3 opacity-50" />
+        <Pencil className="h-3 w-3 text-slate-400" />
       </div>
     );
   }
@@ -132,45 +132,52 @@ function ContactsPageContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-semibold">Contacts</h1>
+      {/* HEADER */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 className="text-3xl font-semibold text-ink">Contacts</h1>
+          <p className="text-sm text-slate-500">
+            Click any field to edit. Press Enter to save or Escape to cancel.
+          </p>
+        </div>
 
         <div className="flex items-center gap-3">
           {saved && (
-            <div className="flex items-center gap-1 text-green-600 text-sm">
+            <div className="flex items-center gap-1 text-emerald-600 text-sm">
               <Check className="h-4 w-4" /> {saved}
             </div>
           )}
 
-          <div className="relative">
-            <Search className="absolute left-2 top-2 h-4 w-4 text-gray-400" />
+          <div className="relative min-w-[280px]">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="pl-8 border rounded px-3 py-2 text-sm"
-              placeholder="Search"
+              className="h-10 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm"
+              placeholder="Search contacts or accounts"
             />
           </div>
         </div>
       </div>
 
-      <div className="border rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-500">
+      {/* TABLE CARD */}
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-soft">
+        <table className="min-w-[1000px] text-sm">
+          <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
-              <th className="px-4 py-2 text-left">Account</th>
-              <th className="px-4 py-2 text-left">Contact</th>
-              <th className="px-4 py-2 text-left">Email</th>
-              <th className="px-4 py-2 text-left">Mobile</th>
-              <th className="px-4 py-2 text-left">Phone</th>
-              <th className="px-4 py-2 text-left">City</th>
+              <th className="px-4 py-3 font-semibold">Account</th>
+              <th className="px-4 py-3 font-semibold">Contact</th>
+              <th className="px-4 py-3 font-semibold">Email</th>
+              <th className="px-4 py-3 font-semibold">Mobile</th>
+              <th className="px-4 py-3 font-semibold">Phone</th>
+              <th className="px-4 py-3 font-semibold">City</th>
             </tr>
           </thead>
 
           <tbody>
             {filtered.map((row) => (
-              <tr key={row.id} className="border-t">
-                <td className="px-4 py-2">
+              <tr key={row.id} className="border-t border-slate-100">
+                <td className="px-4 py-3 font-medium text-ink">
                   {row.account_id ? (
                     <Link
                       href={`/accounts/${row.account_id}`}
@@ -183,11 +190,11 @@ function ContactsPageContent() {
                   )}
                 </td>
 
-                <td className="px-4 py-2">{renderCell(row, 'full_name')}</td>
-                <td className="px-4 py-2">{renderCell(row, 'email', { email: true })}</td>
-                <td className="px-4 py-2">{renderCell(row, 'mobile', { phone: true })}</td>
-                <td className="px-4 py-2">{renderCell(row, 'phone', { phone: true })}</td>
-                <td className="px-4 py-2">{renderCell(row, 'billing_city')}</td>
+                <td className="px-4 py-3">{renderCell(row, 'full_name')}</td>
+                <td className="px-4 py-3">{renderCell(row, 'email', { email: true })}</td>
+                <td className="px-4 py-3">{renderCell(row, 'mobile', { phone: true })}</td>
+                <td className="px-4 py-3">{renderCell(row, 'phone', { phone: true })}</td>
+                <td className="px-4 py-3">{renderCell(row, 'billing_city')}</td>
               </tr>
             ))}
           </tbody>
