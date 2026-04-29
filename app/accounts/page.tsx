@@ -28,10 +28,15 @@ type AccountRow = {
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [query, setQuery] = useState('');
-  const [stateFilter, setStateFilter] = useState('all');
+  const [stateFilter, setStateFilter] = useState('');
 
   useEffect(() => {
     void loadAccounts();
+
+    // ✅ READ URL PARAMS (THIS WAS MISSING)
+    const params = new URLSearchParams(window.location.search);
+    setQuery(params.get('search') || '');
+    setStateFilter((params.get('state') || '').toUpperCase());
   }, []);
 
   async function loadAccounts() {
@@ -54,16 +59,23 @@ export default function AccountsPage() {
   }
 
   const filteredAccounts = useMemo(() => {
-    return accounts.filter((account) =>
-      `${account.account_name} ${account.city} ${account.state}`
-        .toLowerCase()
-        .includes(query.toLowerCase())
-    );
-  }, [accounts, query]);
+    return accounts.filter((account) => {
+      const matchesSearch =
+        `${account.account_name} ${account.city} ${account.state}`
+          .toLowerCase()
+          .includes(query.toLowerCase());
+
+      const matchesState =
+        !stateFilter ||
+        (account.state || '').toUpperCase() === stateFilter;
+
+      return matchesSearch && matchesState;
+    });
+  }, [accounts, query, stateFilter]);
 
   return (
     <div className="space-y-6">
-      {/* HEADER (MATCHES CONTACTS) */}
+      {/* HEADER */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-3xl font-semibold text-ink">Accounts</h1>
@@ -85,7 +97,7 @@ export default function AccountsPage() {
         </div>
       </div>
 
-      {/* CARD (MATCHES CONTACTS EXACTLY) */}
+      {/* CARD */}
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-soft">
         <table className="min-w-[1000px] text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
@@ -125,8 +137,8 @@ export default function AccountsPage() {
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {YES_NO_UNKNOWN.map((option) => (
-                      <option key={option}>{option}</option>
+                    {YES_NO_UNKNOWN.map((o) => (
+                      <option key={o}>{o}</option>
                     ))}
                   </select>
                 </td>
@@ -139,8 +151,8 @@ export default function AccountsPage() {
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {YES_NO_UNKNOWN.map((option) => (
-                      <option key={option}>{option}</option>
+                    {YES_NO_UNKNOWN.map((o) => (
+                      <option key={o}>{o}</option>
                     ))}
                   </select>
                 </td>
@@ -153,8 +165,8 @@ export default function AccountsPage() {
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {YES_NO_UNKNOWN.map((option) => (
-                      <option key={option}>{option}</option>
+                    {YES_NO_UNKNOWN.map((o) => (
+                      <option key={o}>{o}</option>
                     ))}
                   </select>
                 </td>
@@ -167,8 +179,8 @@ export default function AccountsPage() {
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {YES_NO_UNKNOWN.map((option) => (
-                      <option key={option}>{option}</option>
+                    {YES_NO_UNKNOWN.map((o) => (
+                      <option key={o}>{o}</option>
                     ))}
                   </select>
                 </td>
@@ -181,8 +193,8 @@ export default function AccountsPage() {
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {YES_NO_UNKNOWN.map((option) => (
-                      <option key={option}>{option}</option>
+                    {YES_NO_UNKNOWN.map((o) => (
+                      <option key={o}>{o}</option>
                     ))}
                   </select>
                 </td>
@@ -195,8 +207,8 @@ export default function AccountsPage() {
                     }
                     className="rounded border px-2 py-1"
                   >
-                    {OUTREACH_OPTIONS.map((option) => (
-                      <option key={option}>{option}</option>
+                    {OUTREACH_OPTIONS.map((o) => (
+                      <option key={o}>{o}</option>
                     ))}
                   </select>
                 </td>
