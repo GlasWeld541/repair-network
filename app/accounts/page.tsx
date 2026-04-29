@@ -39,7 +39,7 @@ function AccountsPageContent() {
 
   useEffect(() => {
     setQuery(searchParams.get('search') || '');
-    setStateFilter((searchParams.get('state') || '').toUpperCase());
+    setStateFilter((searchParams.get('state') || '').trim().toUpperCase());
   }, [searchParams]);
 
   async function loadAccounts() {
@@ -75,9 +75,10 @@ function AccountsPageContent() {
         .join(' ')
         .toLowerCase();
 
+      const accountState = (account.state || '').trim().toUpperCase();
+
       const matchesSearch = !query.trim() || haystack.includes(query.trim().toLowerCase());
-      const matchesState =
-        !stateFilter || (account.state || '').trim().toUpperCase() === stateFilter;
+      const matchesState = !stateFilter || accountState === stateFilter;
 
       return matchesSearch && matchesState;
     });
@@ -98,7 +99,7 @@ function AccountsPageContent() {
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              readOnly
               className="h-10 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm"
               placeholder="Search account, city, state, phone..."
             />
