@@ -26,10 +26,16 @@ type AccountRow = {
   outreach_status: string | null;
 };
 
+type ShopUser = {
+  account_id: string;
+  account_name: string | null;
+};
+
 function AccountsPageContent() {
   const searchParams = useSearchParams();
 
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
+  const [shopUser, setShopUser] = useState<ShopUser | null>(null);
   const [query, setQuery] = useState('');
   const [stateFilter, setStateFilter] = useState('');
 
@@ -43,15 +49,42 @@ function AccountsPageContent() {
   }, [searchParams]);
 
   async function loadAccounts() {
-    const { data } = await supabase
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData.user?.email?.toLowerCase() || '';
+
+    let currentShopUser: ShopUser | null = null;
+
+    if (email) {
+      const { data: shopData } = await supabase
+        .from('shop_users')
+        .select('account_id, account_name')
+        .eq('user_email', email)
+        .maybeSingle();
+
+      currentShopUser = (shopData as ShopUser | null) || null;
+      setShopUser(currentShopUser);
+    }
+
+    let accountQuery = supabase
       .from('accounts')
       .select('*')
       .order('account_name');
+
+    if (currentShopUser?.account_id) {
+      accountQuery = accountQuery.eq('id', currentShopUser.account_id);
+    }
+
+    const { data } = await accountQuery;
 
     setAccounts((data as AccountRow[]) || []);
   }
 
   async function updateAccount(id: string, field: string, value: string) {
+    if (shopUser?.account_id && shopUser.account_id !== id) {
+      window.alert('You do not have permission to edit this account.');
+      return;
+    }
+
     await supabase.from('accounts').update({ [field]: value }).eq('id', id);
 
     setAccounts((prev) =>
@@ -90,7 +123,9 @@ function AccountsPageContent() {
         <div>
           <h1 className="text-3xl font-semibold text-ink">Accounts</h1>
           <p className="text-sm text-slate-500">
-            Click any account to open full detail view.
+            {shopUser
+              ? 'This view only shows your shop account.'
+              : 'Click any account to open full detail view.'}
           </p>
         </div>
 
