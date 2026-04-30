@@ -64,6 +64,25 @@ type PaymentSettingsRow = {
   insurance_submission_method: string | null;
 };
 
+type NewJobForm = {
+  customer_name: string;
+  customer_phone: string;
+  customer_email: string;
+  vehicle_year: string;
+  vehicle_make: string;
+  vehicle_model: string;
+  vehicle_vin: string;
+  damage_type: string;
+  damage_notes: string;
+  invoice_amount: string;
+  invoice_date: string;
+  assigned_account_id: string;
+  insurance_carrier: string;
+  claim_number: string;
+  policy_number: string;
+  loss_date: string;
+};
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -97,18 +116,43 @@ function displayUnpaid(job: JobWithInvoice) {
   return Math.max(displayInvoiceAmount(job) - displayAmountPaid(job), 0);
 }
 
+function emptyJobForm(): NewJobForm {
+  return {
+    customer_name: '',
+    customer_phone: '',
+    customer_email: '',
+    vehicle_year: '',
+    vehicle_make: '',
+    vehicle_model: '',
+    vehicle_vin: '',
+    damage_type: '',
+    damage_notes: '',
+    invoice_amount: '',
+    invoice_date: todayIso(),
+    assigned_account_id: '',
+    insurance_carrier: '',
+    claim_number: '',
+    policy_number: '',
+    loss_date: '',
+  };
+}
+
 export default function JobsPage() {
   const [jobs, setJobs] = useState<JobWithInvoice[]>([]);
+  const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [shopUser, setShopUser] = useState<ShopUser | null>(null);
   const [creatingInvoiceId, setCreatingInvoiceId] = useState<string | null>(null);
+
+  const [showAddJob, setShowAddJob] = useState(false);
+  const [savingJob, setSavingJob] = useState(false);
+  const [newJob, setNewJob] = useState<NewJobForm>(emptyJobForm());
 
   const [dateFrom, setDateFrom] = useState(startOfCurrentMonthIso());
   const [dateTo, setDateTo] = useState(todayIso());
 
   useEffect(() => {
     void loadJobs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFrom, dateTo]);
 
   async function getShopUserForCurrentLogin() {
@@ -131,6 +175,28 @@ export default function JobsPage() {
 
     const currentShopUser = await getShopUserForCurrentLogin();
     setShopUser(currentShopUser);
+
+    if (!currentShopUser?.account_id) {
+      const { data: accountData } = await supabase
+        .from('accounts')
+        .select('id, account_name, street, city, state, postal_code, company_email, company_phone')
+        .order('account_name');
+
+      setAccounts((accountData as AccountRow[]) || []);
+    } else {
+      setAccounts([
+        {
+          id: currentShopUser.account_id,
+          account_name: currentShopUser.account_name,
+          street: null,
+          city: null,
+          state: null,
+          postal_code: null,
+          company_email: null,
+          company_phone: null,
+        },
+      ]);
+    }
 
     let query = supabase
       .from('jobs')
@@ -181,6 +247,80 @@ export default function JobsPage() {
 
     setJobs(mergedJobs);
     setLoading(false);
+  }
+
+  function openAddJob() {
+    const nextForm = emptyJobForm();
+
+    if (shopUser?.account_id) {
+      nextForm.assigned_account_id = shopUser.account_id;
+    }
+
+    setNewJob(nextForm);
+    setShowAddJob(true);
+  }
+
+  async function createJob() {
+    if (!newJob.customer_name.trim()) {
+      window.alert('Customer name is required.');
+      return;
+    }
+
+    const assignedAccountId = shopUser?.account_id || newJob.assigned_account_id;
+
+    if (!assignedAccountId) {
+      window.alert('Assigned shop is required.');
+      return;
+    }
+
+    const assignedAccount =
+      accounts.find((account) => account.id === assignedAccountId) || null;
+
+    const invoiceAmount = Number(newJob.invoice_amount || 0);
+
+    setSavingJob(true);
+
+    try {
+      const { error } = await supabase.from('jobs').insert({
+        customer_name: newJob.customer_name.trim(),
+        customer_phone: newJob.customer_phone.trim() || null,
+        customer_email: newJob.customer_email.trim() || null,
+
+        vehicle_year: newJob.vehicle_year.trim() || null,
+        vehicle_make: newJob.vehicle_make.trim() || null,
+        vehicle_model: newJob.vehicle_model.trim() || null,
+        vehicle_vin: newJob.vehicle_vin.trim() || null,
+
+        damage_type: newJob.damage_type.trim() || null,
+        damage_notes: newJob.damage_notes.trim() || null,
+
+        job_status: 'Assigned',
+        invoice_amount: Number.isFinite(invoiceAmount) ? invoiceAmount : 0,
+        amount_paid: 0,
+        payment_status: 'Not Paid',
+        invoice_date: newJob.invoice_date || todayIso(),
+
+        assigned_account_id: assignedAccountId,
+        assigned_account_name:
+          shopUser?.account_name || assignedAccount?.account_name || null,
+
+        insurance_carrier: newJob.insurance_carrier.trim() || null,
+        claim_number: newJob.claim_number.trim() || null,
+        policy_number: newJob.policy_number.trim() || null,
+        loss_date: newJob.loss_date || null,
+      });
+
+      if (error) {
+        window.alert(`Could not add job: ${error.message}`);
+        return;
+      }
+
+      setShowAddJob(false);
+      setNewJob(emptyJobForm());
+      await loadJobs();
+    } finally {
+      setSavingJob(false);
+    }
   }
 
   async function generateInvoice(job: JobWithInvoice) {
@@ -320,6 +460,14 @@ export default function JobsPage() {
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <button
+            type="button"
+            onClick={openAddJob}
+            className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            + Add Job
+          </button>
+
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
               From
@@ -515,6 +663,242 @@ export default function JobsPage() {
           </tbody>
         </table>
       </div>
+
+      {showAddJob ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Add Job</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Create a job assigned to a repair shop.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowAddJob(false)}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="grid gap-4 px-6 py-5 md:grid-cols-3">
+              {!shopUser ? (
+                <label className="space-y-1 md:col-span-3">
+                  <span className="text-sm font-medium text-slate-700">Assigned Shop</span>
+                  <select
+                    value={newJob.assigned_account_id}
+                    onChange={(e) =>
+                      setNewJob((current) => ({
+                        ...current,
+                        assigned_account_id: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">Select shop</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.account_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">Customer Name</span>
+                <input
+                  value={newJob.customer_name}
+                  onChange={(e) =>
+                    setNewJob((current) => ({ ...current, customer_name: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">Customer Phone</span>
+                <input
+                  value={newJob.customer_phone}
+                  onChange={(e) =>
+                    setNewJob((current) => ({ ...current, customer_phone: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">Customer Email</span>
+                <input
+                  value={newJob.customer_email}
+                  onChange={(e) =>
+                    setNewJob((current) => ({ ...current, customer_email: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">Year</span>
+                <input
+                  value={newJob.vehicle_year}
+                  onChange={(e) =>
+                    setNewJob((current) => ({ ...current, vehicle_year: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">Make</span>
+                <input
+                  value={newJob.vehicle_make}
+                  onChange={(e) =>
+                    setNewJob((current) => ({ ...current, vehicle_make: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">Model</span>
+                <input
+                  value={newJob.vehicle_model}
+                  onChange={(e) =>
+                    setNewJob((current) => ({ ...current, vehicle_model: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">VIN</span>
+                <input
+                  value={newJob.vehicle_vin}
+                  onChange={(e) =>
+                    setNewJob((current) => ({ ...current, vehicle_vin: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">Damage Type</span>
+                <input
+                  value={newJob.damage_type}
+                  onChange={(e) =>
+                    setNewJob((current) => ({ ...current, damage_type: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">Invoice Date</span>
+                <input
+                  type="date"
+                  value={newJob.invoice_date}
+                  onChange={(e) =>
+                    setNewJob((current) => ({ ...current, invoice_date: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">Invoice Amount</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={newJob.invoice_amount}
+                  onChange={(e) =>
+                    setNewJob((current) => ({ ...current, invoice_amount: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">Insurance Carrier</span>
+                <input
+                  value={newJob.insurance_carrier}
+                  onChange={(e) =>
+                    setNewJob((current) => ({ ...current, insurance_carrier: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">Claim Number</span>
+                <input
+                  value={newJob.claim_number}
+                  onChange={(e) =>
+                    setNewJob((current) => ({ ...current, claim_number: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">Policy Number</span>
+                <input
+                  value={newJob.policy_number}
+                  onChange={(e) =>
+                    setNewJob((current) => ({ ...current, policy_number: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">Loss Date</span>
+                <input
+                  type="date"
+                  value={newJob.loss_date}
+                  onChange={(e) =>
+                    setNewJob((current) => ({ ...current, loss_date: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="space-y-1 md:col-span-3">
+                <span className="text-sm font-medium text-slate-700">Damage Notes</span>
+                <textarea
+                  value={newJob.damage_notes}
+                  onChange={(e) =>
+                    setNewJob((current) => ({ ...current, damage_notes: e.target.value }))
+                  }
+                  className="min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setShowAddJob(false)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={savingJob}
+                onClick={() => void createJob()}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savingJob ? 'Saving...' : 'Save Job'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
