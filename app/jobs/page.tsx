@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
+const STATUS_OPTIONS = ['Assigned', 'Scheduled', 'Completed', 'Cancelled'] as const;
+
 type JobRow = {
   id: string;
   created_at: string;
@@ -150,6 +152,7 @@ export default function JobsPage() {
 
   const [dateFrom, setDateFrom] = useState(startOfCurrentMonthIso());
   const [dateTo, setDateTo] = useState(todayIso());
+  const [statusFilter, setStatusFilter] = useState('All');
 
   useEffect(() => {
     void loadJobs();
@@ -323,6 +326,24 @@ export default function JobsPage() {
     }
   }
 
+  async function updateJobStatus(jobId: string, newStatus: string) {
+    const { error } = await supabase
+      .from('jobs')
+      .update({ job_status: newStatus })
+      .eq('id', jobId);
+
+    if (error) {
+      window.alert(`Could not update job status: ${error.message}`);
+      return;
+    }
+
+    setJobs((prev) =>
+      prev.map((job) =>
+        job.id === jobId ? { ...job, job_status: newStatus } : job
+      )
+    );
+  }
+
   async function generateInvoice(job: JobWithInvoice) {
     setCreatingInvoiceId(job.id);
 
@@ -423,8 +444,15 @@ export default function JobsPage() {
     }
   }
 
+  const filteredJobs = useMemo(() => {
+    return jobs.filter((job) => {
+      if (statusFilter === 'All') return true;
+      return (job.job_status || 'Assigned') === statusFilter;
+    });
+  }, [jobs, statusFilter]);
+
   const totals = useMemo(() => {
-    return jobs.reduce(
+    return filteredJobs.reduce(
       (sum, job) => {
         const invoiceAmount = displayInvoiceAmount(job);
         const amountPaid = displayAmountPaid(job);
@@ -443,7 +471,7 @@ export default function JobsPage() {
         totalUnpaid: 0,
       }
     );
-  }, [jobs]);
+  }, [filteredJobs]);
 
   return (
     <div className="space-y-6">
@@ -492,11 +520,30 @@ export default function JobsPage() {
             />
           </label>
 
+          <label className="space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Status
+            </span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-10 rounded-lg border border-slate-300 px-3 text-sm"
+            >
+              <option value="All">All</option>
+              {STATUS_OPTIONS.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <button
             type="button"
             onClick={() => {
               setDateFrom('');
               setDateTo('');
+              setStatusFilter('All');
             }}
             className="h-10 rounded-lg border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
@@ -508,6 +555,7 @@ export default function JobsPage() {
             onClick={() => {
               setDateFrom(startOfCurrentMonthIso());
               setDateTo(todayIso());
+              setStatusFilter('All');
             }}
             className="h-10 rounded-lg bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-800"
           >
@@ -581,7 +629,7 @@ export default function JobsPage() {
                 </td>
               </tr>
             ) : (
-              jobs.map((job) => {
+              filteredJobs.map((job) => {
                 const invoiceAmount = displayInvoiceAmount(job);
                 const amountPaid = displayAmountPaid(job);
                 const unpaid = displayUnpaid(job);
@@ -612,7 +660,20 @@ export default function JobsPage() {
                       </td>
                     ) : null}
 
-                    <td className="px-4 py-3">{job.job_status || '—'}</td>
+                    <td className="px-4 py-3">
+                      <select
+                        value={job.job_status || 'Assigned'}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => void updateJobStatus(job.id, e.target.value)}
+                        className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                      >
+                        {STATUS_OPTIONS.map((status) => (
+                          <option key={status} value={status}>
+                            {status}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
 
                     <td className="px-4 py-3">{money(invoiceAmount)}</td>
 
@@ -650,13 +711,13 @@ export default function JobsPage() {
               })
             )}
 
-            {!loading && !jobs.length ? (
+            {!loading && !filteredJobs.length ? (
               <tr>
                 <td
                   colSpan={shopUser ? 8 : 9}
                   className="py-10 text-center text-slate-500"
                 >
-                  No jobs found for this date range.
+                  No jobs found for this date range/status.
                 </td>
               </tr>
             ) : null}
