@@ -44,6 +44,30 @@ export default function Header() {
     { value: '', label: 'All states' },
   ]);
 
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // 🔐 CHECK ADMIN ROLE
+  useEffect(() => {
+    async function checkAdmin() {
+      const { data: userData } = await supabase.auth.getUser();
+      const email = userData.user?.email?.toLowerCase();
+
+      if (!email) return;
+
+      const { data } = await supabase
+        .from('user_roles')
+        .select('role, approved')
+        .eq('user_email', email)
+        .maybeSingle();
+
+      if (data?.role === 'admin' && data?.approved === true) {
+        setIsAdmin(true);
+      }
+    }
+
+    void checkAdmin();
+  }, []);
+
   useEffect(() => {
     async function loadStates() {
       const { data } = await supabase
@@ -101,9 +125,15 @@ export default function Header() {
     window.location.href = '/login';
   }
 
+  const navItems = isAdmin
+    ? [...NAV_ITEMS, { href: '/admin/users', label: 'Admin' }]
+    : NAV_ITEMS;
+
   return (
     <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.28)]">
       <div className="mx-auto flex max-w-[1380px] items-center justify-between px-10 py-4">
+
+        {/* LEFT */}
         <Link href="/" className="group flex items-center gap-5">
           <div className="relative h-24 w-24 flex-shrink-0">
             <Image
@@ -125,7 +155,10 @@ export default function Header() {
           </div>
         </Link>
 
+        {/* RIGHT */}
         <div className="flex items-center gap-5">
+
+          {/* SEARCH */}
           <form onSubmit={handleSubmit} className="hidden items-center gap-3 xl:flex">
             <input
               value={query}
@@ -151,8 +184,9 @@ export default function Header() {
             </button>
           </form>
 
+          {/* NAV */}
           <nav className="flex items-center rounded-2xl border border-white/10 bg-white/5 p-1 text-sm font-medium text-slate-300">
-            {NAV_ITEMS.map((item) => {
+            {navItems.map((item) => {
               const isActive =
                 item.href === '/'
                   ? pathname === '/'
@@ -174,6 +208,7 @@ export default function Header() {
             })}
           </nav>
 
+          {/* LOGOUT */}
           <button
             type="button"
             onClick={handleLogout}
