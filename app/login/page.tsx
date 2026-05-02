@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -34,7 +35,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
         <div className="mb-6 text-center">
           <h1 className="text-2xl font-semibold text-slate-900">
             GlasWeld Repair Network
@@ -56,7 +57,9 @@ export default function LoginPage() {
             placeholder="Password"
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              setPassword(e.target.value);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 void login();
@@ -65,7 +68,7 @@ export default function LoginPage() {
           />
 
           <button
-            className="w-full rounded-lg bg-black py-3 font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-lg bg-slate-900 py-3 font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             onClick={() => void login()}
             disabled={isLoading}
           >
@@ -75,6 +78,16 @@ export default function LoginPage() {
           {error ? (
             <p className="text-center text-sm text-red-600">{error}</p>
           ) : null}
+
+          <div className="border-t border-slate-200 pt-4 text-center text-sm text-slate-500">
+            Need access?{' '}
+            <Link
+              href="/request-access"
+              className="font-semibold text-blue-700 hover:underline"
+            >
+              Request it here
+            </Link>
+          </div>
         </div>
       </div>
     </div>
