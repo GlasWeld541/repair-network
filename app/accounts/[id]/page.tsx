@@ -225,16 +225,22 @@ export default function AccountDetailPage() {
 
   async function addContact() {
     if (!newContactName.trim() && !newContactEmail.trim() && !newContactPhone.trim()) {
+      window.alert('Enter at least one contact field before adding.');
       return;
     }
 
-    await supabase.from('contacts').insert({
+    const { error } = await supabase.from('contacts').insert({
       account_id: id,
       account_name: account?.account_name,
       full_name: newContactName.trim() || null,
       email: newContactEmail.trim().toLowerCase() || null,
       mobile: newContactPhone.trim() || null,
     });
+
+    if (error) {
+      window.alert(`Could not add contact: ${error.message}`);
+      return;
+    }
 
     setNewContactName('');
     setNewContactEmail('');
@@ -273,6 +279,59 @@ export default function AccountDetailPage() {
     }
 
     flashSaved('Login access created');
+    await load();
+  }
+
+  async function sendInvite(contact: ContactRow) {
+    const contactEmail = normalizeEmail(contact.email);
+
+    if (!contactEmail) {
+      window.alert('This contact does not have an email address.');
+      return;
+    }
+
+    setBusyContactId(contact.id);
+
+    const accessError = await supabase.from('user_roles').upsert(
+      {
+        user_email: contactEmail,
+        role: 'shop',
+        approved: true,
+        access_status: 'Active',
+        account_id: id,
+        carrier_id: null,
+      },
+      { onConflict: 'user_email' }
+    );
+
+    if (accessError.error) {
+      setBusyContactId(null);
+      window.alert(`Could not create login access: ${accessError.error.message}`);
+      return;
+    }
+
+    const res = await fetch('/api/invite-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: contactEmail }),
+    });
+
+    let result: { error?: string; success?: boolean } = {};
+
+    try {
+      result = await res.json();
+    } catch {
+      result = {};
+    }
+
+    setBusyContactId(null);
+
+    if (!res.ok) {
+      window.alert(result.error || 'Failed to send invite.');
+      return;
+    }
+
+    flashSaved('Invite sent');
     await load();
   }
 
@@ -329,35 +388,6 @@ export default function AccountDetailPage() {
 
     flashSaved('Login access reactivated');
     await load();
-  }
-
-  function sendLoginEmail(contact: ContactRow) {
-    const contactEmail = normalizeEmail(contact.email);
-
-    if (!contactEmail) {
-      window.alert('This contact does not have an email address.');
-      return;
-    }
-
-    const subject = encodeURIComponent('GlasWeld Repair Network Access');
-    const body = encodeURIComponent(
-      `Hello${contact.full_name ? ` ${contact.full_name}` : ''},
-
-You now have access to the GlasWeld Repair Network.
-
-Login here:
-https://repair-network.vercel.app/login
-
-Your username is:
-${contactEmail}
-
-If you need access or need help signing in, use the Request Access link on the login screen.
-
-Thank you,
-GlasWeld`
-    );
-
-    window.location.href = `mailto:${contactEmail}?subject=${subject}&body=${body}`;
   }
 
   function startAccountEdit(field: keyof AccountRow, value: string | null) {
@@ -686,10 +716,11 @@ GlasWeld`
 
                   <button
                     type="button"
-                    onClick={() => sendLoginEmail(contact)}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    disabled={busyContactId === contact.id}
+                    onClick={() => void sendInvite(contact)}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                   >
-                    Email Login
+                    Send Invite
                   </button>
                 </div>
               </div>
