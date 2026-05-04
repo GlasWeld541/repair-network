@@ -38,6 +38,14 @@ type JobRow = {
   amount_paid: number | null;
 };
 
+type UserRoleRow = {
+  user_email: string;
+  role: string;
+  approved: boolean;
+  access_status: string | null;
+  account_id: string | null;
+};
+
 type EditingTarget =
   | { type: 'account'; field: keyof AccountRow }
   | { type: 'contact'; id: string; field: keyof ContactRow }
@@ -72,6 +80,17 @@ function money(value: number | null | undefined) {
   });
 }
 
+function normalizeEmail(value: string | null | undefined) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function accessBadgeClass(status: string) {
+  if (status === 'Active') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (status === 'Suspended') return 'border-amber-200 bg-amber-50 text-amber-700';
+  if (status === 'Revoked') return 'border-rose-200 bg-rose-50 text-rose-700';
+  return 'border-slate-200 bg-slate-50 text-slate-600';
+}
+
 export default function AccountDetailPage() {
   const params = useParams();
   const id = params.id as string;
@@ -79,8 +98,10 @@ export default function AccountDetailPage() {
   const [account, setAccount] = useState<AccountRow | null>(null);
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [jobs, setJobs] = useState<JobRow[]>([]);
+  const [userRoles, setUserRoles] = useState<UserRoleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [blocked, setBlocked] = useState(false);
+  const [busyContactId, setBusyContactId] = useState<string | null>(null);
 
   const [editing, setEditing] = useState<EditingTarget>(null);
   const [draftValue, setDraftValue] = useState('');
@@ -94,22 +115,34 @@ export default function AccountDetailPage() {
     void load();
   }, [id]);
 
-  function flashSaved() {
-    setSavedMessage('Saved');
-    window.setTimeout(() => setSavedMessage(''), 1200);
+  function flashSaved(message = 'Saved') {
+    setSavedMessage(message);
+    window.setTimeout(() => setSavedMessage(''), 1500);
   }
 
   async function load() {
     setLoading(true);
+    setBlocked(false);
 
     const { data: userData } = await supabase.auth.getUser();
-    const email = userData.user?.email;
+    const email = userData.user?.email?.toLowerCase();
 
-    const { data: shopUser } = await supabase
-      .from('shop_users')
-      .select('account_id')
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role, account_id, approved, access_status')
       .eq('user_email', email)
       .maybeSingle();
+
+    const isRestrictedShopUser =
+      roleData?.role === 'shop' &&
+      roleData?.approved === true &&
+      (roleData?.access_status ?? 'Active') === 'Active';
+
+    if (isRestrictedShopUser && roleData?.account_id && roleData.account_id !== id) {
+      setBlocked(true);
+      setLoading(false);
+      return;
+    }
 
     const { data: accountData } = await supabase
       .from('accounts')
@@ -119,32 +152,53 @@ export default function AccountDetailPage() {
       .eq('id', id)
       .single();
 
-    if (shopUser?.account_id && shopUser.account_id !== id) {
-      setBlocked(true);
-      setLoading(false);
-      return;
-    }
-
-    const [{ data: contactData }, { data: jobData }] = await Promise.all([
-      supabase
-        .from('contacts')
-        .select('id, account_id, full_name, email, mobile, phone')
-        .eq('account_id', id)
-        .order('full_name'),
-      supabase
-        .from('jobs')
-        .select(
-          'id, invoice_date, customer_name, vehicle_year, vehicle_make, vehicle_model, job_status, invoice_amount, amount_paid'
-        )
-        .eq('assigned_account_id', id)
-        .order('created_at', { ascending: false })
-        .limit(5),
-    ]);
+    const [{ data: contactData }, { data: jobData }, { data: roleRows }] =
+      await Promise.all([
+        supabase
+          .from('contacts')
+          .select('id, account_id, full_name, email, mobile, phone')
+          .eq('account_id', id)
+          .order('full_name'),
+        supabase
+          .from('jobs')
+          .select(
+            'id, invoice_date, customer_name, vehicle_year, vehicle_make, vehicle_model, job_status, invoice_amount, amount_paid'
+          )
+          .eq('assigned_account_id', id)
+          .order('created_at', { ascending: false })
+          .limit(5),
+        supabase
+          .from('user_roles')
+          .select('user_email, role, approved, access_status, account_id')
+          .eq('account_id', id)
+          .eq('role', 'shop'),
+      ]);
 
     setAccount(accountData as AccountRow);
     setContacts((contactData as ContactRow[]) || []);
     setJobs((jobData as JobRow[]) || []);
+    setUserRoles((roleRows as UserRoleRow[]) || []);
     setLoading(false);
+  }
+
+  function roleForContact(contact: ContactRow) {
+    const contactEmail = normalizeEmail(contact.email);
+
+    if (!contactEmail) return null;
+
+    return (
+      userRoles.find((role) => normalizeEmail(role.user_email) === contactEmail) || null
+    );
+  }
+
+  function accessStatusForContact(contact: ContactRow) {
+    const role = roleForContact(contact);
+
+    if (!contact.email) return 'No Email';
+    if (!role) return 'No Access';
+    if (!role.approved) return 'Not Approved';
+
+    return role.access_status || 'Active';
   }
 
   async function saveAccountField(field: keyof AccountRow) {
@@ -178,15 +232,132 @@ export default function AccountDetailPage() {
       account_id: id,
       account_name: account?.account_name,
       full_name: newContactName.trim() || null,
-      email: newContactEmail.trim() || null,
+      email: newContactEmail.trim().toLowerCase() || null,
       mobile: newContactPhone.trim() || null,
     });
 
     setNewContactName('');
     setNewContactEmail('');
     setNewContactPhone('');
-    flashSaved();
+    flashSaved('Contact added');
     await load();
+  }
+
+  async function createLoginAccess(contact: ContactRow) {
+    const contactEmail = normalizeEmail(contact.email);
+
+    if (!contactEmail) {
+      window.alert('Contact must have an email before login access can be created.');
+      return;
+    }
+
+    setBusyContactId(contact.id);
+
+    const { error } = await supabase.from('user_roles').upsert(
+      {
+        user_email: contactEmail,
+        role: 'shop',
+        approved: true,
+        access_status: 'Active',
+        account_id: id,
+        carrier_id: null,
+      },
+      { onConflict: 'user_email' }
+    );
+
+    setBusyContactId(null);
+
+    if (error) {
+      window.alert(`Could not create login access: ${error.message}`);
+      return;
+    }
+
+    flashSaved('Login access created');
+    await load();
+  }
+
+  async function suspendLoginAccess(contact: ContactRow) {
+    const contactEmail = normalizeEmail(contact.email);
+
+    if (!contactEmail) return;
+
+    setBusyContactId(contact.id);
+
+    const { error } = await supabase
+      .from('user_roles')
+      .update({
+        access_status: 'Suspended',
+        approved: false,
+      })
+      .eq('user_email', contactEmail);
+
+    setBusyContactId(null);
+
+    if (error) {
+      window.alert(`Could not suspend access: ${error.message}`);
+      return;
+    }
+
+    flashSaved('Login access suspended');
+    await load();
+  }
+
+  async function reactivateLoginAccess(contact: ContactRow) {
+    const contactEmail = normalizeEmail(contact.email);
+
+    if (!contactEmail) return;
+
+    setBusyContactId(contact.id);
+
+    const { error } = await supabase
+      .from('user_roles')
+      .update({
+        role: 'shop',
+        approved: true,
+        access_status: 'Active',
+        account_id: id,
+        carrier_id: null,
+      })
+      .eq('user_email', contactEmail);
+
+    setBusyContactId(null);
+
+    if (error) {
+      window.alert(`Could not reactivate access: ${error.message}`);
+      return;
+    }
+
+    flashSaved('Login access reactivated');
+    await load();
+  }
+
+  function sendLoginEmail(contact: ContactRow) {
+    const contactEmail = normalizeEmail(contact.email);
+
+    if (!contactEmail) {
+      window.alert('This contact does not have an email address.');
+      return;
+    }
+
+    const subject = encodeURIComponent('GlasWeld Repair Network Access');
+    const body = encodeURIComponent(
+      `Hello${contact.full_name ? ` ${contact.full_name}` : ''},
+
+You now have access to the GlasWeld Repair Network.
+
+Login here:
+https://repair-network.vercel.app/login
+
+Your username is:
+${contactEmail}
+
+If you need access or need help signing in, use the Request Access link on the login screen.
+
+Thank you,
+GlasWeld`
+    );
+
+    window.location.href = `mailto:${contactEmail}?subject=${subject}&body=${body}`;
   }
 
   function startAccountEdit(field: keyof AccountRow, value: string | null) {
@@ -408,7 +579,7 @@ export default function AccountDetailPage() {
         )}
       </div>
 
-      <div className="rounded-xl border bg-white p-6">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
         <h2 className="mb-4 text-lg font-semibold">Account Info</h2>
 
         <div className="grid gap-4 md:grid-cols-2">
@@ -431,51 +602,106 @@ export default function AccountDetailPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold">Contacts</h2>
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+        <h2 className="mb-4 text-lg font-semibold">Contacts & Login Access</h2>
 
         <div className="space-y-2">
-          {contacts.map((contact) => (
-            <div
-              key={contact.id}
-              className="grid gap-3 border-b py-3 md:grid-cols-4"
-            >
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Name
-                </div>
-                <ContactField contact={contact} field="full_name" />
-              </div>
+          {contacts.map((contact) => {
+            const accessStatus = accessStatusForContact(contact);
+            const hasAccess = accessStatus !== 'No Access' && accessStatus !== 'No Email';
 
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Email
+            return (
+              <div
+                key={contact.id}
+                className="grid gap-3 border-b py-4 md:grid-cols-[1fr_1.35fr_1fr_1fr_1fr_1.7fr]"
+              >
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Name
+                  </div>
+                  <ContactField contact={contact} field="full_name" />
                 </div>
-                <ContactField contact={contact} field="email" isEmail />
-              </div>
 
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Mobile
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Email
+                  </div>
+                  <ContactField contact={contact} field="email" isEmail />
                 </div>
-                <ContactField contact={contact} field="mobile" isPhone />
-              </div>
 
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Other Phone
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Mobile
+                  </div>
+                  <ContactField contact={contact} field="mobile" isPhone />
                 </div>
-                <ContactField contact={contact} field="phone" isPhone />
+
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Other Phone
+                  </div>
+                  <ContactField contact={contact} field="phone" isPhone />
+                </div>
+
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Access
+                  </div>
+                  <span
+                    className={`mt-1 inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${accessBadgeClass(accessStatus)}`}
+                  >
+                    {accessStatus}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {!hasAccess || accessStatus === 'Revoked' ? (
+                    <button
+                      type="button"
+                      disabled={busyContactId === contact.id}
+                      onClick={() => void createLoginAccess(contact)}
+                      className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                    >
+                      Create Login
+                    </button>
+                  ) : accessStatus === 'Suspended' ? (
+                    <button
+                      type="button"
+                      disabled={busyContactId === contact.id}
+                      onClick={() => void reactivateLoginAccess(contact)}
+                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                    >
+                      Reactivate
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busyContactId === contact.id}
+                      onClick={() => void suspendLoginAccess(contact)}
+                      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
+                    >
+                      Suspend
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => sendLoginEmail(contact)}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Email Login
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {!contacts.length ? (
             <div className="text-sm text-slate-500">No contacts</div>
           ) : null}
         </div>
 
-        <div className="mt-6 rounded-xl border bg-slate-50 p-4">
+        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
           <h3 className="mb-3 font-semibold">Add Contact</h3>
 
           <div className="grid gap-3 md:grid-cols-4">
@@ -511,7 +737,7 @@ export default function AccountDetailPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border bg-white p-6">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
         <h2 className="mb-4 text-lg font-semibold">Recent Jobs</h2>
 
         {jobs.length ? (

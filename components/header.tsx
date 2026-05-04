@@ -67,7 +67,6 @@ const STATE_NAMES: Record<string, string> = {
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard' },
   { href: '/accounts', label: 'Accounts' },
-  { href: '/contacts', label: 'Contacts' },
   { href: '/jobs', label: 'Jobs' },
 ];
 
