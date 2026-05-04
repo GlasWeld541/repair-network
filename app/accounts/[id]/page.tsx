@@ -88,6 +88,7 @@ function accessBadgeClass(status: string) {
   if (status === 'Active') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (status === 'Suspended') return 'border-amber-200 bg-amber-50 text-amber-700';
   if (status === 'Revoked') return 'border-rose-200 bg-rose-50 text-rose-700';
+  if (status === 'Not Approved') return 'border-amber-200 bg-amber-50 text-amber-700';
   return 'border-slate-200 bg-slate-50 text-slate-600';
 }
 
@@ -117,7 +118,7 @@ export default function AccountDetailPage() {
 
   function flashSaved(message = 'Saved') {
     setSavedMessage(message);
-    window.setTimeout(() => setSavedMessage(''), 1500);
+    window.setTimeout(() => setSavedMessage(''), 1800);
   }
 
   async function load() {
@@ -183,12 +184,9 @@ export default function AccountDetailPage() {
 
   function roleForContact(contact: ContactRow) {
     const contactEmail = normalizeEmail(contact.email);
-
     if (!contactEmail) return null;
 
-    return (
-      userRoles.find((role) => normalizeEmail(role.user_email) === contactEmail) || null
-    );
+    return userRoles.find((role) => normalizeEmail(role.user_email) === contactEmail) || null;
   }
 
   function accessStatusForContact(contact: ContactRow) {
@@ -231,7 +229,6 @@ export default function AccountDetailPage() {
 
     const { error } = await supabase.from('contacts').insert({
       account_id: id,
-      account_name: account?.account_name,
       full_name: newContactName.trim() || null,
       email: newContactEmail.trim().toLowerCase() || null,
       mobile: newContactPhone.trim() || null,
@@ -249,17 +246,17 @@ export default function AccountDetailPage() {
     await load();
   }
 
-  async function createLoginAccess(contact: ContactRow) {
+  async function grantAccessAndSendInvite(contact: ContactRow) {
     const contactEmail = normalizeEmail(contact.email);
 
     if (!contactEmail) {
-      window.alert('Contact must have an email before login access can be created.');
+      window.alert('Contact must have an email before access can be granted.');
       return;
     }
 
     setBusyContactId(contact.id);
 
-    const { error } = await supabase.from('user_roles').upsert(
+    const { error: accessError } = await supabase.from('user_roles').upsert(
       {
         user_email: contactEmail,
         role: 'shop',
@@ -271,42 +268,9 @@ export default function AccountDetailPage() {
       { onConflict: 'user_email' }
     );
 
-    setBusyContactId(null);
-
-    if (error) {
-      window.alert(`Could not create login access: ${error.message}`);
-      return;
-    }
-
-    flashSaved('Login access created');
-    await load();
-  }
-
-  async function sendInvite(contact: ContactRow) {
-    const contactEmail = normalizeEmail(contact.email);
-
-    if (!contactEmail) {
-      window.alert('This contact does not have an email address.');
-      return;
-    }
-
-    setBusyContactId(contact.id);
-
-    const accessError = await supabase.from('user_roles').upsert(
-      {
-        user_email: contactEmail,
-        role: 'shop',
-        approved: true,
-        access_status: 'Active',
-        account_id: id,
-        carrier_id: null,
-      },
-      { onConflict: 'user_email' }
-    );
-
-    if (accessError.error) {
+    if (accessError) {
       setBusyContactId(null);
-      window.alert(`Could not create login access: ${accessError.error.message}`);
+      window.alert(`Could not grant access: ${accessError.message}`);
       return;
     }
 
@@ -327,11 +291,15 @@ export default function AccountDetailPage() {
     setBusyContactId(null);
 
     if (!res.ok) {
-      window.alert(result.error || 'Failed to send invite.');
+      window.alert(
+        result.error ||
+          'Access was created, but the invite email could not be sent.'
+      );
+      await load();
       return;
     }
 
-    flashSaved('Invite sent');
+    flashSaved('Access granted and invite sent');
     await load();
   }
 
@@ -357,37 +325,12 @@ export default function AccountDetailPage() {
       return;
     }
 
-    flashSaved('Login access suspended');
+    flashSaved('Access suspended');
     await load();
   }
 
-  async function reactivateLoginAccess(contact: ContactRow) {
-    const contactEmail = normalizeEmail(contact.email);
-
-    if (!contactEmail) return;
-
-    setBusyContactId(contact.id);
-
-    const { error } = await supabase
-      .from('user_roles')
-      .update({
-        role: 'shop',
-        approved: true,
-        access_status: 'Active',
-        account_id: id,
-        carrier_id: null,
-      })
-      .eq('user_email', contactEmail);
-
-    setBusyContactId(null);
-
-    if (error) {
-      window.alert(`Could not reactivate access: ${error.message}`);
-      return;
-    }
-
-    flashSaved('Login access reactivated');
-    await load();
+  async function reactivateAndSendInvite(contact: ContactRow) {
+    await grantAccessAndSendInvite(contact);
   }
 
   function startAccountEdit(field: keyof AccountRow, value: string | null) {
@@ -685,43 +628,45 @@ export default function AccountDetailPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  {!hasAccess || accessStatus === 'Revoked' ? (
+                  {!hasAccess || accessStatus === 'Revoked' || accessStatus === 'Not Approved' ? (
                     <button
                       type="button"
                       disabled={busyContactId === contact.id}
-                      onClick={() => void createLoginAccess(contact)}
+                      onClick={() => void grantAccessAndSendInvite(contact)}
                       className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                     >
-                      Create Login
+                      Grant Access
                     </button>
                   ) : accessStatus === 'Suspended' ? (
                     <button
                       type="button"
                       disabled={busyContactId === contact.id}
-                      onClick={() => void reactivateLoginAccess(contact)}
+                      onClick={() => void reactivateAndSendInvite(contact)}
                       className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
                     >
                       Reactivate
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      disabled={busyContactId === contact.id}
-                      onClick={() => void suspendLoginAccess(contact)}
-                      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
-                    >
-                      Suspend
-                    </button>
-                  )}
+                    <>
+                      <button
+                        type="button"
+                        disabled={busyContactId === contact.id}
+                        onClick={() => void grantAccessAndSendInvite(contact)}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                      >
+                        Resend Invite
+                      </button>
 
-                  <button
-                    type="button"
-                    disabled={busyContactId === contact.id}
-                    onClick={() => void sendInvite(contact)}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                  >
-                    Send Invite
-                  </button>
+                      <button
+                        type="button"
+                        disabled={busyContactId === contact.id}
+                        onClick={() => void suspendLoginAccess(contact)}
+                        className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
+                      >
+                        Suspend
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             );
