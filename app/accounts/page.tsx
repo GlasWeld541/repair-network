@@ -5,37 +5,29 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
+const YES_NO_UNKNOWN = ['Unknown', 'Yes', 'No'] as const;
+const OUTREACH_OPTIONS = [
+  'Not Contacted',
+  'Contacted',
+  'Qualified',
+  'Onboarded',
+  'In Progress',
+] as const;
+
 type AccountRow = {
   id: string;
   account_name: string | null;
   city: string | null;
   state: string | null;
-  certified: string | null;
+  glasweld_certified: string | null;
   insurance: string | null;
-  onyx: string | null;
-  zoom: string | null;
+  uses_onyx: string | null;
+  uses_zoom_injector: string | null;
   repair_only: string | null;
-  outreach_stage: string | null;
+  outreach_status: string | null;
 };
 
 type Role = 'admin' | 'shop' | 'carrier' | null;
-
-function badge(value: string | null) {
-  const text = value || 'Unknown';
-
-  const classes =
-    text === 'Yes'
-      ? 'bg-emerald-100 text-emerald-800'
-      : text === 'No'
-        ? 'bg-rose-100 text-rose-800'
-        : 'bg-slate-100 text-slate-600';
-
-  return (
-    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${classes}`}>
-      {text}
-    </span>
-  );
-}
 
 function AccountsPageContent() {
   const searchParams = useSearchParams();
@@ -75,7 +67,7 @@ function AccountsPageContent() {
       const { data } = await supabase
         .from('accounts')
         .select(
-          'id, account_name, city, state, certified, insurance, onyx, zoom, repair_only, outreach_stage'
+          'id, account_name, city, state, glasweld_certified, insurance, uses_onyx, uses_zoom_injector, repair_only, outreach_status'
         )
         .order('account_name');
 
@@ -97,11 +89,28 @@ function AccountsPageContent() {
     const { data } = await supabase
       .from('accounts')
       .select(
-        'id, account_name, city, state, certified, insurance, onyx, zoom, repair_only, outreach_stage'
+        'id, account_name, city, state, glasweld_certified, insurance, uses_onyx, uses_zoom_injector, repair_only, outreach_status'
       )
       .eq('id', shopData.account_id);
 
     setAccounts((data as AccountRow[]) || []);
+  }
+
+  async function updateAccount(
+    id: string,
+    field: keyof AccountRow,
+    value: string
+  ) {
+    await supabase
+      .from('accounts')
+      .update({ [field]: value })
+      .eq('id', id);
+
+    setAccounts((current) =>
+      current.map((account) =>
+        account.id === id ? { ...account, [field]: value } : account
+      )
+    );
   }
 
   const filteredAccounts = useMemo(() => {
@@ -114,7 +123,9 @@ function AccountsPageContent() {
         .join(' ')
         .toLowerCase();
 
-      const matchesSearch = !query.trim() || haystack.includes(query.toLowerCase());
+      const matchesSearch =
+        !query.trim() || haystack.includes(query.toLowerCase());
+
       const matchesState =
         !stateFilter || (account.state || '').toUpperCase() === stateFilter;
 
@@ -153,18 +164,100 @@ function AccountsPageContent() {
             {filteredAccounts.map((account) => (
               <tr key={account.id} className="border-t hover:bg-slate-50">
                 <td className="px-4 py-3 font-medium">
-                  <Link href={`/accounts/${account.id}`} className="text-blue-700 hover:underline">
+                  <Link
+                    href={`/accounts/${account.id}`}
+                    className="text-blue-700 hover:underline"
+                  >
                     {account.account_name || 'Unnamed Account'}
                   </Link>
                 </td>
+
                 <td className="px-4 py-3">{account.city || '—'}</td>
                 <td className="px-4 py-3">{account.state || '—'}</td>
-                <td className="px-4 py-3">{badge(account.certified)}</td>
-                <td className="px-4 py-3">{badge(account.insurance)}</td>
-                <td className="px-4 py-3">{badge(account.onyx)}</td>
-                <td className="px-4 py-3">{badge(account.zoom)}</td>
-                <td className="px-4 py-3">{badge(account.repair_only)}</td>
-                <td className="px-4 py-3">{account.outreach_stage || '—'}</td>
+
+                <td className="px-4 py-3">
+                  <select
+                    value={account.glasweld_certified || 'Unknown'}
+                    onChange={(e) =>
+                      updateAccount(account.id, 'glasweld_certified', e.target.value)
+                    }
+                    className="rounded border border-slate-300 px-2 py-1 text-sm"
+                  >
+                    {YES_NO_UNKNOWN.map((option) => (
+                      <option key={option}>{option}</option>
+                    ))}
+                  </select>
+                </td>
+
+                <td className="px-4 py-3">
+                  <select
+                    value={account.insurance || 'Unknown'}
+                    onChange={(e) =>
+                      updateAccount(account.id, 'insurance', e.target.value)
+                    }
+                    className="rounded border border-slate-300 px-2 py-1 text-sm"
+                  >
+                    {YES_NO_UNKNOWN.map((option) => (
+                      <option key={option}>{option}</option>
+                    ))}
+                  </select>
+                </td>
+
+                <td className="px-4 py-3">
+                  <select
+                    value={account.uses_onyx || 'Unknown'}
+                    onChange={(e) =>
+                      updateAccount(account.id, 'uses_onyx', e.target.value)
+                    }
+                    className="rounded border border-slate-300 px-2 py-1 text-sm"
+                  >
+                    {YES_NO_UNKNOWN.map((option) => (
+                      <option key={option}>{option}</option>
+                    ))}
+                  </select>
+                </td>
+
+                <td className="px-4 py-3">
+                  <select
+                    value={account.uses_zoom_injector || 'Unknown'}
+                    onChange={(e) =>
+                      updateAccount(account.id, 'uses_zoom_injector', e.target.value)
+                    }
+                    className="rounded border border-slate-300 px-2 py-1 text-sm"
+                  >
+                    {YES_NO_UNKNOWN.map((option) => (
+                      <option key={option}>{option}</option>
+                    ))}
+                  </select>
+                </td>
+
+                <td className="px-4 py-3">
+                  <select
+                    value={account.repair_only || 'Unknown'}
+                    onChange={(e) =>
+                      updateAccount(account.id, 'repair_only', e.target.value)
+                    }
+                    className="rounded border border-slate-300 px-2 py-1 text-sm"
+                  >
+                    {YES_NO_UNKNOWN.map((option) => (
+                      <option key={option}>{option}</option>
+                    ))}
+                  </select>
+                </td>
+
+                <td className="px-4 py-3">
+                  <select
+                    value={account.outreach_status || 'Not Contacted'}
+                    onChange={(e) =>
+                      updateAccount(account.id, 'outreach_status', e.target.value)
+                    }
+                    className="rounded border border-slate-300 px-2 py-1 text-sm"
+                  >
+                    {OUTREACH_OPTIONS.map((option) => (
+                      <option key={option}>{option}</option>
+                    ))}
+                  </select>
+                </td>
               </tr>
             ))}
 
