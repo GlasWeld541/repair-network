@@ -11,64 +11,23 @@ type StateOption = {
   label: string;
 };
 
-const STATE_NAMES: Record<string, string> = {
-  AL: 'Alabama',
-  AK: 'Alaska',
-  AZ: 'Arizona',
-  AR: 'Arkansas',
-  CA: 'California',
-  CO: 'Colorado',
-  CT: 'Connecticut',
-  DE: 'Delaware',
-  FL: 'Florida',
-  GA: 'Georgia',
-  HI: 'Hawaii',
-  ID: 'Idaho',
-  IL: 'Illinois',
-  IN: 'Indiana',
-  IA: 'Iowa',
-  KS: 'Kansas',
-  KY: 'Kentucky',
-  LA: 'Louisiana',
-  ME: 'Maine',
-  MD: 'Maryland',
-  MA: 'Massachusetts',
-  MI: 'Michigan',
-  MN: 'Minnesota',
-  MS: 'Mississippi',
-  MO: 'Missouri',
-  MT: 'Montana',
-  NE: 'Nebraska',
-  NV: 'Nevada',
-  NH: 'New Hampshire',
-  NJ: 'New Jersey',
-  NM: 'New Mexico',
-  NY: 'New York',
-  NC: 'North Carolina',
-  ND: 'North Dakota',
-  OH: 'Ohio',
-  OK: 'Oklahoma',
-  OR: 'Oregon',
-  PA: 'Pennsylvania',
-  RI: 'Rhode Island',
-  SC: 'South Carolina',
-  SD: 'South Dakota',
-  TN: 'Tennessee',
-  TX: 'Texas',
-  UT: 'Utah',
-  VT: 'Vermont',
-  VA: 'Virginia',
-  WA: 'Washington',
-  WV: 'West Virginia',
-  WI: 'Wisconsin',
-  WY: 'Wyoming',
-};
+type UserRole = 'admin' | 'shop' | 'carrier' | null;
 
-const NAV_ITEMS = [
-  { href: '/', label: 'Dashboard' },
-  { href: '/accounts', label: 'Accounts' },
-  { href: '/jobs', label: 'Jobs' },
-];
+const STATE_NAMES: Record<string, string> = {
+  AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas',
+  CA: 'California', CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware',
+  FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho',
+  IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas',
+  KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
+  MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi',
+  MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada',
+  NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York',
+  NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma',
+  OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island',
+  SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee',
+  TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia',
+  WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming',
+};
 
 export default function Header() {
   const pathname = usePathname();
@@ -78,17 +37,15 @@ export default function Header() {
   const [stateOptions, setStateOptions] = useState<StateOption[]>([
     { value: '', label: 'All states' },
   ]);
-  const [isAdmin, setIsAdmin] = useState(false);
+
+  const [role, setRole] = useState<UserRole>(null);
 
   useEffect(() => {
-    async function checkAdmin() {
+    async function loadRole() {
       const { data: userData } = await supabase.auth.getUser();
       const email = userData.user?.email?.toLowerCase();
 
-      if (!email) {
-        setIsAdmin(false);
-        return;
-      }
+      if (!email) return;
 
       const { data } = await supabase
         .from('user_roles')
@@ -96,14 +53,20 @@ export default function Header() {
         .eq('user_email', email)
         .maybeSingle();
 
-      setIsAdmin(
-        data?.role === 'admin' &&
-          data?.approved === true &&
-          (data?.access_status ?? 'Active') === 'Active'
-      );
+      if (data?.approved && data?.access_status === 'Active') {
+        const normalizedRole = String(data.role || '').toLowerCase();
+
+        if (
+          normalizedRole === 'admin' ||
+          normalizedRole === 'shop' ||
+          normalizedRole === 'carrier'
+        ) {
+          setRole(normalizedRole);
+        }
+      }
     }
 
-    void checkAdmin();
+    void loadRole();
   }, []);
 
   useEffect(() => {
@@ -133,20 +96,6 @@ export default function Header() {
     void loadStates();
   }, []);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const params = new URLSearchParams(window.location.search);
-
-    if (pathname === '/accounts') {
-      setQuery(params.get('search') || '');
-      setState((params.get('state') || '').trim().toUpperCase());
-    } else {
-      setQuery('');
-      setState('');
-    }
-  }, [pathname]);
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -155,7 +104,9 @@ export default function Header() {
     if (query.trim()) params.set('search', query.trim());
     if (state.trim()) params.set('state', state.trim().toUpperCase());
 
-    window.location.href = `/accounts${params.toString() ? `?${params.toString()}` : ''}`;
+    window.location.href = `/accounts${
+      params.toString() ? `?${params.toString()}` : ''
+    }`;
   }
 
   async function handleLogout() {
@@ -163,9 +114,16 @@ export default function Header() {
     window.location.href = '/login';
   }
 
-  const navItems = isAdmin
-    ? [...NAV_ITEMS, { href: '/admin', label: 'Admin' }]
-    : NAV_ITEMS;
+  const baseNavItems = [
+    { href: '/', label: 'Dashboard' },
+    { href: '/accounts', label: 'Accounts' },
+    { href: '/jobs', label: 'Jobs' },
+  ];
+
+  const navItems =
+    role === 'shop' || role === 'carrier'
+      ? baseNavItems
+      : [...baseNavItems, { href: '/admin', label: 'Admin' }];
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.28)]">
@@ -182,7 +140,7 @@ export default function Header() {
           </div>
 
           <div>
-            <div className="text-[17px] font-semibold tracking-tight text-white">
+            <div className="text-[17px] font-semibold text-white">
               GlasWeld Repair Network™
             </div>
             <div className="mt-1 text-[10px] uppercase tracking-[0.32em] text-cyan-300/80">
@@ -192,18 +150,18 @@ export default function Header() {
         </Link>
 
         <div className="flex items-center gap-5">
-          <form onSubmit={handleSubmit} className="hidden items-center gap-3 xl:flex">
+          <form onSubmit={handleSubmit} className="hidden xl:flex items-center gap-3">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search business or contact"
-              className="h-11 w-[290px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white placeholder:text-slate-400 outline-none focus:border-cyan-300/50 focus:bg-white/15"
+              className="h-11 w-[290px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white"
             />
 
             <select
               value={state}
               onChange={(e) => setState(e.target.value)}
-              className="h-11 w-[175px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white outline-none focus:border-cyan-300/50 focus:bg-white/15"
+              className="h-11 w-[175px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white"
             >
               {stateOptions.map((option) => (
                 <option key={option.value || 'all'} value={option.value}>
@@ -212,12 +170,12 @@ export default function Header() {
               ))}
             </select>
 
-            <button className="h-11 rounded-xl bg-cyan-400 px-5 text-sm font-semibold text-slate-950 shadow-lg transition hover:bg-cyan-300">
+            <button className="h-11 rounded-xl bg-cyan-400 px-5 text-sm font-semibold text-slate-950">
               Search
             </button>
           </form>
 
-          <nav className="flex items-center rounded-2xl border border-white/10 bg-white/5 p-1 text-sm font-medium text-slate-300">
+          <nav className="flex items-center rounded-2xl border border-white/10 bg-white/5 p-1 text-sm text-slate-300">
             {navItems.map((item) => {
               const isActive =
                 item.href === '/'
@@ -228,7 +186,7 @@ export default function Header() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`rounded-xl px-4 py-2 transition ${
+                  className={`rounded-xl px-4 py-2 ${
                     isActive
                       ? 'bg-white text-slate-950'
                       : 'hover:bg-white/10 hover:text-white'
@@ -241,9 +199,8 @@ export default function Header() {
           </nav>
 
           <button
-            type="button"
             onClick={handleLogout}
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200 hover:bg-white/10"
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200"
           >
             Logout
           </button>

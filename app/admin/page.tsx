@@ -10,21 +10,38 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     async function checkAdmin() {
-      const { data: userData } = await supabase.auth.getUser();
-      const email = userData.user?.email?.toLowerCase() || '';
+      const { data: userData, error: userError } =
+        await supabase.auth.getUser();
 
-      const { data } = await supabase
+      if (userError || !userData.user) {
+        window.location.href = '/login';
+        return;
+      }
+
+      const email = userData.user.email?.toLowerCase() || '';
+
+      const { data, error } = await supabase
         .from('user_roles')
         .select('role, approved, access_status')
         .eq('user_email', email)
         .maybeSingle();
 
-      setAuthorized(
-        data?.role === 'admin' &&
-          data?.approved === true &&
-          data?.access_status === 'Active'
-      );
+      if (error || !data) {
+        window.location.href = '/';
+        return;
+      }
 
+      const isAdmin =
+        data.role === 'admin' &&
+        data.approved === true &&
+        data.access_status === 'Active';
+
+      if (!isAdmin) {
+        window.location.href = '/';
+        return;
+      }
+
+      setAuthorized(true);
       setLoading(false);
     }
 
@@ -32,20 +49,11 @@ export default function AdminDashboardPage() {
   }, []);
 
   if (loading) {
-    return <div className="p-6 text-sm text-slate-500">Loading admin...</div>;
+    return <div className="p-6 text-sm text-slate-500">Loading...</div>;
   }
 
   if (!authorized) {
-    return (
-      <div className="mx-auto max-w-2xl px-6 py-12">
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
-          <h1 className="text-2xl font-semibold text-ink">Not authorized</h1>
-          <p className="mt-2 text-sm text-slate-500">
-            You do not have admin access.
-          </p>
-        </div>
-      </div>
-    );
+    return null; // already redirected
   }
 
   const cards = [
@@ -56,7 +64,8 @@ export default function AdminDashboardPage() {
     },
     {
       title: 'Users / Roles',
-      description: 'Manage user access, suspend users, revoke users, and update roles.',
+      description:
+        'Manage user access, suspend users, revoke users, and update roles.',
       href: '/admin/users',
     },
     {
@@ -71,12 +80,14 @@ export default function AdminDashboardPage() {
     },
     {
       title: 'Routing Settings',
-      description: 'Configure claim routing logic, qualification rules, and fallback behavior.',
+      description:
+        'Configure claim routing logic, qualification rules, and fallback behavior.',
       href: '/admin/routing',
     },
     {
       title: 'Claims Setup',
-      description: 'Prepare claim intake fields, carrier portal rules, and EDI workflows.',
+      description:
+        'Prepare claim intake fields, carrier portal rules, and EDI workflows.',
       href: '/admin/claims',
     },
   ];
