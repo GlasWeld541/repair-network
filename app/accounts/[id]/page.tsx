@@ -103,6 +103,7 @@ export default function AccountDetailPage() {
   const [loading, setLoading] = useState(true);
   const [blocked, setBlocked] = useState(false);
   const [busyContactId, setBusyContactId] = useState<string | null>(null);
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
 
   const [editing, setEditing] = useState<EditingTarget>(null);
   const [draftValue, setDraftValue] = useState('');
@@ -126,7 +127,12 @@ export default function AccountDetailPage() {
     setBlocked(false);
 
     const { data: userData } = await supabase.auth.getUser();
-    const email = userData.user?.email?.toLowerCase();
+    const email = userData.user?.email?.toLowerCase() || '';
+
+    if (!email) {
+      window.location.href = '/login';
+      return;
+    }
 
     const { data: roleData } = await supabase
       .from('user_roles')
@@ -134,24 +140,43 @@ export default function AccountDetailPage() {
       .eq('user_email', email)
       .maybeSingle();
 
-    const isRestrictedShopUser =
-      roleData?.role === 'shop' &&
-      roleData?.approved === true &&
-      (roleData?.access_status ?? 'Active') === 'Active';
+    if (!roleData || roleData.approved !== true || roleData.access_status !== 'Active') {
+      window.location.href = '/login';
+      return;
+    }
 
-    if (isRestrictedShopUser && roleData?.account_id && roleData.account_id !== id) {
+    setCurrentRole(roleData.role);
+
+    const isAdmin = roleData.role === 'admin';
+    const isShop = roleData.role === 'shop';
+
+    if (!isAdmin && !isShop) {
       setBlocked(true);
       setLoading(false);
       return;
     }
 
-    const { data: accountData } = await supabase
+    if (isShop) {
+      if (!roleData.account_id || roleData.account_id !== id) {
+        setBlocked(true);
+        setLoading(false);
+        return;
+      }
+    }
+
+    const { data: accountData, error: accountError } = await supabase
       .from('accounts')
       .select(
         'id, account_name, street, city, state, postal_code, company_phone, company_email'
       )
       .eq('id', id)
       .single();
+
+    if (accountError || !accountData) {
+      setAccount(null);
+      setLoading(false);
+      return;
+    }
 
     const [{ data: contactData }, { data: jobData }, { data: roleRows }] =
       await Promise.all([
@@ -180,6 +205,10 @@ export default function AccountDetailPage() {
     setJobs((jobData as JobRow[]) || []);
     setUserRoles((roleRows as UserRoleRow[]) || []);
     setLoading(false);
+  }
+
+  function canManageAccess() {
+    return currentRole === 'admin';
   }
 
   function roleForContact(contact: ContactRow) {
@@ -247,6 +276,11 @@ export default function AccountDetailPage() {
   }
 
   async function grantAccessAndSendInvite(contact: ContactRow) {
+    if (!canManageAccess()) {
+      window.alert('Only admins can grant login access.');
+      return;
+    }
+
     const contactEmail = normalizeEmail(contact.email);
 
     if (!contactEmail) {
@@ -304,6 +338,11 @@ export default function AccountDetailPage() {
   }
 
   async function suspendLoginAccess(contact: ContactRow) {
+    if (!canManageAccess()) {
+      window.alert('Only admins can suspend login access.');
+      return;
+    }
+
     const contactEmail = normalizeEmail(contact.email);
 
     if (!contactEmail) return;
@@ -628,44 +667,52 @@ export default function AccountDetailPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  {!hasAccess || accessStatus === 'Revoked' || accessStatus === 'Not Approved' ? (
-                    <button
-                      type="button"
-                      disabled={busyContactId === contact.id}
-                      onClick={() => void grantAccessAndSendInvite(contact)}
-                      className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-                    >
-                      Grant Access
-                    </button>
-                  ) : accessStatus === 'Suspended' ? (
-                    <button
-                      type="button"
-                      disabled={busyContactId === contact.id}
-                      onClick={() => void reactivateAndSendInvite(contact)}
-                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
-                    >
-                      Reactivate
-                    </button>
-                  ) : (
+                  {canManageAccess() ? (
                     <>
-                      <button
-                        type="button"
-                        disabled={busyContactId === contact.id}
-                        onClick={() => void grantAccessAndSendInvite(contact)}
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                      >
-                        Resend Invite
-                      </button>
+                      {!hasAccess || accessStatus === 'Revoked' || accessStatus === 'Not Approved' ? (
+                        <button
+                          type="button"
+                          disabled={busyContactId === contact.id}
+                          onClick={() => void grantAccessAndSendInvite(contact)}
+                          className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                        >
+                          Grant Access
+                        </button>
+                      ) : accessStatus === 'Suspended' ? (
+                        <button
+                          type="button"
+                          disabled={busyContactId === contact.id}
+                          onClick={() => void reactivateAndSendInvite(contact)}
+                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                        >
+                          Reactivate
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            disabled={busyContactId === contact.id}
+                            onClick={() => void grantAccessAndSendInvite(contact)}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                          >
+                            Resend Invite
+                          </button>
 
-                      <button
-                        type="button"
-                        disabled={busyContactId === contact.id}
-                        onClick={() => void suspendLoginAccess(contact)}
-                        className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
-                      >
-                        Suspend
-                      </button>
+                          <button
+                            type="button"
+                            disabled={busyContactId === contact.id}
+                            onClick={() => void suspendLoginAccess(contact)}
+                            className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
+                          >
+                            Suspend
+                          </button>
+                        </>
+                      )}
                     </>
+                  ) : (
+                    <span className="text-xs text-slate-400">
+                      Managed by GlasWeld
+                    </span>
                   )}
                 </div>
               </div>
