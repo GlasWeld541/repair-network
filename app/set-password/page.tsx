@@ -1,12 +1,38 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export default function SetPasswordPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  // 🔑 CRITICAL: establish session from URL tokens
+  useEffect(() => {
+    async function init() {
+      const hash = window.location.hash;
+
+      if (hash) {
+        const params = new URLSearchParams(hash.replace('#', ''));
+
+        const access_token = params.get('access_token');
+        const refresh_token = params.get('refresh_token');
+
+        if (access_token && refresh_token) {
+          await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          });
+        }
+      }
+
+      setReady(true);
+    }
+
+    init();
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,8 +60,16 @@ export default function SetPasswordPage() {
       return;
     }
 
-    alert('Password set. You can now log in.');
+    alert('Password set successfully. You can now log in.');
     window.location.href = '/login';
+  }
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p>Loading...</p>
+      </div>
+    );
   }
 
   return (
