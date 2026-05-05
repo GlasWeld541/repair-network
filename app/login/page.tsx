@@ -14,18 +14,69 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   async function login() {
+    const cleanEmail = email.trim().toLowerCase();
+
     setError('');
     setIsLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
       password,
     });
 
-    setIsLoading(false);
+    if (authError) {
+      setIsLoading(false);
+      setError(authError.message || 'Invalid email or password');
+      return;
+    }
 
-    if (error) {
-      setError(error.message || 'Invalid email or password');
+    const { data: roleData, error: roleError } = await supabase
+      .from('user_roles')
+      .select('role, approved, access_status, account_id')
+      .eq('user_email', cleanEmail)
+      .maybeSingle();
+
+    if (roleError) {
+      setIsLoading(false);
+      setError(`Login succeeded, but access check failed: ${roleError.message}`);
+      return;
+    }
+
+    if (!roleData) {
+      await supabase.auth.signOut();
+      setIsLoading(false);
+      setError('Login succeeded, but no platform access profile was found.');
+      return;
+    }
+
+    if (roleData.approved !== true) {
+      await supabase.auth.signOut();
+      setIsLoading(false);
+      setError('Your access has not been approved yet.');
+      return;
+    }
+
+    if ((roleData.access_status || 'Active') !== 'Active') {
+      await supabase.auth.signOut();
+      setIsLoading(false);
+      setError(`Your access is ${roleData.access_status || 'not active'}.`);
+      return;
+    }
+
+    if (roleData.role === 'admin') {
+      router.replace('/admin');
+      router.refresh();
+      return;
+    }
+
+    if (roleData.role === 'shop') {
+      if (roleData.account_id) {
+        router.replace(`/accounts/${roleData.account_id}`);
+      } else {
+        router.replace('/accounts');
+      }
+
+      router.refresh();
       return;
     }
 
@@ -57,9 +108,7 @@ export default function LoginPage() {
             placeholder="Password"
             type="password"
             value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-            }}
+            onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 void login();
