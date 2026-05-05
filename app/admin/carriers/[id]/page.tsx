@@ -27,6 +27,19 @@ type Contact = {
   is_primary: boolean | null;
 };
 
+function cleanPhone(value: string | null) {
+  return (value || '').replace(/\D/g, '');
+}
+
+function phoneHref(value: string | null) {
+  const digits = cleanPhone(value);
+  return digits ? `tel:${digits}` : '#';
+}
+
+function emailHref(value: string | null) {
+  return value ? `mailto:${value}` : '#';
+}
+
 export default function CarrierDetailPage() {
   const params = useParams();
   const id = params.id as string;
@@ -106,8 +119,24 @@ export default function CarrierDetailPage() {
     await load();
   }
 
+  async function setPrimaryContact(contactId: string) {
+    await supabase
+      .from('carrier_contacts')
+      .update({ is_primary: false })
+      .eq('carrier_id', id);
+
+    await supabase
+      .from('carrier_contacts')
+      .update({ is_primary: true })
+      .eq('id', contactId);
+
+    await load();
+  }
+
   if (loading) return <div className="p-6 text-sm text-slate-500">Loading...</div>;
   if (!carrier) return <div className="p-6">Carrier not found</div>;
+
+  const primaryContact = contacts.find((contact) => contact.is_primary);
 
   return (
     <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
@@ -183,17 +212,33 @@ export default function CarrierDetailPage() {
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">Quick View</h2>
 
-          <div className="mt-4 space-y-3 text-sm">
+          <div className="mt-4 space-y-4 text-sm">
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Claims
               </div>
-              <div className="mt-1 text-slate-900">
-                {carrier.claims_email || 'No claims email'}
-              </div>
-              <div className="text-slate-500">
-                {carrier.claims_phone || 'No claims phone'}
-              </div>
+
+              {carrier.claims_email ? (
+                <a
+                  href={emailHref(carrier.claims_email)}
+                  className="mt-1 block text-blue-600 hover:underline"
+                >
+                  {carrier.claims_email}
+                </a>
+              ) : (
+                <div className="mt-1 text-slate-500">No claims email</div>
+              )}
+
+              {carrier.claims_phone ? (
+                <a
+                  href={phoneHref(carrier.claims_phone)}
+                  className="block text-blue-600 hover:underline"
+                >
+                  {carrier.claims_phone}
+                </a>
+              ) : (
+                <div className="text-slate-500">No claims phone</div>
+              )}
             </div>
 
             <div>
@@ -205,6 +250,41 @@ export default function CarrierDetailPage() {
                   .filter(Boolean)
                   .join(', ') || 'No address entered'}
               </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Primary Contact
+              </div>
+
+              {primaryContact ? (
+                <div className="mt-1 space-y-1">
+                  <div className="font-medium text-slate-900">
+                    {primaryContact.full_name || 'Unnamed contact'}
+                  </div>
+                  {primaryContact.title ? (
+                    <div className="text-slate-500">{primaryContact.title}</div>
+                  ) : null}
+                  {primaryContact.email ? (
+                    <a
+                      href={emailHref(primaryContact.email)}
+                      className="block text-blue-600 hover:underline"
+                    >
+                      {primaryContact.email}
+                    </a>
+                  ) : null}
+                  {primaryContact.phone ? (
+                    <a
+                      href={phoneHref(primaryContact.phone)}
+                      className="block text-blue-600 hover:underline"
+                    >
+                      {primaryContact.phone}
+                    </a>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="mt-1 text-slate-500">No primary contact</div>
+              )}
             </div>
 
             <div>
@@ -224,7 +304,11 @@ export default function CarrierDetailPage() {
           {contacts.map((contact) => (
             <div
               key={contact.id}
-              className="rounded-xl border border-slate-200 p-4"
+              className={`rounded-xl border p-4 ${
+                contact.is_primary
+                  ? 'border-emerald-300 bg-emerald-50/50'
+                  : 'border-slate-200 bg-white'
+              }`}
             >
               <div className="grid gap-3 md:grid-cols-5">
                 <ContactField
@@ -240,24 +324,37 @@ export default function CarrierDetailPage() {
                 <ContactField
                   label="Email"
                   value={contact.email}
+                  isLink={Boolean(contact.email)}
+                  href={emailHref(contact.email)}
                   onSave={(value) => updateContact(contact.id, 'email', value)}
                 />
                 <ContactField
                   label="Phone"
                   value={contact.phone}
+                  isLink={Boolean(contact.phone)}
+                  href={phoneHref(contact.phone)}
                   onSave={(value) => updateContact(contact.id, 'phone', value)}
                 />
 
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(contact.is_primary)}
-                    onChange={(e) =>
-                      updateContact(contact.id, 'is_primary', e.target.checked)
-                    }
-                  />
-                  Primary
-                </label>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Primary
+                  </div>
+
+                  {contact.is_primary ? (
+                    <div className="mt-1 inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                      Primary
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setPrimaryContact(contact.id)}
+                      className="mt-1 rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Make Primary
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -340,17 +437,26 @@ function ContactField({
   label,
   value,
   onSave,
+  isLink = false,
+  href = '#',
 }: {
   label: string;
   value: string | null;
   onSave: (value: string) => void;
+  isLink?: boolean;
+  href?: string;
 }) {
   return (
     <div>
       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
         {label}
       </div>
-      <EditableText value={value || ''} onSave={onSave} />
+      <EditableText
+        value={value || ''}
+        onSave={onSave}
+        isLink={isLink}
+        href={href}
+      />
     </div>
   );
 }
@@ -360,11 +466,15 @@ function EditableText({
   onSave,
   className = '',
   large = false,
+  isLink = false,
+  href = '#',
 }: {
   value: string;
   onSave: (value: string) => void;
   className?: string;
   large?: boolean;
+  isLink?: boolean;
+  href?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value || '');
@@ -403,6 +513,28 @@ function EditableText({
         }}
         className="h-9 w-full rounded-lg border border-slate-300 px-3 text-sm"
       />
+    );
+  }
+
+  if (isLink && value) {
+    return (
+      <div className="flex items-center gap-2">
+        <a
+          href={href}
+          onClick={(e) => e.stopPropagation()}
+          className="rounded px-2 py-1 text-sm text-blue-600 hover:bg-blue-50 hover:underline"
+        >
+          {value}
+        </a>
+
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        >
+          Edit
+        </button>
+      </div>
     );
   }
 
