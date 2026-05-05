@@ -11,6 +11,7 @@ type Job = {
   invoice_amount: number | null;
   amount_paid: number | null;
   invoice_date: string | null;
+  created_at: string;
   assigned_account_id: string | null;
   assigned_account_name: string | null;
 };
@@ -20,8 +21,10 @@ type Role = 'admin' | 'shop' | 'carrier' | null;
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [role, setRole] = useState<Role>(null);
-  const [accountId, setAccountId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   useEffect(() => {
     void loadJobs();
@@ -33,7 +36,6 @@ export default function JobsPage() {
     const { data: userData } = await supabase.auth.getUser();
     const email = userData.user?.email?.toLowerCase() || '';
 
-    // 🔒 GET ROLE
     const { data: roleData } = await supabase
       .from('user_roles')
       .select('role, approved, access_status')
@@ -47,7 +49,6 @@ export default function JobsPage() {
 
     setRole(roleData.role);
 
-    // 🔒 ADMIN → FULL ACCESS
     if (roleData.role === 'admin') {
       const { data } = await supabase
         .from('jobs')
@@ -59,7 +60,6 @@ export default function JobsPage() {
       return;
     }
 
-    // 🔒 SHOP → ONLY THEIR ACCOUNT
     const { data: shopData } = await supabase
       .from('shop_users')
       .select('account_id')
@@ -67,13 +67,10 @@ export default function JobsPage() {
       .maybeSingle();
 
     if (!shopData?.account_id) {
-      // 🚨 HARD BLOCK
       setJobs([]);
       setLoading(false);
       return;
     }
-
-    setAccountId(shopData.account_id);
 
     const { data } = await supabase
       .from('jobs')
@@ -92,8 +89,53 @@ export default function JobsPage() {
     });
   }
 
+  const filteredJobs = useMemo(() => {
+    return jobs.filter((job) => {
+      if (!startDate && !endDate) return true;
+
+      const jobDate = job.invoice_date || job.created_at;
+      if (!jobDate) return true;
+
+      if (startDate && jobDate < startDate) return false;
+      if (endDate && jobDate > endDate) return false;
+
+      return true;
+    });
+  }, [jobs, startDate, endDate]);
+
+  const totals = useMemo(() => {
+    let totalSales = 0;
+    let totalPaid = 0;
+
+    for (const job of filteredJobs) {
+      totalSales += Number(job.invoice_amount || 0);
+      totalPaid += Number(job.amount_paid || 0);
+    }
+
+    return {
+      totalSales,
+      totalPaid,
+      totalOutstanding: totalSales - totalPaid,
+      totalJobs: filteredJobs.length,
+    };
+  }, [filteredJobs]);
+
+  function setCurrentMonth() {
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    setStartDate(first.toISOString().slice(0, 10));
+    setEndDate(last.toISOString().slice(0, 10));
+  }
+
+  function clearDates() {
+    setStartDate('');
+    setEndDate('');
+  }
+
   return (
-    <div className="mx-auto max-w-[1200px] space-y-6 px-6 py-6">
+    <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
       <div>
         <h1 className="text-3xl font-semibold text-ink">
           {role === 'admin' ? 'All Jobs' : 'Your Jobs'}
@@ -105,6 +147,52 @@ export default function JobsPage() {
         </p>
       </div>
 
+      {/* FILTERS */}
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label className="text-xs text-slate-500">Start</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="block border rounded px-2 py-1"
+          />
+        </div>
+
+        <div>
+          <label className="text-xs text-slate-500">End</label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="block border rounded px-2 py-1"
+          />
+        </div>
+
+        <button
+          onClick={setCurrentMonth}
+          className="px-3 py-2 bg-slate-900 text-white rounded"
+        >
+          Current Month
+        </button>
+
+        <button
+          onClick={clearDates}
+          className="px-3 py-2 border rounded"
+        >
+          Clear
+        </button>
+      </div>
+
+      {/* TOTALS */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Stat label="Jobs" value={totals.totalJobs.toString()} />
+        <Stat label="Sales" value={money(totals.totalSales)} />
+        <Stat label="Paid" value={money(totals.totalPaid)} />
+        <Stat label="Outstanding" value={money(totals.totalOutstanding)} />
+      </div>
+
+      {/* TABLE */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
@@ -112,9 +200,7 @@ export default function JobsPage() {
               <th className="px-4 py-3">Date</th>
               <th className="px-4 py-3">Customer</th>
               <th className="px-4 py-3">Status</th>
-              {role === 'admin' && (
-                <th className="px-4 py-3">Shop</th>
-              )}
+              {role === 'admin' && <th className="px-4 py-3">Shop</th>}
               <th className="px-4 py-3">Invoice</th>
               <th className="px-4 py-3">Paid</th>
               <th className="px-4 py-3">Open</th>
@@ -128,19 +214,20 @@ export default function JobsPage() {
                   Loading...
                 </td>
               </tr>
-            ) : jobs.map((job) => (
+            ) : filteredJobs.map((job) => (
               <tr
                 key={job.id}
-                className="border-t cursor-pointer hover:bg-slate-50"
-                onClick={() => (window.location.href = `/jobs/${job.id}`)}
+                className="border-t hover:bg-slate-50"
               >
-                <td className="px-4 py-3">{job.invoice_date}</td>
-                <td className="px-4 py-3">{job.customer_name}</td>
-                <td className="px-4 py-3">{job.job_status}</td>
+                <td className="px-4 py-3">
+                  {(job.invoice_date || job.created_at || '').slice(0, 10)}
+                </td>
+                <td className="px-4 py-3">{job.customer_name || '—'}</td>
+                <td className="px-4 py-3">{job.job_status || '—'}</td>
 
                 {role === 'admin' && (
                   <td className="px-4 py-3">
-                    {job.assigned_account_name}
+                    {job.assigned_account_name || '—'}
                   </td>
                 )}
 
@@ -150,7 +237,6 @@ export default function JobsPage() {
                 <td className="px-4 py-3">
                   <Link
                     href={`/jobs/${job.id}`}
-                    onClick={(e) => e.stopPropagation()}
                     className="bg-slate-900 text-white px-3 py-1 rounded"
                   >
                     Open
@@ -159,7 +245,7 @@ export default function JobsPage() {
               </tr>
             ))}
 
-            {!loading && !jobs.length && (
+            {!loading && !filteredJobs.length && (
               <tr>
                 <td colSpan={7} className="text-center py-10 text-slate-500">
                   No jobs available.
@@ -169,6 +255,15 @@ export default function JobsPage() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border bg-white p-4 shadow-sm">
+      <div className="text-xs text-slate-500 uppercase">{label}</div>
+      <div className="text-xl font-semibold text-slate-900 mt-1">{value}</div>
     </div>
   );
 }
