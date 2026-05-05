@@ -25,6 +25,10 @@ function cleanFileName(fileName: string) {
     .toLowerCase();
 }
 
+function valueOrDash(value: string | null | undefined) {
+  return value || '—';
+}
+
 export default function JobDetailPage() {
   const params = useParams();
   const id = params.id as string;
@@ -82,9 +86,7 @@ export default function JobDetailPage() {
       fileName.endsWith('.heic') ||
       fileName.endsWith('.heif');
 
-    if (!isHeic) {
-      return file;
-    }
+    if (!isHeic) return file;
 
     const converted = await heic2any({
       blob: file,
@@ -256,7 +258,7 @@ export default function JobDetailPage() {
     await loadPage();
   }
 
-  if (loading) return <div className="p-6">Loading...</div>;
+  if (loading) return <div className="p-6 text-sm text-slate-500">Loading...</div>;
   if (!job) return <div className="p-6">Job not found</div>;
 
   const displayInvoiceAmount = invoice?.invoice_amount ?? job.invoice_amount;
@@ -268,224 +270,324 @@ export default function JobDetailPage() {
     ? Number(invoice.invoice_amount || 0) - Number(invoice.amount_paid || 0)
     : displayOutstanding;
 
+  const vehicle = [job.vehicle_year, job.vehicle_make, job.vehicle_model]
+    .filter(Boolean)
+    .join(' ');
+
+  const beforePhotos = photos.filter((photo) => photo.type === 'before');
+  const afterPhotos = photos.filter((photo) => photo.type === 'after');
+
   return (
-    <div className="space-y-6">
-      <Link href="/jobs" className="flex items-center gap-2 text-sm text-blue-600">
+    <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
+      <Link href="/jobs" className="inline-flex items-center gap-2 text-sm text-blue-600">
         <ArrowLeft className="h-4 w-4" />
-        Back to jobs
+        Back to Jobs
       </Link>
 
-      <h1 className="text-2xl font-semibold">{job.customer_name}</h1>
-
-      <div className="rounded-xl border bg-white p-6 space-y-2">
-        <div><strong>Shop:</strong> {job.assigned_account_name}</div>
-        <div><strong>Status:</strong> {job.job_status}</div>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <strong>Vehicle:</strong>{' '}
-          {[job.vehicle_year, job.vehicle_make, job.vehicle_model]
-            .filter(Boolean)
-            .join(' ')}
+          <h1 className="text-3xl font-semibold text-slate-900">
+            {valueOrDash(job.customer_name)}
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Job detail, photos, invoice, insurance submission, and payment tracking.
+          </p>
         </div>
-        <div><strong>Damage:</strong> {job.damage_type}</div>
-        <div><strong>Invoice:</strong> {money(displayInvoiceAmount)}</div>
-        <div><strong>Paid:</strong> {money(displayPaid)}</div>
-        <div><strong>Outstanding:</strong> {money(displayOutstanding)}</div>
+
+        {!invoice ? (
+          <button
+            onClick={() => void generateInvoice()}
+            disabled={working}
+            className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+          >
+            {working ? 'Generating...' : 'Generate Invoice'}
+          </button>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/invoices/${invoice.id}`}
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              Open Invoice
+            </Link>
+
+            <Link
+              href={`/api/invoices/${invoice.id}/pdf`}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Open PDF
+            </Link>
+
+            <button
+              type="button"
+              disabled={working}
+              onClick={() => void submitToInsurance()}
+              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+            >
+              Submit to Insurance
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="rounded-xl border bg-white p-6">
-        <h2 className="text-lg font-semibold mb-4">Photos</h2>
+      <div className="grid gap-4 md:grid-cols-4">
+        <Stat label="Invoice" value={money(displayInvoiceAmount)} />
+        <Stat label="Paid" value={money(displayPaid)} tone="green" />
+        <Stat label="Outstanding" value={money(displayOutstanding)} tone="red" />
+        <Stat label="Status" value={job.job_status || '—'} />
+      </div>
 
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <h3 className="font-semibold">Before</h3>
-            <input
-              type="file"
-              accept="image/*,.heic,.heif"
-              disabled={working}
-              onChange={(e) => {
-                if (e.target.files?.[0]) {
-                  void uploadPhoto(e.target.files[0], 'before');
-                  e.currentTarget.value = '';
-                }
-              }}
-            />
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              {photos
-                .filter((photo) => photo.type === 'before')
-                .map((photo) => (
-                  <img
-                    key={photo.id}
-                    src={photo.url}
-                    className="rounded"
-                    alt="Before repair"
-                  />
-                ))}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <Section title="Job Information">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Info label="Shop" value={job.assigned_account_name} />
+              <Info label="Job Status" value={job.job_status} />
+              <Info label="Invoice Date" value={job.invoice_date} />
+              <Info label="Damage Type" value={job.damage_type} />
+              <Info label="Damage Notes" value={job.damage_notes} full />
             </div>
-          </div>
+          </Section>
 
-          <div>
-            <h3 className="font-semibold">After</h3>
-            <input
-              type="file"
-              accept="image/*,.heic,.heif"
-              disabled={working}
-              onChange={(e) => {
-                if (e.target.files?.[0]) {
-                  void uploadPhoto(e.target.files[0], 'after');
-                  e.currentTarget.value = '';
-                }
-              }}
-            />
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              {photos
-                .filter((photo) => photo.type === 'after')
-                .map((photo) => (
-                  <img
-                    key={photo.id}
-                    src={photo.url}
-                    className="rounded"
-                    alt="After repair"
-                  />
-                ))}
+          <Section title="Customer & Vehicle">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Info label="Customer" value={job.customer_name} />
+              <Info label="Customer Phone" value={job.customer_phone} />
+              <Info label="Customer Email" value={job.customer_email} />
+              <Info label="Vehicle" value={vehicle} />
+              <Info label="VIN" value={job.vehicle_vin} />
             </div>
-          </div>
+          </Section>
+
+          <Section title="Insurance">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Info label="Carrier" value={job.insurance_carrier} />
+              <Info label="Claim Number" value={job.claim_number} />
+              <Info label="Policy Number" value={job.policy_number} />
+              <Info label="Loss Date" value={job.loss_date} />
+            </div>
+          </Section>
+        </div>
+
+        <div className="space-y-6">
+          <Section title="Quick View">
+            <div className="space-y-4">
+              <Quick label="Customer" value={job.customer_name} />
+              <Quick label="Shop" value={job.assigned_account_name} />
+              <Quick label="Vehicle" value={vehicle} />
+              <Quick label="Insurance" value={job.insurance_carrier} />
+            </div>
+          </Section>
+
+          {invoice ? (
+            <Section title={`Invoice ${invoice.invoice_number || ''}`}>
+              <div className="space-y-4">
+                <Quick label="Invoice Status" value={invoice.status || 'Draft'} />
+                <Quick
+                  label="Insurance"
+                  value={invoice.submission_status || 'Not Submitted'}
+                />
+                <Quick label="Payment" value={invoice.payment_status || 'Not Ready'} />
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="grid gap-3">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Charge Amount
+                      </div>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={chargeAmount}
+                        onChange={(e) => setChargeAmount(Number(e.target.value))}
+                        className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
+                      />
+                      <div className="mt-1 text-xs text-slate-500">
+                        Balance: {money(invoiceOutstanding)}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={working}
+                      onClick={() => void collectPayment()}
+                      className="h-10 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                    >
+                      {working ? 'Working...' : 'Record Payment'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Section>
+          ) : null}
+        </div>
+      </div>
+
+      <Section title="Photos">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <PhotoColumn
+            title="Before"
+            photos={beforePhotos}
+            working={working}
+            onUpload={(file) => uploadPhoto(file, 'before')}
+          />
+
+          <PhotoColumn
+            title="After"
+            photos={afterPhotos}
+            working={working}
+            onUpload={(file) => uploadPhoto(file, 'after')}
+          />
         </div>
 
         {working ? (
-          <div className="mt-4 text-sm text-slate-500">
-            Working...
+          <div className="mt-4 text-sm text-slate-500">Working...</div>
+        ) : null}
+      </Section>
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: 'green' | 'red';
+}) {
+  const color =
+    tone === 'green'
+      ? 'text-emerald-700'
+      : tone === 'red'
+        ? 'text-rose-700'
+        : 'text-slate-900';
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+        {label}
+      </div>
+      <div className={`mt-2 text-2xl font-semibold ${color}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+      <div className="mt-5">{children}</div>
+    </div>
+  );
+}
+
+function Info({
+  label,
+  value,
+  full = false,
+}: {
+  label: string;
+  value: string | null | undefined;
+  full?: boolean;
+}) {
+  return (
+    <div className={full ? 'md:col-span-2' : ''}>
+      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+        {label}
+      </div>
+      <div className="mt-1 text-sm text-slate-900">
+        {valueOrDash(value)}
+      </div>
+    </div>
+  );
+}
+
+function Quick({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | null | undefined;
+}) {
+  return (
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </div>
+      <div className="mt-1 text-sm font-medium text-slate-900">
+        {valueOrDash(value)}
+      </div>
+    </div>
+  );
+}
+
+function PhotoColumn({
+  title,
+  photos,
+  working,
+  onUpload,
+}: {
+  title: string;
+  photos: any[];
+  working: boolean;
+  onUpload: (file: File) => Promise<void>;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="font-semibold text-slate-900">{title}</h3>
+
+        <label className="cursor-pointer rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+          Upload
+          <input
+            type="file"
+            accept="image/*,.heic,.heif"
+            disabled={working}
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files?.[0]) {
+                void onUpload(e.target.files[0]);
+                e.currentTarget.value = '';
+              }
+            }}
+          />
+        </label>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        {photos.map((photo) => (
+          <a
+            key={photo.id}
+            href={photo.url}
+            target="_blank"
+            rel="noreferrer"
+            className="block overflow-hidden rounded-xl border border-slate-200 bg-white"
+          >
+            <img
+              src={photo.url}
+              className="h-40 w-full object-cover"
+              alt={`${title} repair`}
+            />
+          </a>
+        ))}
+
+        {!photos.length ? (
+          <div className="col-span-2 rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+            No {title.toLowerCase()} photos yet.
           </div>
         ) : null}
       </div>
-
-      {!invoice ? (
-        <button
-          onClick={() => void generateInvoice()}
-          disabled={working}
-          className="rounded bg-indigo-600 px-4 py-2 text-white disabled:opacity-60"
-        >
-          {working ? 'Generating...' : 'Generate Invoice'}
-        </button>
-      ) : null}
-
-      {invoice ? (
-        <div className="rounded-xl border bg-white p-6 space-y-5">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">
-                Invoice {invoice.invoice_number}
-              </h2>
-              <p className="text-sm text-slate-500">
-                Customer, insurance, and payment actions for this job.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href={`/invoices/${invoice.id}`}
-                className="rounded bg-black px-4 py-2 text-sm text-white"
-              >
-                Open Invoice
-              </Link>
-
-              <Link
-                href={`/api/invoices/${invoice.id}/pdf`}
-                className="rounded border px-4 py-2 text-sm"
-              >
-                Open PDF
-              </Link>
-
-              <button
-                type="button"
-                disabled={working}
-                onClick={() => void submitToInsurance()}
-                className="rounded bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-60"
-              >
-                Submit to Insurance
-              </button>
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-lg border bg-slate-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Invoice Status
-              </div>
-              <div className="mt-1 font-semibold">{invoice.status || 'Draft'}</div>
-            </div>
-
-            <div className="rounded-lg border bg-slate-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Insurance
-              </div>
-              <div className="mt-1 font-semibold">
-                {invoice.submission_status || 'Not Submitted'}
-              </div>
-            </div>
-
-            <div className="rounded-lg border bg-slate-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Payment
-              </div>
-              <div className="mt-1 font-semibold">
-                {invoice.payment_status || 'Not Ready'}
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-lg border bg-slate-50 p-4">
-            <div className="grid gap-3 md:grid-cols-4 md:items-end">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Invoice Amount
-                </div>
-                <div className="mt-1 font-semibold">
-                  {money(invoice.invoice_amount)}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Paid
-                </div>
-                <div className="mt-1 font-semibold">
-                  {money(invoice.amount_paid)}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Charge Amount
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={chargeAmount}
-                  onChange={(e) => setChargeAmount(Number(e.target.value))}
-                  className="mt-1 h-10 w-full rounded border border-slate-300 px-3 text-sm"
-                />
-                <div className="mt-1 text-xs text-slate-500">
-                  Balance: {money(invoiceOutstanding)}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                disabled={working}
-                onClick={() => void collectPayment()}
-                className="h-10 rounded bg-emerald-600 px-4 py-2 text-sm text-white disabled:opacity-60"
-              >
-                {working ? 'Working...' : 'Charge'}
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <strong>Customer:</strong> {invoice.customer_name}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
