@@ -27,7 +27,7 @@ export default function CarriersPage() {
       .order('organization_name');
 
     if (error) {
-      console.error('Error loading carriers:', error);
+      console.error(error);
       setCarriers([]);
     } else {
       setCarriers((data as Carrier[]) || []);
@@ -46,7 +46,7 @@ export default function CarriersPage() {
       });
 
     if (error) {
-      console.error('Error adding carrier:', error);
+      console.error(error);
       alert('Could not add carrier');
       return;
     }
@@ -56,43 +56,67 @@ export default function CarriersPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <Link href="/admin" className="text-blue-600">
-        ← Back to Admin
-      </Link>
+    <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
+      {/* HEADER */}
+      <div>
+        <Link href="/admin" className="text-sm text-blue-600">
+          ← Back to Admin
+        </Link>
 
-      <h1 className="text-2xl font-semibold">Carriers / TPAs</h1>
+        <h1 className="mt-2 text-3xl font-semibold text-slate-900">
+          Carriers & TPAs
+        </h1>
 
-      {/* ADD NEW */}
-      <div className="space-y-2">
-        <input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="Carrier name"
-          className="border p-2 w-full max-w-sm"
-        />
-
-        <button
-          onClick={addCarrier}
-          className="bg-black text-white px-4 py-2"
-        >
-          Add
-        </button>
+        <p className="mt-1 text-sm text-slate-500">
+          Manage insurance carriers and routing partners.
+        </p>
       </div>
 
-      {/* LIST */}
-      <div className="space-y-2">
-        {loading ? (
-          <div>Loading...</div>
-        ) : carriers.length ? (
-          carriers.map((c) => (
-            <div key={c.id} className="border p-2">
-              {c.organization_name}
+      {/* ADD CARD */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Enter carrier name..."
+            className="h-11 flex-1 rounded-lg border border-slate-300 px-4 text-sm"
+          />
+
+          <button
+            onClick={addCarrier}
+            className="h-11 rounded-lg bg-slate-900 px-6 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            Add Carrier
+          </button>
+        </div>
+      </div>
+
+      {/* LIST CARD */}
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b px-5 py-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            All Carriers
+          </h2>
+        </div>
+
+        <div>
+          {loading ? (
+            <div className="p-6 text-sm text-slate-500">Loading...</div>
+          ) : carriers.length ? (
+            carriers.map((c) => (
+              <div
+                key={c.id}
+                className="border-t px-5 py-3 text-sm text-slate-900 hover:bg-slate-50"
+              >
+                {c.organization_name}
+              </div>
+            ))
+          ) : (
+            <div className="p-6 text-sm text-slate-500">
+              No carriers yet
             </div>
-          ))
-        ) : (
-          <div>No carriers yet</div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
