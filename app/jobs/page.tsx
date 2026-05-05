@@ -2,256 +2,185 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 type Job = {
   id: string;
   customer_name: string | null;
   job_status: string | null;
-  invoice_amount: number | null;
-  amount_paid: number | null;
   invoice_date: string | null;
   created_at: string;
-  assigned_account_id: string | null;
   assigned_account_name: string | null;
 };
 
-type Role = 'admin' | 'shop' | 'carrier' | null;
+type Invoice = {
+  job_id: string;
+  invoice_amount: number | null;
+  amount_paid: number | null;
+};
+
+type JobRow = Job & {
+  invoice_amount: number;
+  paid: number;
+  outstanding: number;
+};
+
+function money(n: number) {
+  return n.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  });
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function startOfMonth() {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1)
+    .toISOString()
+    .slice(0, 10);
+}
 
 export default function JobsPage() {
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [role, setRole] = useState<Role>(null);
+  const router = useRouter();
+
+  const [rows, setRows] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(startOfMonth());
+  const [endDate, setEndDate] = useState(today());
 
   useEffect(() => {
-    void loadJobs();
+    load();
   }, []);
 
-  async function loadJobs() {
+  async function load() {
     setLoading(true);
 
-    const { data: userData } = await supabase.auth.getUser();
-    const email = userData.user?.email?.toLowerCase() || '';
-
-    const { data: roleData } = await supabase
-      .from('user_roles')
-      .select('role, approved, access_status')
-      .eq('user_email', email)
-      .maybeSingle();
-
-    if (!roleData || !roleData.approved || roleData.access_status !== 'Active') {
-      window.location.href = '/login';
-      return;
-    }
-
-    setRole(roleData.role);
-
-    if (roleData.role === 'admin') {
-      const { data } = await supabase
-        .from('jobs')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      setJobs(data || []);
-      setLoading(false);
-      return;
-    }
-
-    const { data: shopData } = await supabase
-      .from('shop_users')
-      .select('account_id')
-      .eq('user_email', email)
-      .maybeSingle();
-
-    if (!shopData?.account_id) {
-      setJobs([]);
-      setLoading(false);
-      return;
-    }
-
-    const { data } = await supabase
+    const { data: jobs } = await supabase
       .from('jobs')
-      .select('*')
-      .eq('assigned_account_id', shopData.account_id)
-      .order('created_at', { ascending: false });
+      .select('*');
 
-    setJobs(data || []);
+    if (!jobs?.length) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+
+    const ids = jobs.map(j => j.id);
+
+    const { data: invoices } = await supabase
+      .from('invoices')
+      .select('job_id, invoice_amount, amount_paid')
+      .in('job_id', ids);
+
+    const map = new Map<string, Invoice>();
+
+    invoices?.forEach(i => map.set(i.job_id, i));
+
+    const result: JobRow[] = jobs.map(j => {
+      const inv = map.get(j.id);
+
+      const total = Number(inv?.invoice_amount ?? 0);
+      const paid = Number(inv?.amount_paid ?? 0);
+
+      return {
+        ...j,
+        invoice_amount: total,
+        paid,
+        outstanding: Math.max(total - paid, 0),
+      };
+    });
+
+    setRows(result);
     setLoading(false);
   }
 
-  function money(value: number | null) {
-    return Number(value || 0).toLocaleString('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    });
-  }
-
-  const filteredJobs = useMemo(() => {
-    return jobs.filter((job) => {
-      if (!startDate && !endDate) return true;
-
-      const jobDate = job.invoice_date || job.created_at;
-      if (!jobDate) return true;
-
-      if (startDate && jobDate < startDate) return false;
-      if (endDate && jobDate > endDate) return false;
-
+  const filtered = useMemo(() => {
+    return rows.filter(j => {
+      const d = (j.invoice_date || j.created_at || '').slice(0, 10);
+      if (startDate && d < startDate) return false;
+      if (endDate && d > endDate) return false;
       return true;
     });
-  }, [jobs, startDate, endDate]);
+  }, [rows, startDate, endDate]);
 
   const totals = useMemo(() => {
-    let totalSales = 0;
-    let totalPaid = 0;
-
-    for (const job of filteredJobs) {
-      totalSales += Number(job.invoice_amount || 0);
-      totalPaid += Number(job.amount_paid || 0);
-    }
-
-    return {
-      totalSales,
-      totalPaid,
-      totalOutstanding: totalSales - totalPaid,
-      totalJobs: filteredJobs.length,
-    };
-  }, [filteredJobs]);
-
-  function setCurrentMonth() {
-    const now = new Date();
-    const first = new Date(now.getFullYear(), now.getMonth(), 1);
-    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-    setStartDate(first.toISOString().slice(0, 10));
-    setEndDate(last.toISOString().slice(0, 10));
-  }
-
-  function clearDates() {
-    setStartDate('');
-    setEndDate('');
-  }
+    return filtered.reduce(
+      (t, j) => {
+        t.jobs++;
+        t.sales += j.invoice_amount;
+        t.paid += j.paid;
+        t.outstanding += j.outstanding;
+        return t;
+      },
+      { jobs: 0, sales: 0, paid: 0, outstanding: 0 }
+    );
+  }, [filtered]);
 
   return (
-    <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
-      <div>
-        <h1 className="text-3xl font-semibold text-ink">
-          {role === 'admin' ? 'All Jobs' : 'Your Jobs'}
-        </h1>
-        <p className="text-sm text-slate-500">
-          {role === 'admin'
-            ? 'Full system visibility'
-            : 'You only see jobs assigned to your account'}
-        </p>
-      </div>
+    <div className="mx-auto max-w-[1380px] p-6 space-y-6">
 
-      {/* FILTERS */}
-      <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <label className="text-xs text-slate-500">Start</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="block border rounded px-2 py-1"
-          />
-        </div>
+      <h1 className="text-3xl font-semibold">All Jobs</h1>
 
-        <div>
-          <label className="text-xs text-slate-500">End</label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="block border rounded px-2 py-1"
-          />
-        </div>
+      {/* FILTER */}
+      <div className="p-4 border rounded-xl bg-white shadow-sm flex gap-3">
+        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
 
         <button
-          onClick={setCurrentMonth}
-          className="px-3 py-2 bg-slate-900 text-white rounded"
+          onClick={() => {
+            setStartDate(startOfMonth());
+            setEndDate(today());
+          }}
+          className="bg-black text-white px-3 rounded"
         >
           Current Month
         </button>
-
-        <button
-          onClick={clearDates}
-          className="px-3 py-2 border rounded"
-        >
-          Clear
-        </button>
       </div>
 
-      {/* TOTALS */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Stat label="Jobs" value={totals.totalJobs.toString()} />
-        <Stat label="Sales" value={money(totals.totalSales)} />
-        <Stat label="Paid" value={money(totals.totalPaid)} />
-        <Stat label="Outstanding" value={money(totals.totalOutstanding)} />
+      {/* STATS */}
+      <div className="grid grid-cols-4 gap-4">
+        <Stat label="Jobs" value={totals.jobs.toString()} />
+        <Stat label="Sales" value={money(totals.sales)} />
+        <Stat label="Paid" value={money(totals.paid)} tone="green" />
+        <Stat label="Outstanding" value={money(totals.outstanding)} tone="red" />
       </div>
 
       {/* TABLE */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
+      <div className="border rounded-xl bg-white shadow-sm overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-slate-500">
+          <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Customer</th>
-              <th className="px-4 py-3">Status</th>
-              {role === 'admin' && <th className="px-4 py-3">Shop</th>}
-              <th className="px-4 py-3">Invoice</th>
-              <th className="px-4 py-3">Paid</th>
-              <th className="px-4 py-3">Open</th>
+              <th>Date</th>
+              <th>Customer</th>
+              <th>Status</th>
+              <th>Shop</th>
+              <th>Invoice</th>
+              <th>Paid</th>
+              <th>Outstanding</th>
             </tr>
           </thead>
 
           <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={7} className="text-center py-10">
-                  Loading...
-                </td>
-              </tr>
-            ) : filteredJobs.map((job) => (
+            {filtered.map(j => (
               <tr
-                key={job.id}
-                className="border-t hover:bg-slate-50"
+                key={j.id}
+                className="cursor-pointer hover:bg-gray-50"
+                onClick={() => router.push(`/jobs/${j.id}`)}
               >
-                <td className="px-4 py-3">
-                  {(job.invoice_date || job.created_at || '').slice(0, 10)}
-                </td>
-                <td className="px-4 py-3">{job.customer_name || '—'}</td>
-                <td className="px-4 py-3">{job.job_status || '—'}</td>
-
-                {role === 'admin' && (
-                  <td className="px-4 py-3">
-                    {job.assigned_account_name || '—'}
-                  </td>
-                )}
-
-                <td className="px-4 py-3">{money(job.invoice_amount)}</td>
-                <td className="px-4 py-3">{money(job.amount_paid)}</td>
-
-                <td className="px-4 py-3">
-                  <Link
-                    href={`/jobs/${job.id}`}
-                    className="bg-slate-900 text-white px-3 py-1 rounded"
-                  >
-                    Open
-                  </Link>
-                </td>
+                <td>{(j.invoice_date || j.created_at || '').slice(0, 10)}</td>
+                <td>{j.customer_name}</td>
+                <td>{j.job_status}</td>
+                <td>{j.assigned_account_name}</td>
+                <td>{money(j.invoice_amount)}</td>
+                <td className="text-green-600 font-semibold">{money(j.paid)}</td>
+                <td className="text-red-600 font-semibold">{money(j.outstanding)}</td>
               </tr>
             ))}
-
-            {!loading && !filteredJobs.length && (
-              <tr>
-                <td colSpan={7} className="text-center py-10 text-slate-500">
-                  No jobs available.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
@@ -259,11 +188,18 @@ export default function JobsPage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, tone }: any) {
+  const color =
+    tone === 'green'
+      ? 'text-green-600'
+      : tone === 'red'
+      ? 'text-red-600'
+      : '';
+
   return (
-    <div className="rounded-xl border bg-white p-4 shadow-sm">
-      <div className="text-xs text-slate-500 uppercase">{label}</div>
-      <div className="text-xl font-semibold text-slate-900 mt-1">{value}</div>
+    <div className="p-4 border rounded-xl bg-white shadow-sm">
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className={`text-xl font-semibold ${color}`}>{value}</div>
     </div>
   );
 }
