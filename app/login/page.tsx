@@ -122,15 +122,15 @@ export default function LoginPage() {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.18),transparent_48%)]" />
 
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-10">
-        <div className="w-full max-w-md rounded-3xl border border-white/35 bg-white/88 p-8 shadow-[0_30px_90px_rgba(15,23,42,0.55)] backdrop-blur-xl">
+        <div className="w-full max-w-md rounded-3xl border border-white/70 bg-white/95 p-8 shadow-[0_40px_120px_rgba(0,0,0,0.65)] backdrop-blur-2xl">
           <div className="mb-7 text-center">
-            <div className="mx-auto mb-4 h-1.5 w-16 rounded-full bg-cyan-400" />
+            <div className="mx-auto mb-4 h-1.5 w-16 rounded-full bg-cyan-400 shadow-[0_0_24px_rgba(34,211,238,0.65)]" />
 
             <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
               GlasWeld Repair Network
             </h1>
 
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-2 text-sm leading-6 text-slate-600">
               {mode === 'login'
                 ? 'Secure access to claims, jobs, and repair network tools.'
                 : 'Enter your email and we will send a secure reset link.'}
@@ -139,7 +139,7 @@ export default function LoginPage() {
 
           <div className="space-y-4">
             <input
-              className="w-full rounded-xl border border-slate-300 bg-white/90 p-3.5 text-sm outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+              className="w-full rounded-xl border border-slate-300 bg-white p-3.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
               placeholder="Email"
               type="email"
               value={email}
@@ -148,7 +148,7 @@ export default function LoginPage() {
 
             {mode === 'login' ? (
               <input
-                className="w-full rounded-xl border border-slate-300 bg-white/90 p-3.5 text-sm outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+                className="w-full rounded-xl border border-slate-300 bg-white p-3.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
                 placeholder="Password"
                 type="password"
                 value={password}
@@ -160,7 +160,7 @@ export default function LoginPage() {
             ) : null}
 
             <button
-              className="w-full rounded-xl bg-slate-950 py-3.5 text-sm font-semibold text-white shadow-lg shadow-slate-950/20 transition hover:-translate-y-0.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-xl bg-slate-950 py-3.5 text-sm font-semibold text-white shadow-lg shadow-slate-950/30 transition hover:-translate-y-0.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
               onClick={() => (mode === 'login' ? void login() : void sendPasswordReset())}
               disabled={isLoading}
             >
@@ -174,13 +174,13 @@ export default function LoginPage() {
             </button>
 
             {error ? (
-              <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-center text-sm text-rose-700">
+              <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-center text-sm font-medium text-rose-700">
                 {error}
               </div>
             ) : null}
 
             {message ? (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm text-emerald-700">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm font-medium text-emerald-700">
                 {message}
               </div>
             ) : null}
