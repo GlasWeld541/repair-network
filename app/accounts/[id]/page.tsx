@@ -84,6 +84,10 @@ function normalizeEmail(value: string | null | undefined) {
   return String(value || '').trim().toLowerCase();
 }
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function accessBadgeClass(status: string) {
   if (status === 'Active') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (status === 'Suspended') return 'border-amber-200 bg-amber-50 text-amber-700';
@@ -112,6 +116,11 @@ export default function AccountDetailPage() {
   const [newContactName, setNewContactName] = useState('');
   const [newContactEmail, setNewContactEmail] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
+
+  const [showCreateJob, setShowCreateJob] = useState(false);
+  const [newJobCustomer, setNewJobCustomer] = useState('');
+  const [newJobAmount, setNewJobAmount] = useState<number>(0);
+  const [creatingJob, setCreatingJob] = useState(false);
 
   useEffect(() => {
     void load();
@@ -156,12 +165,10 @@ export default function AccountDetailPage() {
       return;
     }
 
-    if (isShop) {
-      if (!roleData.account_id || roleData.account_id !== id) {
-        setBlocked(true);
-        setLoading(false);
-        return;
-      }
+    if (isShop && (!roleData.account_id || roleData.account_id !== id)) {
+      setBlocked(true);
+      setLoading(false);
+      return;
     }
 
     const { data: accountData, error: accountError } = await supabase
@@ -273,6 +280,47 @@ export default function AccountDetailPage() {
     setNewContactPhone('');
     flashSaved('Contact added');
     await load();
+  }
+
+  async function createJobFromAccount() {
+    if (!account) return;
+
+    if (!newJobCustomer.trim()) {
+      window.alert('Customer name is required.');
+      return;
+    }
+
+    setCreatingJob(true);
+
+    const { data, error } = await supabase
+      .from('jobs')
+      .insert({
+        customer_name: newJobCustomer.trim(),
+        assigned_account_id: account.id,
+        assigned_account_name: account.account_name,
+        job_status: 'New',
+        invoice_amount: Number(newJobAmount || 0),
+        amount_paid: 0,
+        invoice_date: todayIso(),
+      })
+      .select('id')
+      .single();
+
+    setCreatingJob(false);
+
+    if (error) {
+      window.alert(`Could not create job: ${error.message}`);
+      return;
+    }
+
+    setShowCreateJob(false);
+    setNewJobCustomer('');
+    setNewJobAmount(0);
+    flashSaved('Job created');
+
+    if (data?.id) {
+      window.location.href = `/jobs/${data.id}`;
+    }
   }
 
   async function grantAccessAndSendInvite(contact: ContactRow) {
@@ -761,7 +809,60 @@ export default function AccountDetailPage() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-        <h2 className="mb-4 text-lg font-semibold">Recent Jobs</h2>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Recent Jobs</h2>
+
+          <button
+            type="button"
+            onClick={() => setShowCreateJob((value) => !value)}
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            + Add Job
+          </button>
+        </div>
+
+        {showCreateJob ? (
+          <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <h3 className="mb-3 font-semibold">Add Job for {account.account_name}</h3>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <input
+                value={newJobCustomer}
+                onChange={(e) => setNewJobCustomer(e.target.value)}
+                placeholder="Customer name"
+                className="rounded border border-slate-300 px-3 py-2 text-sm"
+              />
+
+              <input
+                type="number"
+                step="0.01"
+                value={newJobAmount}
+                onChange={(e) => setNewJobAmount(Number(e.target.value))}
+                placeholder="Invoice amount"
+                className="rounded border border-slate-300 px-3 py-2 text-sm"
+              />
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={creatingJob}
+                  onClick={() => void createJobFromAccount()}
+                  className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  {creatingJob ? 'Creating...' : 'Create Job'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowCreateJob(false)}
+                  className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {jobs.length ? (
           <div className="overflow-x-auto">
