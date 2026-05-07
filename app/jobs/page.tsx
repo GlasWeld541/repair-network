@@ -54,9 +54,7 @@ function todayIso() {
 
 function firstDayOfCurrentMonthIso() {
   const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1)
-    .toISOString()
-    .slice(0, 10);
+  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
 }
 
 function invoiceAmount(job: JobWithInvoice) {
@@ -84,38 +82,22 @@ function daysOutstanding(job: JobWithInvoice) {
   const start = new Date(`${dateValue}T00:00:00`);
   const now = new Date();
 
-  return Math.max(
-    Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)),
-    0
-  );
+  return Math.max(Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)), 0);
 }
 
 function agingClass(days: number, balance: number) {
   if (balance <= 0) return 'text-slate-500';
-  if (days >= 60) return 'text-rose-700 font-semibold';
-  if (days >= 30) return 'text-amber-700 font-semibold';
-  return 'text-slate-700 font-medium';
+  if (days >= 60) return 'font-semibold text-rose-700';
+  if (days >= 30) return 'font-semibold text-amber-700';
+  return 'font-medium text-slate-700';
 }
 
 function badgeClass(value: string | null | undefined) {
   if (!value) return 'border-slate-200 bg-slate-50 text-slate-600';
-
-  if (value === 'Paid' || value === 'Completed') {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  }
-
-  if (value === 'Submitted' || value === 'Sent' || value === 'In Progress') {
-    return 'border-blue-200 bg-blue-50 text-blue-700';
-  }
-
-  if (value === 'Partial Payment') {
-    return 'border-amber-200 bg-amber-50 text-amber-700';
-  }
-
-  if (value === 'Canceled') {
-    return 'border-rose-200 bg-rose-50 text-rose-700';
-  }
-
+  if (value === 'Paid' || value === 'Completed') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (value === 'Submitted' || value === 'Sent' || value === 'In Progress') return 'border-blue-200 bg-blue-50 text-blue-700';
+  if (value === 'Partial Payment') return 'border-amber-200 bg-amber-50 text-amber-700';
+  if (value === 'Canceled') return 'border-rose-200 bg-rose-50 text-rose-700';
   return 'border-slate-200 bg-slate-50 text-slate-600';
 }
 
@@ -188,9 +170,7 @@ export default function JobsPage() {
           .eq('id', accountIdForShop)
           .maybeSingle();
 
-        if (accountData) {
-          setAccounts([accountData as Account]);
-        }
+        if (accountData) setAccounts([accountData as Account]);
       }
     }
 
@@ -222,9 +202,7 @@ export default function JobsPage() {
 
     const { data: invoiceData } = await supabase
       .from('invoices')
-      .select(
-        'id, job_id, invoice_amount, amount_paid, status, payment_status, submission_status, created_at'
-      )
+      .select('id, job_id, invoice_amount, amount_paid, status, payment_status, submission_status, created_at')
       .in('job_id', jobIds);
 
     const invoiceMap = new Map<string, Invoice>();
@@ -233,13 +211,7 @@ export default function JobsPage() {
       invoiceMap.set(invoice.job_id, invoice);
     });
 
-    setJobs(
-      baseJobs.map((job) => ({
-        ...job,
-        invoice: invoiceMap.get(job.id) || null,
-      }))
-    );
-
+    setJobs(baseJobs.map((job) => ({ ...job, invoice: invoiceMap.get(job.id) || null })));
     setLoading(false);
   }
 
@@ -285,13 +257,8 @@ export default function JobsPage() {
     setNewCustomer('');
     setNewInvoiceAmount(0);
 
-    if (role === 'admin') {
-      setNewAccountId('');
-    }
-
-    if (data?.id) {
-      router.push(`/jobs/${data.id}`);
-    }
+    if (role === 'admin') setNewAccountId('');
+    if (data?.id) router.push(`/jobs/${data.id}`);
   }
 
   function setCurrentMonthView() {
@@ -318,25 +285,11 @@ export default function JobsPage() {
       const paymentStatus = job.invoice?.payment_status || '';
       const status = job.job_status || '';
 
-      if (viewMode === 'open') {
-        return balance > 0;
-      }
-
-      if (viewMode === 'submitted') {
-        return submissionStatus === 'Submitted' && balance > 0;
-      }
-
-      if (viewMode === 'over30') {
-        return balance > 0 && days >= 30;
-      }
-
-      if (viewMode === 'over60') {
-        return balance > 0 && days >= 60;
-      }
-
-      if (viewMode === 'paid') {
-        return balance <= 0 || paymentStatus === 'Paid' || status === 'Completed';
-      }
+      if (viewMode === 'open') return balance > 0;
+      if (viewMode === 'submitted') return submissionStatus === 'Submitted' && balance > 0;
+      if (viewMode === 'over30') return balance > 0 && days >= 30;
+      if (viewMode === 'over60') return balance > 0 && days >= 60;
+      if (viewMode === 'paid') return balance <= 0 || paymentStatus === 'Paid' || status === 'Completed';
 
       const date = jobDate(job);
 
@@ -349,7 +302,7 @@ export default function JobsPage() {
 
   const sortedJobs = useMemo(() => {
     return [...filteredJobs].sort((a, b) => {
-      if (viewMode === 'open' || viewMode === 'submitted' || viewMode === 'over30' || viewMode === 'over60') {
+      if (['open', 'submitted', 'over30', 'over60'].includes(viewMode)) {
         return daysOutstanding(b) - daysOutstanding(a);
       }
 
@@ -462,32 +415,29 @@ export default function JobsPage() {
       ) : null}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
-        <div className="flex flex-wrap items-end gap-3">
-          <FilterButton active={viewMode === 'open'} onClick={() => setViewMode('open')}>
-            Open Ledger
-          </FilterButton>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap gap-3">
+            <FilterButton active={viewMode === 'open'} onClick={() => setViewMode('open')}>
+              Open Ledger
+            </FilterButton>
+            <FilterButton active={viewMode === 'current'} onClick={setCurrentMonthView}>
+              Current Month
+            </FilterButton>
+            <FilterButton active={viewMode === 'submitted'} onClick={() => setViewMode('submitted')}>
+              Submitted, Not Paid
+            </FilterButton>
+            <FilterButton active={viewMode === 'over30'} onClick={() => setViewMode('over30')}>
+              Over 30
+            </FilterButton>
+            <FilterButton active={viewMode === 'over60'} onClick={() => setViewMode('over60')}>
+              Over 60
+            </FilterButton>
+            <FilterButton active={viewMode === 'paid'} onClick={() => setViewMode('paid')}>
+              Paid / Closed
+            </FilterButton>
+          </div>
 
-          <FilterButton active={viewMode === 'current'} onClick={setCurrentMonthView}>
-            Current Month
-          </FilterButton>
-
-          <FilterButton active={viewMode === 'submitted'} onClick={() => setViewMode('submitted')}>
-            Submitted, Not Paid
-          </FilterButton>
-
-          <FilterButton active={viewMode === 'over30'} onClick={() => setViewMode('over30')}>
-            Over 30
-          </FilterButton>
-
-          <FilterButton active={viewMode === 'over60'} onClick={() => setViewMode('over60')}>
-            Over 60
-          </FilterButton>
-
-          <FilterButton active={viewMode === 'paid'} onClick={() => setViewMode('paid')}>
-            Paid / Closed
-          </FilterButton>
-
-          <div className="ml-0 flex flex-wrap items-end gap-3 lg:ml-auto">
+          <div className="flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
             <div>
               <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Start
@@ -532,11 +482,7 @@ export default function JobsPage() {
         <Stat label="Sales" value={money(totals.sales)} />
         <Stat label="Paid" value={money(totals.paid)} green />
         <Stat label="Outstanding" value={money(totals.outstanding)} red />
-        <Stat
-          label="Total Open A/R"
-          value={`${openTotal.count} / ${money(openTotal.amount)}`}
-          red
-        />
+        <Stat label="Total Open A/R" value={`${openTotal.count} / ${money(openTotal.amount)}`} red />
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-soft">
@@ -577,39 +523,16 @@ export default function JobsPage() {
                     className="cursor-pointer border-t hover:bg-slate-50"
                   >
                     <td className="px-4 py-3">{jobDate(job)}</td>
-
-                    <td className="px-4 py-3 font-medium text-slate-900">
-                      {job.customer_name || '—'}
-                    </td>
-
+                    <td className="px-4 py-3 font-medium text-slate-900">{job.customer_name || '—'}</td>
                     <td className="px-4 py-3">{job.assigned_account_name || '—'}</td>
                     <td className="px-4 py-3">{job.insurance_carrier || '—'}</td>
                     <td className="px-4 py-3">{job.claim_number || '—'}</td>
-
-                    <td className="px-4 py-3">
-                      <Badge value={job.job_status || 'New'} />
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <Badge value={job.invoice?.submission_status || 'Not Submitted'} />
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <Badge value={job.invoice?.payment_status || 'Not Paid'} />
-                    </td>
-
-                    <td className="px-4 py-3 font-medium">
-                      {money(invoiceAmount(job))}
-                    </td>
-
-                    <td className="px-4 py-3 font-semibold text-emerald-700">
-                      {money(paidAmount(job))}
-                    </td>
-
-                    <td className="px-4 py-3 font-semibold text-rose-700">
-                      {money(balance)}
-                    </td>
-
+                    <td className="px-4 py-3"><Badge value={job.job_status || 'New'} /></td>
+                    <td className="px-4 py-3"><Badge value={job.invoice?.submission_status || 'Not Submitted'} /></td>
+                    <td className="px-4 py-3"><Badge value={job.invoice?.payment_status || 'Not Paid'} /></td>
+                    <td className="px-4 py-3 font-medium">{money(invoiceAmount(job))}</td>
+                    <td className="px-4 py-3 font-semibold text-emerald-700">{money(paidAmount(job))}</td>
+                    <td className="px-4 py-3 font-semibold text-rose-700">{money(balance)}</td>
                     <td className={`px-4 py-3 ${agingClass(aging, balance)}`}>
                       {balance > 0 ? `${aging} days` : 'Closed'}
                     </td>
@@ -658,11 +581,7 @@ function FilterButton({
 
 function Badge({ value }: { value: string }) {
   return (
-    <span
-      className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${badgeClass(
-        value
-      )}`}
-    >
+    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${badgeClass(value)}`}>
       {value}
     </span>
   );
@@ -679,11 +598,7 @@ function Stat({
   green?: boolean;
   red?: boolean;
 }) {
-  const color = green
-    ? 'text-emerald-700'
-    : red
-      ? 'text-rose-700'
-      : 'text-slate-900';
+  const color = green ? 'text-emerald-700' : red ? 'text-rose-700' : 'text-slate-900';
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
