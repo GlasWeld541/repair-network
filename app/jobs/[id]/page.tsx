@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Check, Pencil } from 'lucide-react';
 import heic2any from 'heic2any';
@@ -10,9 +10,7 @@ import { supabase } from '@/lib/supabase';
 const JOB_STATUSES = ['New', 'In Progress', 'Submitted', 'Completed', 'Canceled'];
 const DAMAGE_TYPES = ['Combo Break', 'Bullseye', 'Star Break', 'Crack', 'Pit', 'Other'];
 
-type EditableTarget =
-  | { table: 'jobs'; field: string }
-  | null;
+type EditableTarget = { table: 'jobs'; field: string } | null;
 
 function money(value: number | null | undefined) {
   return Number(value || 0).toLocaleString('en-US', {
@@ -36,14 +34,11 @@ function valueOrDash(value: string | null | undefined) {
   return value || '—';
 }
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export default function JobDetailPage() {
   const params = useParams();
   const id = params.id as string;
 
+  const [role, setRole] = useState<string | null>(null);
   const [job, setJob] = useState<any>(null);
   const [invoice, setInvoice] = useState<any>(null);
   const [photos, setPhotos] = useState<any[]>([]);
@@ -55,6 +50,8 @@ export default function JobDetailPage() {
 
   const [editing, setEditing] = useState<EditableTarget>(null);
   const [draftValue, setDraftValue] = useState('');
+
+  const isReadOnly = role === 'demo';
 
   useEffect(() => {
     void loadPage();
@@ -75,6 +72,22 @@ export default function JobDetailPage() {
 
   async function loadPage() {
     setLoading(true);
+
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData.user?.email?.toLowerCase() || '';
+
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role, approved, access_status')
+      .eq('user_email', email)
+      .maybeSingle();
+
+    if (!roleData || !roleData.approved || roleData.access_status !== 'Active') {
+      window.location.href = '/login';
+      return;
+    }
+
+    setRole(roleData.role);
 
     const { data: jobData } = await supabase
       .from('jobs')
@@ -139,7 +152,7 @@ export default function JobDetailPage() {
   }
 
   async function updateJobField(field: string, value: string | number | null) {
-    if (!job) return;
+    if (!job || isReadOnly) return;
 
     const { error } = await supabase
       .from('jobs')
@@ -156,16 +169,22 @@ export default function JobDetailPage() {
   }
 
   async function saveDraftField(field: string) {
+    if (isReadOnly) return;
+
     await updateJobField(field, draftValue.trim() || null);
     setEditing(null);
   }
 
   function startEdit(field: string, value: string | null | undefined) {
+    if (isReadOnly) return;
+
     setEditing({ table: 'jobs', field });
     setDraftValue(value || '');
   }
 
   async function uploadPhoto(file: File, type: 'before' | 'after') {
+    if (isReadOnly) return;
+
     try {
       setWorking(true);
 
@@ -210,7 +229,7 @@ export default function JobDetailPage() {
   }
 
   async function generateInvoice() {
-    if (!job) return;
+    if (!job || isReadOnly) return;
 
     setWorking(true);
 
@@ -239,7 +258,10 @@ export default function JobDetailPage() {
         policy_number: job.policy_number,
         loss_date: job.loss_date,
         status: 'Draft',
-        payment_status: Number(job.amount_paid || 0) >= Number(job.invoice_amount || 0) ? 'Paid' : 'Unpaid',
+        payment_status:
+          Number(job.amount_paid || 0) >= Number(job.invoice_amount || 0)
+            ? 'Paid'
+            : 'Unpaid',
       })
       .select('*')
       .single();
@@ -265,7 +287,7 @@ export default function JobDetailPage() {
   }
 
   async function submitToInsurance() {
-    if (!invoice) return;
+    if (!invoice || isReadOnly) return;
 
     setWorking(true);
 
@@ -296,12 +318,14 @@ export default function JobDetailPage() {
   }
 
   async function markComplete() {
+    if (isReadOnly) return;
+
     await updateJobField('job_status', 'Completed');
     await loadPage();
   }
 
   async function collectPayment(amountOverride?: number) {
-    if (!invoice || !job) return;
+    if (!invoice || !job || isReadOnly) return;
 
     const amountToCharge = Number(amountOverride ?? chargeAmount ?? 0);
 
@@ -381,6 +405,12 @@ export default function JobDetailPage() {
             {savedMessage}
           </div>
         ) : null}
+
+        {isReadOnly ? (
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+            Demo View Only
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -393,6 +423,7 @@ export default function JobDetailPage() {
             setDraftValue={setDraftValue}
             onSave={() => void saveDraftField('customer_name')}
             onCancel={() => setEditing(null)}
+            readOnly={isReadOnly}
           />
 
           <p className="mt-1 text-sm text-slate-500">
@@ -401,7 +432,7 @@ export default function JobDetailPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {!invoice ? (
+          {!invoice && !isReadOnly ? (
             <button
               onClick={() => void generateInvoice()}
               disabled={working}
@@ -409,7 +440,9 @@ export default function JobDetailPage() {
             >
               {working ? 'Generating...' : 'Generate Invoice'}
             </button>
-          ) : (
+          ) : null}
+
+          {invoice ? (
             <>
               <Link
                 href={`/invoices/${invoice.id}`}
@@ -425,25 +458,29 @@ export default function JobDetailPage() {
                 Open PDF
               </Link>
 
-              <button
-                type="button"
-                disabled={working}
-                onClick={() => void submitToInsurance()}
-                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-              >
-                Submit to Insurance
-              </button>
+              {!isReadOnly ? (
+                <button
+                  type="button"
+                  disabled={working}
+                  onClick={() => void submitToInsurance()}
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  Submit to Insurance
+                </button>
+              ) : null}
             </>
-          )}
+          ) : null}
 
-          <button
-            type="button"
-            disabled={working}
-            onClick={() => void markComplete()}
-            className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
-          >
-            Mark Complete
-          </button>
+          {!isReadOnly ? (
+            <button
+              type="button"
+              disabled={working}
+              onClick={() => void markComplete()}
+              className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+            >
+              Mark Complete
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -454,6 +491,7 @@ export default function JobDetailPage() {
         <StatusStat
           value={job.job_status || 'New'}
           onChange={(value) => void updateJobField('job_status', value)}
+          readOnly={isReadOnly}
         />
       </div>
 
@@ -467,6 +505,7 @@ export default function JobDetailPage() {
                 value={job.job_status || 'New'}
                 options={JOB_STATUSES}
                 onSave={(value) => void updateJobField('job_status', value)}
+                readOnly={isReadOnly}
               />
               <EditableField
                 label="Invoice Date"
@@ -479,12 +518,14 @@ export default function JobDetailPage() {
                 startEdit={startEdit}
                 saveDraftField={saveDraftField}
                 cancel={() => setEditing(null)}
+                readOnly={isReadOnly}
               />
               <EditableSelect
                 label="Damage Type"
                 value={job.damage_type || ''}
                 options={DAMAGE_TYPES}
                 onSave={(value) => void updateJobField('damage_type', value)}
+                readOnly={isReadOnly}
               />
               <EditableField
                 label="Damage Notes"
@@ -498,6 +539,7 @@ export default function JobDetailPage() {
                 startEdit={startEdit}
                 saveDraftField={saveDraftField}
                 cancel={() => setEditing(null)}
+                readOnly={isReadOnly}
               />
             </div>
           </Section>
@@ -514,6 +556,7 @@ export default function JobDetailPage() {
                 startEdit={startEdit}
                 saveDraftField={saveDraftField}
                 cancel={() => setEditing(null)}
+                readOnly={isReadOnly}
               />
               <EditableField
                 label="Customer Phone"
@@ -525,6 +568,7 @@ export default function JobDetailPage() {
                 startEdit={startEdit}
                 saveDraftField={saveDraftField}
                 cancel={() => setEditing(null)}
+                readOnly={isReadOnly}
               />
               <EditableField
                 label="Customer Email"
@@ -536,6 +580,7 @@ export default function JobDetailPage() {
                 startEdit={startEdit}
                 saveDraftField={saveDraftField}
                 cancel={() => setEditing(null)}
+                readOnly={isReadOnly}
               />
               <div className="grid grid-cols-3 gap-2">
                 <EditableField
@@ -548,6 +593,7 @@ export default function JobDetailPage() {
                   startEdit={startEdit}
                   saveDraftField={saveDraftField}
                   cancel={() => setEditing(null)}
+                  readOnly={isReadOnly}
                 />
                 <EditableField
                   label="Make"
@@ -559,6 +605,7 @@ export default function JobDetailPage() {
                   startEdit={startEdit}
                   saveDraftField={saveDraftField}
                   cancel={() => setEditing(null)}
+                  readOnly={isReadOnly}
                 />
                 <EditableField
                   label="Model"
@@ -570,6 +617,7 @@ export default function JobDetailPage() {
                   startEdit={startEdit}
                   saveDraftField={saveDraftField}
                   cancel={() => setEditing(null)}
+                  readOnly={isReadOnly}
                 />
               </div>
               <EditableField
@@ -582,6 +630,7 @@ export default function JobDetailPage() {
                 startEdit={startEdit}
                 saveDraftField={saveDraftField}
                 cancel={() => setEditing(null)}
+                readOnly={isReadOnly}
               />
             </div>
           </Section>
@@ -598,6 +647,7 @@ export default function JobDetailPage() {
                 startEdit={startEdit}
                 saveDraftField={saveDraftField}
                 cancel={() => setEditing(null)}
+                readOnly={isReadOnly}
               />
               <EditableField
                 label="Claim Number"
@@ -609,6 +659,7 @@ export default function JobDetailPage() {
                 startEdit={startEdit}
                 saveDraftField={saveDraftField}
                 cancel={() => setEditing(null)}
+                readOnly={isReadOnly}
               />
               <EditableField
                 label="Policy Number"
@@ -620,6 +671,7 @@ export default function JobDetailPage() {
                 startEdit={startEdit}
                 saveDraftField={saveDraftField}
                 cancel={() => setEditing(null)}
+                readOnly={isReadOnly}
               />
               <EditableField
                 label="Loss Date"
@@ -632,6 +684,7 @@ export default function JobDetailPage() {
                 startEdit={startEdit}
                 saveDraftField={saveDraftField}
                 cancel={() => setEditing(null)}
+                readOnly={isReadOnly}
               />
             </div>
           </Section>
@@ -665,46 +718,52 @@ export default function JobDetailPage() {
                 />
                 <Quick label="Payment" value={invoice.payment_status || 'Not Ready'} />
 
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="grid gap-3">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Charge Amount
+                {!isReadOnly ? (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="grid gap-3">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Charge Amount
+                        </div>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={chargeAmount}
+                          onChange={(e) => setChargeAmount(Number(e.target.value))}
+                          className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
+                        />
+                        <div className="mt-1 text-xs text-slate-500">
+                          Balance: {money(invoiceOutstanding)}
+                        </div>
                       </div>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={chargeAmount}
-                        onChange={(e) => setChargeAmount(Number(e.target.value))}
-                        className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
-                      />
-                      <div className="mt-1 text-xs text-slate-500">
-                        Balance: {money(invoiceOutstanding)}
+
+                      <div className="grid gap-2">
+                        <button
+                          type="button"
+                          disabled={working || invoiceOutstanding <= 0}
+                          onClick={() => void collectPayment(invoiceOutstanding)}
+                          className="h-10 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                        >
+                          Pay Full Balance
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={working}
+                          onClick={() => void collectPayment()}
+                          className="h-10 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                        >
+                          {working ? 'Working...' : 'Record Custom Payment'}
+                        </button>
                       </div>
-                    </div>
-
-                    <div className="grid gap-2">
-                      <button
-                        type="button"
-                        disabled={working || invoiceOutstanding <= 0}
-                        onClick={() => void collectPayment(invoiceOutstanding)}
-                        className="h-10 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-                      >
-                        Pay Full Balance
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={working}
-                        onClick={() => void collectPayment()}
-                        className="h-10 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
-                      >
-                        {working ? 'Working...' : 'Record Custom Payment'}
-                      </button>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                    Payments are disabled in demo view.
+                  </div>
+                )}
               </div>
             </Section>
           ) : null}
@@ -713,7 +772,10 @@ export default function JobDetailPage() {
             <Section title="Timeline">
               <div className="space-y-3">
                 {events.map((event) => (
-                  <div key={event.id} className="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                  <div
+                    key={event.id}
+                    className="border-b border-slate-100 pb-3 last:border-0 last:pb-0"
+                  >
                     <div className="text-sm font-semibold text-slate-900">
                       {event.event_type || 'Activity'}
                     </div>
@@ -738,6 +800,7 @@ export default function JobDetailPage() {
             photos={beforePhotos}
             working={working}
             onUpload={(file) => uploadPhoto(file, 'before')}
+            readOnly={isReadOnly}
           />
 
           <PhotoColumn
@@ -745,6 +808,7 @@ export default function JobDetailPage() {
             photos={afterPhotos}
             working={working}
             onUpload={(file) => uploadPhoto(file, 'after')}
+            readOnly={isReadOnly}
           />
         </div>
 
@@ -764,6 +828,7 @@ function EditableTitle({
   onEdit,
   onSave,
   onCancel,
+  readOnly,
 }: {
   value: string;
   isEditing: boolean;
@@ -772,7 +837,16 @@ function EditableTitle({
   onEdit: () => void;
   onSave: () => void;
   onCancel: () => void;
+  readOnly: boolean;
 }) {
+  if (readOnly) {
+    return (
+      <div className="text-3xl font-semibold text-slate-900">
+        {value || 'Unnamed Job'}
+      </div>
+    );
+  }
+
   if (isEditing) {
     return (
       <input
@@ -813,6 +887,7 @@ function EditableField({
   type = 'text',
   large = false,
   full = false,
+  readOnly,
 }: {
   label: string;
   value: string | null | undefined;
@@ -826,8 +901,20 @@ function EditableField({
   type?: string;
   large?: boolean;
   full?: boolean;
+  readOnly: boolean;
 }) {
   const isEditing = editing?.field === field;
+
+  if (readOnly) {
+    return (
+      <div className={full ? 'md:col-span-2' : ''}>
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+          {label}
+        </div>
+        <div className="mt-1 text-sm text-slate-900">{valueOrDash(value)}</div>
+      </div>
+    );
+  }
 
   return (
     <div className={full ? 'md:col-span-2' : ''}>
@@ -882,12 +969,25 @@ function EditableSelect({
   value,
   options,
   onSave,
+  readOnly,
 }: {
   label: string;
   value: string;
   options: string[];
   onSave: (value: string) => void;
+  readOnly: boolean;
 }) {
+  if (readOnly) {
+    return (
+      <div>
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+          {label}
+        </div>
+        <div className="mt-1 text-sm text-slate-900">{value || '—'}</div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -911,24 +1011,31 @@ function EditableSelect({
 function StatusStat({
   value,
   onChange,
+  readOnly,
 }: {
   value: string;
   onChange: (value: string) => void;
+  readOnly: boolean;
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
         Status
       </div>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-2 rounded border border-slate-300 px-2 py-1 text-xl font-semibold text-slate-900"
-      >
-        {JOB_STATUSES.map((status) => (
-          <option key={status}>{status}</option>
-        ))}
-      </select>
+
+      {readOnly ? (
+        <div className="mt-2 text-2xl font-semibold text-slate-900">{value}</div>
+      ) : (
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="mt-2 rounded border border-slate-300 px-2 py-1 text-xl font-semibold text-slate-900"
+        >
+          {JOB_STATUSES.map((status) => (
+            <option key={status}>{status}</option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }
@@ -1019,32 +1126,40 @@ function PhotoColumn({
   photos,
   working,
   onUpload,
+  readOnly,
 }: {
   title: string;
   photos: any[];
   working: boolean;
   onUpload: (file: File) => Promise<void>;
+  readOnly: boolean;
 }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="font-semibold text-slate-900">{title}</h3>
 
-        <label className="cursor-pointer rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
-          Upload
-          <input
-            type="file"
-            accept="image/*,.heic,.heif"
-            disabled={working}
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files?.[0]) {
-                void onUpload(e.target.files[0]);
-                e.currentTarget.value = '';
-              }
-            }}
-          />
-        </label>
+        {!readOnly ? (
+          <label className="cursor-pointer rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+            Upload
+            <input
+              type="file"
+              accept="image/*,.heic,.heif"
+              disabled={working}
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.[0]) {
+                  void onUpload(e.target.files[0]);
+                  e.currentTarget.value = '';
+                }
+              }}
+            />
+          </label>
+        ) : (
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
+            View Only
+          </span>
+        )}
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
