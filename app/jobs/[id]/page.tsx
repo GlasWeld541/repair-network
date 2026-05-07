@@ -1,11 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Check, Pencil } from 'lucide-react';
 import heic2any from 'heic2any';
 import { supabase } from '@/lib/supabase';
+
+const JOB_STATUSES = ['New', 'In Progress', 'Submitted', 'Completed', 'Canceled'];
+const DAMAGE_TYPES = ['Combo Break', 'Bullseye', 'Star Break', 'Crack', 'Pit', 'Other'];
+
+type EditableTarget =
+  | { table: 'jobs'; field: string }
+  | null;
 
 function money(value: number | null | undefined) {
   return Number(value || 0).toLocaleString('en-US', {
@@ -29,6 +36,10 @@ function valueOrDash(value: string | null | undefined) {
   return value || '—';
 }
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function JobDetailPage() {
   const params = useParams();
   const id = params.id as string;
@@ -36,9 +47,14 @@ export default function JobDetailPage() {
   const [job, setJob] = useState<any>(null);
   const [invoice, setInvoice] = useState<any>(null);
   const [photos, setPhotos] = useState<any[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [chargeAmount, setChargeAmount] = useState<number>(0);
+  const [savedMessage, setSavedMessage] = useState('');
+
+  const [editing, setEditing] = useState<EditableTarget>(null);
+  const [draftValue, setDraftValue] = useState('');
 
   useEffect(() => {
     void loadPage();
@@ -51,6 +67,11 @@ export default function JobDetailPage() {
       setChargeAmount(Number(Math.max(balance, 0).toFixed(2)));
     }
   }, [invoice]);
+
+  function flashSaved(message = 'Saved') {
+    setSavedMessage(message);
+    window.setTimeout(() => setSavedMessage(''), 1800);
+  }
 
   async function loadPage() {
     setLoading(true);
@@ -72,9 +93,23 @@ export default function JobDetailPage() {
       .select('*')
       .eq('job_id', id);
 
+    let eventData: any[] = [];
+
+    if (invoiceData?.id) {
+      const { data } = await supabase
+        .from('invoice_events')
+        .select('*')
+        .eq('invoice_id', invoiceData.id)
+        .order('created_at', { ascending: false })
+        .limit(8);
+
+      eventData = data || [];
+    }
+
     setJob(jobData);
     setInvoice(invoiceData);
     setPhotos(photoData || []);
+    setEvents(eventData);
     setLoading(false);
   }
 
@@ -103,6 +138,33 @@ export default function JobDetailPage() {
     );
   }
 
+  async function updateJobField(field: string, value: string | number | null) {
+    if (!job) return;
+
+    const { error } = await supabase
+      .from('jobs')
+      .update({ [field]: value === '' ? null : value })
+      .eq('id', job.id);
+
+    if (error) {
+      window.alert(`Could not update job: ${error.message}`);
+      return;
+    }
+
+    setJob({ ...job, [field]: value === '' ? null : value });
+    flashSaved();
+  }
+
+  async function saveDraftField(field: string) {
+    await updateJobField(field, draftValue.trim() || null);
+    setEditing(null);
+  }
+
+  function startEdit(field: string, value: string | null | undefined) {
+    setEditing({ table: 'jobs', field });
+    setDraftValue(value || '');
+  }
+
   async function uploadPhoto(file: File, type: 'before' | 'after') {
     try {
       setWorking(true);
@@ -119,7 +181,7 @@ export default function JobDetailPage() {
         });
 
       if (uploadError) {
-        alert(`Upload failed: ${uploadError.message}`);
+        window.alert(`Upload failed: ${uploadError.message}`);
         setWorking(false);
         return;
       }
@@ -133,15 +195,16 @@ export default function JobDetailPage() {
       });
 
       if (insertError) {
-        alert(`Photo saved to storage, but could not attach to job: ${insertError.message}`);
+        window.alert(`Photo saved to storage, but could not attach to job: ${insertError.message}`);
         setWorking(false);
         return;
       }
 
       await loadPage();
       setWorking(false);
+      flashSaved('Photo uploaded');
     } catch (err: any) {
-      alert(`Upload error: ${err?.message || String(err)}`);
+      window.alert(`Upload error: ${err?.message || String(err)}`);
       setWorking(false);
     }
   }
@@ -175,19 +238,30 @@ export default function JobDetailPage() {
         claim_number: job.claim_number,
         policy_number: job.policy_number,
         loss_date: job.loss_date,
+        status: 'Draft',
+        payment_status: Number(job.amount_paid || 0) >= Number(job.invoice_amount || 0) ? 'Paid' : 'Unpaid',
       })
       .select('*')
       .single();
 
     if (error) {
-      alert('Could not generate invoice.');
+      window.alert('Could not generate invoice.');
       setWorking(false);
       return;
     }
 
+    await supabase.from('invoice_events').insert({
+      invoice_id: data.id,
+      event_type: 'Invoice Generated',
+      note: 'Invoice generated from job detail page.',
+    });
+
+    await updateJobField('job_status', 'In Progress');
+
     setInvoice(data);
     setWorking(false);
     await loadPage();
+    flashSaved('Invoice generated');
   }
 
   async function submitToInsurance() {
@@ -203,6 +277,13 @@ export default function JobDetailPage() {
       })
       .eq('id', invoice.id);
 
+    await supabase
+      .from('jobs')
+      .update({
+        job_status: 'Submitted',
+      })
+      .eq('id', id);
+
     await supabase.from('invoice_events').insert({
       invoice_id: invoice.id,
       event_type: 'Insurance Submitted',
@@ -211,15 +292,21 @@ export default function JobDetailPage() {
 
     setWorking(false);
     await loadPage();
+    flashSaved('Submitted to insurance');
   }
 
-  async function collectPayment() {
+  async function markComplete() {
+    await updateJobField('job_status', 'Completed');
+    await loadPage();
+  }
+
+  async function collectPayment(amountOverride?: number) {
     if (!invoice || !job) return;
 
-    const amountToCharge = Number(chargeAmount || 0);
+    const amountToCharge = Number(amountOverride ?? chargeAmount ?? 0);
 
     if (amountToCharge <= 0) {
-      alert('Enter a charge amount greater than $0.00.');
+      window.alert('Enter a charge amount greater than $0.00.');
       return;
     }
 
@@ -245,6 +332,7 @@ export default function JobDetailPage() {
       .update({
         amount_paid: newPaid,
         payment_status: paymentStatus,
+        job_status: newOutstanding <= 0 ? 'Completed' : job.job_status,
       })
       .eq('id', job.id);
 
@@ -256,6 +344,7 @@ export default function JobDetailPage() {
 
     setWorking(false);
     await loadPage();
+    flashSaved('Payment recorded');
   }
 
   if (loading) return <div className="p-6 text-sm text-slate-500">Loading...</div>;
@@ -276,65 +365,96 @@ export default function JobDetailPage() {
 
   const beforePhotos = photos.filter((photo) => photo.type === 'before');
   const afterPhotos = photos.filter((photo) => photo.type === 'after');
+  const latestEvent = events[0];
 
   return (
     <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
-      <Link href="/jobs" className="inline-flex items-center gap-2 text-sm text-blue-600">
-        <ArrowLeft className="h-4 w-4" />
-        Back to Jobs
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link href="/jobs" className="inline-flex items-center gap-2 text-sm text-blue-600">
+          <ArrowLeft className="h-4 w-4" />
+          Back to Jobs
+        </Link>
+
+        {savedMessage ? (
+          <div className="flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+            <Check className="h-4 w-4" />
+            {savedMessage}
+          </div>
+        ) : null}
+      </div>
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-3xl font-semibold text-slate-900">
-            {valueOrDash(job.customer_name)}
-          </h1>
+          <EditableTitle
+            value={job.customer_name || ''}
+            onEdit={() => startEdit('customer_name', job.customer_name)}
+            isEditing={editing?.field === 'customer_name'}
+            draftValue={draftValue}
+            setDraftValue={setDraftValue}
+            onSave={() => void saveDraftField('customer_name')}
+            onCancel={() => setEditing(null)}
+          />
+
           <p className="mt-1 text-sm text-slate-500">
             Job detail, photos, invoice, insurance submission, and payment tracking.
           </p>
         </div>
 
-        {!invoice ? (
-          <button
-            onClick={() => void generateInvoice()}
-            disabled={working}
-            className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
-          >
-            {working ? 'Generating...' : 'Generate Invoice'}
-          </button>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href={`/invoices/${invoice.id}`}
-              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-            >
-              Open Invoice
-            </Link>
-
-            <Link
-              href={`/api/invoices/${invoice.id}/pdf`}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Open PDF
-            </Link>
-
+        <div className="flex flex-wrap gap-2">
+          {!invoice ? (
             <button
-              type="button"
+              onClick={() => void generateInvoice()}
               disabled={working}
-              onClick={() => void submitToInsurance()}
-              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
             >
-              Submit to Insurance
+              {working ? 'Generating...' : 'Generate Invoice'}
             </button>
-          </div>
-        )}
+          ) : (
+            <>
+              <Link
+                href={`/invoices/${invoice.id}`}
+                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              >
+                Open Invoice
+              </Link>
+
+              <Link
+                href={`/api/invoices/${invoice.id}/pdf`}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Open PDF
+              </Link>
+
+              <button
+                type="button"
+                disabled={working}
+                onClick={() => void submitToInsurance()}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                Submit to Insurance
+              </button>
+            </>
+          )}
+
+          <button
+            type="button"
+            disabled={working}
+            onClick={() => void markComplete()}
+            className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+          >
+            Mark Complete
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
         <Stat label="Invoice" value={money(displayInvoiceAmount)} />
         <Stat label="Paid" value={money(displayPaid)} tone="green" />
         <Stat label="Outstanding" value={money(displayOutstanding)} tone="red" />
-        <Stat label="Status" value={job.job_status || '—'} />
+        <StatusStat
+          value={job.job_status || 'New'}
+          onChange={(value) => void updateJobField('job_status', value)}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -342,29 +462,177 @@ export default function JobDetailPage() {
           <Section title="Job Information">
             <div className="grid gap-4 md:grid-cols-2">
               <Info label="Shop" value={job.assigned_account_name} />
-              <Info label="Job Status" value={job.job_status} />
-              <Info label="Invoice Date" value={job.invoice_date} />
-              <Info label="Damage Type" value={job.damage_type} />
-              <Info label="Damage Notes" value={job.damage_notes} full />
+              <EditableSelect
+                label="Job Status"
+                value={job.job_status || 'New'}
+                options={JOB_STATUSES}
+                onSave={(value) => void updateJobField('job_status', value)}
+              />
+              <EditableField
+                label="Invoice Date"
+                value={job.invoice_date}
+                type="date"
+                editing={editing}
+                draftValue={draftValue}
+                setDraftValue={setDraftValue}
+                field="invoice_date"
+                startEdit={startEdit}
+                saveDraftField={saveDraftField}
+                cancel={() => setEditing(null)}
+              />
+              <EditableSelect
+                label="Damage Type"
+                value={job.damage_type || ''}
+                options={DAMAGE_TYPES}
+                onSave={(value) => void updateJobField('damage_type', value)}
+              />
+              <EditableField
+                label="Damage Notes"
+                value={job.damage_notes}
+                field="damage_notes"
+                large
+                full
+                editing={editing}
+                draftValue={draftValue}
+                setDraftValue={setDraftValue}
+                startEdit={startEdit}
+                saveDraftField={saveDraftField}
+                cancel={() => setEditing(null)}
+              />
             </div>
           </Section>
 
           <Section title="Customer & Vehicle">
             <div className="grid gap-4 md:grid-cols-2">
-              <Info label="Customer" value={job.customer_name} />
-              <Info label="Customer Phone" value={job.customer_phone} />
-              <Info label="Customer Email" value={job.customer_email} />
-              <Info label="Vehicle" value={vehicle} />
-              <Info label="VIN" value={job.vehicle_vin} />
+              <EditableField
+                label="Customer"
+                value={job.customer_name}
+                field="customer_name"
+                editing={editing}
+                draftValue={draftValue}
+                setDraftValue={setDraftValue}
+                startEdit={startEdit}
+                saveDraftField={saveDraftField}
+                cancel={() => setEditing(null)}
+              />
+              <EditableField
+                label="Customer Phone"
+                value={job.customer_phone}
+                field="customer_phone"
+                editing={editing}
+                draftValue={draftValue}
+                setDraftValue={setDraftValue}
+                startEdit={startEdit}
+                saveDraftField={saveDraftField}
+                cancel={() => setEditing(null)}
+              />
+              <EditableField
+                label="Customer Email"
+                value={job.customer_email}
+                field="customer_email"
+                editing={editing}
+                draftValue={draftValue}
+                setDraftValue={setDraftValue}
+                startEdit={startEdit}
+                saveDraftField={saveDraftField}
+                cancel={() => setEditing(null)}
+              />
+              <div className="grid grid-cols-3 gap-2">
+                <EditableField
+                  label="Year"
+                  value={job.vehicle_year}
+                  field="vehicle_year"
+                  editing={editing}
+                  draftValue={draftValue}
+                  setDraftValue={setDraftValue}
+                  startEdit={startEdit}
+                  saveDraftField={saveDraftField}
+                  cancel={() => setEditing(null)}
+                />
+                <EditableField
+                  label="Make"
+                  value={job.vehicle_make}
+                  field="vehicle_make"
+                  editing={editing}
+                  draftValue={draftValue}
+                  setDraftValue={setDraftValue}
+                  startEdit={startEdit}
+                  saveDraftField={saveDraftField}
+                  cancel={() => setEditing(null)}
+                />
+                <EditableField
+                  label="Model"
+                  value={job.vehicle_model}
+                  field="vehicle_model"
+                  editing={editing}
+                  draftValue={draftValue}
+                  setDraftValue={setDraftValue}
+                  startEdit={startEdit}
+                  saveDraftField={saveDraftField}
+                  cancel={() => setEditing(null)}
+                />
+              </div>
+              <EditableField
+                label="VIN"
+                value={job.vehicle_vin}
+                field="vehicle_vin"
+                editing={editing}
+                draftValue={draftValue}
+                setDraftValue={setDraftValue}
+                startEdit={startEdit}
+                saveDraftField={saveDraftField}
+                cancel={() => setEditing(null)}
+              />
             </div>
           </Section>
 
           <Section title="Insurance">
             <div className="grid gap-4 md:grid-cols-2">
-              <Info label="Carrier" value={job.insurance_carrier} />
-              <Info label="Claim Number" value={job.claim_number} />
-              <Info label="Policy Number" value={job.policy_number} />
-              <Info label="Loss Date" value={job.loss_date} />
+              <EditableField
+                label="Carrier"
+                value={job.insurance_carrier}
+                field="insurance_carrier"
+                editing={editing}
+                draftValue={draftValue}
+                setDraftValue={setDraftValue}
+                startEdit={startEdit}
+                saveDraftField={saveDraftField}
+                cancel={() => setEditing(null)}
+              />
+              <EditableField
+                label="Claim Number"
+                value={job.claim_number}
+                field="claim_number"
+                editing={editing}
+                draftValue={draftValue}
+                setDraftValue={setDraftValue}
+                startEdit={startEdit}
+                saveDraftField={saveDraftField}
+                cancel={() => setEditing(null)}
+              />
+              <EditableField
+                label="Policy Number"
+                value={job.policy_number}
+                field="policy_number"
+                editing={editing}
+                draftValue={draftValue}
+                setDraftValue={setDraftValue}
+                startEdit={startEdit}
+                saveDraftField={saveDraftField}
+                cancel={() => setEditing(null)}
+              />
+              <EditableField
+                label="Loss Date"
+                value={job.loss_date}
+                type="date"
+                field="loss_date"
+                editing={editing}
+                draftValue={draftValue}
+                setDraftValue={setDraftValue}
+                startEdit={startEdit}
+                saveDraftField={saveDraftField}
+                cancel={() => setEditing(null)}
+              />
             </div>
           </Section>
         </div>
@@ -376,6 +644,14 @@ export default function JobDetailPage() {
               <Quick label="Shop" value={job.assigned_account_name} />
               <Quick label="Vehicle" value={vehicle} />
               <Quick label="Insurance" value={job.insurance_carrier} />
+              <Quick
+                label="Last Activity"
+                value={
+                  latestEvent
+                    ? `${latestEvent.event_type || 'Activity'}`
+                    : 'No activity yet'
+                }
+              />
             </div>
           </Section>
 
@@ -408,16 +684,47 @@ export default function JobDetailPage() {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      disabled={working}
-                      onClick={() => void collectPayment()}
-                      className="h-10 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-                    >
-                      {working ? 'Working...' : 'Record Payment'}
-                    </button>
+                    <div className="grid gap-2">
+                      <button
+                        type="button"
+                        disabled={working || invoiceOutstanding <= 0}
+                        onClick={() => void collectPayment(invoiceOutstanding)}
+                        className="h-10 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                      >
+                        Pay Full Balance
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={working}
+                        onClick={() => void collectPayment()}
+                        className="h-10 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                      >
+                        {working ? 'Working...' : 'Record Custom Payment'}
+                      </button>
+                    </div>
                   </div>
                 </div>
+              </div>
+            </Section>
+          ) : null}
+
+          {events.length ? (
+            <Section title="Timeline">
+              <div className="space-y-3">
+                {events.map((event) => (
+                  <div key={event.id} className="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                    <div className="text-sm font-semibold text-slate-900">
+                      {event.event_type || 'Activity'}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {(event.created_at || '').slice(0, 19).replace('T', ' ')}
+                    </div>
+                    {event.note ? (
+                      <div className="mt-1 text-sm text-slate-600">{event.note}</div>
+                    ) : null}
+                  </div>
+                ))}
               </div>
             </Section>
           ) : null}
@@ -449,6 +756,183 @@ export default function JobDetailPage() {
   );
 }
 
+function EditableTitle({
+  value,
+  isEditing,
+  draftValue,
+  setDraftValue,
+  onEdit,
+  onSave,
+  onCancel,
+}: {
+  value: string;
+  isEditing: boolean;
+  draftValue: string;
+  setDraftValue: (value: string) => void;
+  onEdit: () => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  if (isEditing) {
+    return (
+      <input
+        autoFocus
+        value={draftValue}
+        onChange={(e) => setDraftValue(e.target.value)}
+        onBlur={onSave}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+          if (e.key === 'Escape') onCancel();
+        }}
+        className="rounded border border-slate-300 px-3 py-2 text-3xl font-semibold"
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onEdit}
+      className="rounded text-left text-3xl font-semibold text-slate-900 hover:bg-slate-100"
+    >
+      {value || 'Unnamed Job'}
+    </button>
+  );
+}
+
+function EditableField({
+  label,
+  value,
+  field,
+  editing,
+  draftValue,
+  setDraftValue,
+  startEdit,
+  saveDraftField,
+  cancel,
+  type = 'text',
+  large = false,
+  full = false,
+}: {
+  label: string;
+  value: string | null | undefined;
+  field: string;
+  editing: EditableTarget;
+  draftValue: string;
+  setDraftValue: (value: string) => void;
+  startEdit: (field: string, value: string | null | undefined) => void;
+  saveDraftField: (field: string) => void;
+  cancel: () => void;
+  type?: string;
+  large?: boolean;
+  full?: boolean;
+}) {
+  const isEditing = editing?.field === field;
+
+  return (
+    <div className={full ? 'md:col-span-2' : ''}>
+      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+        {label}
+      </div>
+
+      {isEditing ? (
+        large ? (
+          <textarea
+            autoFocus
+            value={draftValue}
+            onChange={(e) => setDraftValue(e.target.value)}
+            onBlur={() => saveDraftField(field)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') cancel();
+            }}
+            className="mt-1 min-h-[90px] w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          />
+        ) : (
+          <input
+            autoFocus
+            type={type}
+            value={draftValue}
+            onChange={(e) => setDraftValue(e.target.value)}
+            onBlur={() => saveDraftField(field)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') cancel();
+            }}
+            className="mt-1 rounded border border-slate-300 px-3 py-2 text-sm"
+          />
+        )
+      ) : (
+        <div className="mt-1 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => startEdit(field, value)}
+            className="rounded px-1 py-1 text-left text-sm text-slate-900 hover:bg-slate-100"
+          >
+            {valueOrDash(value)}
+          </button>
+          <Pencil className="h-3.5 w-3.5 text-slate-400" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EditableSelect({
+  label,
+  value,
+  options,
+  onSave,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onSave: (value: string) => void;
+}) {
+  return (
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+        {label}
+      </div>
+
+      <select
+        value={value || ''}
+        onChange={(e) => onSave(e.target.value)}
+        className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
+      >
+        <option value="">—</option>
+        {options.map((option) => (
+          <option key={option}>{option}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function StatusStat({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+        Status
+      </div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-2 rounded border border-slate-300 px-2 py-1 text-xl font-semibold text-slate-900"
+      >
+        {JOB_STATUSES.map((status) => (
+          <option key={status}>{status}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function Stat({
   label,
   value,
@@ -466,7 +950,7 @@ function Stat({
         : 'text-slate-900';
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
         {label}
       </div>
@@ -485,7 +969,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
       <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
       <div className="mt-5">{children}</div>
     </div>
@@ -495,14 +979,12 @@ function Section({
 function Info({
   label,
   value,
-  full = false,
 }: {
   label: string;
   value: string | null | undefined;
-  full?: boolean;
 }) {
   return (
-    <div className={full ? 'md:col-span-2' : ''}>
+    <div>
       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
         {label}
       </div>
