@@ -19,6 +19,8 @@ type Job = {
   created_at: string;
   assigned_account_id: string | null;
   assigned_account_name: string | null;
+  insurance_carrier: string | null;
+  claim_number: string | null;
 };
 
 type Invoice = {
@@ -26,6 +28,10 @@ type Invoice = {
   job_id: string;
   invoice_amount: number | null;
   amount_paid: number | null;
+  status: string | null;
+  payment_status: string | null;
+  submission_status: string | null;
+  created_at: string | null;
 };
 
 type JobWithInvoice = Job & {
@@ -33,6 +39,7 @@ type JobWithInvoice = Job & {
 };
 
 type Role = 'admin' | 'shop' | 'carrier' | null;
+type ViewMode = 'open' | 'current' | 'submitted' | 'over30' | 'over60' | 'paid' | 'custom';
 
 function money(value: number | null | undefined) {
   return Number(value || 0).toLocaleString('en-US', {
@@ -68,6 +75,50 @@ function jobDate(job: JobWithInvoice) {
   return (job.invoice_date || job.created_at || '').slice(0, 10);
 }
 
+function daysOutstanding(job: JobWithInvoice) {
+  if (outstandingAmount(job) <= 0) return 0;
+
+  const dateValue = jobDate(job);
+  if (!dateValue) return 0;
+
+  const start = new Date(`${dateValue}T00:00:00`);
+  const now = new Date();
+
+  return Math.max(
+    Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)),
+    0
+  );
+}
+
+function agingClass(days: number, balance: number) {
+  if (balance <= 0) return 'text-slate-500';
+  if (days >= 60) return 'text-rose-700 font-semibold';
+  if (days >= 30) return 'text-amber-700 font-semibold';
+  return 'text-slate-700 font-medium';
+}
+
+function badgeClass(value: string | null | undefined) {
+  if (!value) return 'border-slate-200 bg-slate-50 text-slate-600';
+
+  if (value === 'Paid' || value === 'Completed') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  }
+
+  if (value === 'Submitted' || value === 'Sent' || value === 'In Progress') {
+    return 'border-blue-200 bg-blue-50 text-blue-700';
+  }
+
+  if (value === 'Partial Payment') {
+    return 'border-amber-200 bg-amber-50 text-amber-700';
+  }
+
+  if (value === 'Canceled') {
+    return 'border-rose-200 bg-rose-50 text-rose-700';
+  }
+
+  return 'border-slate-200 bg-slate-50 text-slate-600';
+}
+
 export default function JobsPage() {
   const router = useRouter();
 
@@ -77,6 +128,7 @@ export default function JobsPage() {
   const [shopAccountId, setShopAccountId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const [viewMode, setViewMode] = useState<ViewMode>('open');
   const [startDate, setStartDate] = useState(firstDayOfCurrentMonthIso());
   const [endDate, setEndDate] = useState(todayIso());
 
@@ -128,6 +180,18 @@ export default function JobsPage() {
       accountIdForShop = shopData?.account_id || null;
       setShopAccountId(accountIdForShop);
       setNewAccountId(accountIdForShop || '');
+
+      if (accountIdForShop) {
+        const { data: accountData } = await supabase
+          .from('accounts')
+          .select('id, account_name')
+          .eq('id', accountIdForShop)
+          .maybeSingle();
+
+        if (accountData) {
+          setAccounts([accountData as Account]);
+        }
+      }
     }
 
     let jobQuery = supabase
@@ -158,7 +222,9 @@ export default function JobsPage() {
 
     const { data: invoiceData } = await supabase
       .from('invoices')
-      .select('id, job_id, invoice_amount, amount_paid')
+      .select(
+        'id, job_id, invoice_amount, amount_paid, status, payment_status, submission_status, created_at'
+      )
       .in('job_id', jobIds);
 
     const invoiceMap = new Map<string, Invoice>();
@@ -228,8 +294,50 @@ export default function JobsPage() {
     }
   }
 
+  function setCurrentMonthView() {
+    setViewMode('current');
+    setStartDate(firstDayOfCurrentMonthIso());
+    setEndDate(todayIso());
+  }
+
+  function setCustomDateStart(value: string) {
+    setStartDate(value);
+    setViewMode('custom');
+  }
+
+  function setCustomDateEnd(value: string) {
+    setEndDate(value);
+    setViewMode('custom');
+  }
+
   const filteredJobs = useMemo(() => {
     return jobs.filter((job) => {
+      const balance = outstandingAmount(job);
+      const days = daysOutstanding(job);
+      const submissionStatus = job.invoice?.submission_status || '';
+      const paymentStatus = job.invoice?.payment_status || '';
+      const status = job.job_status || '';
+
+      if (viewMode === 'open') {
+        return balance > 0;
+      }
+
+      if (viewMode === 'submitted') {
+        return submissionStatus === 'Submitted' && balance > 0;
+      }
+
+      if (viewMode === 'over30') {
+        return balance > 0 && days >= 30;
+      }
+
+      if (viewMode === 'over60') {
+        return balance > 0 && days >= 60;
+      }
+
+      if (viewMode === 'paid') {
+        return balance <= 0 || paymentStatus === 'Paid' || status === 'Completed';
+      }
+
       const date = jobDate(job);
 
       if (startDate && date < startDate) return false;
@@ -237,7 +345,17 @@ export default function JobsPage() {
 
       return true;
     });
-  }, [jobs, startDate, endDate]);
+  }, [jobs, viewMode, startDate, endDate]);
+
+  const sortedJobs = useMemo(() => {
+    return [...filteredJobs].sort((a, b) => {
+      if (viewMode === 'open' || viewMode === 'submitted' || viewMode === 'over30' || viewMode === 'over60') {
+        return daysOutstanding(b) - daysOutstanding(a);
+      }
+
+      return jobDate(b).localeCompare(jobDate(a));
+    });
+  }, [filteredJobs, viewMode]);
 
   const totals = useMemo(() => {
     return filteredJobs.reduce(
@@ -252,17 +370,29 @@ export default function JobsPage() {
     );
   }, [filteredJobs]);
 
+  const openTotal = useMemo(() => {
+    return jobs.reduce(
+      (sum, job) => {
+        const balance = outstandingAmount(job);
+        if (balance > 0) {
+          sum.count += 1;
+          sum.amount += balance;
+        }
+        return sum;
+      },
+      { count: 0, amount: 0 }
+    );
+  }, [jobs]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-semibold text-ink">
-            {role === 'admin' ? 'All Jobs' : 'Your Jobs'}
+            {role === 'admin' ? 'Jobs Ledger' : 'Your Jobs Ledger'}
           </h1>
           <p className="text-sm text-slate-500">
-            {role === 'admin'
-              ? 'Full system visibility'
-              : 'Jobs assigned to your account'}
+            Track jobs, insurance submissions, payments, aging, and open balances.
           </p>
         </div>
 
@@ -333,110 +463,165 @@ export default function JobsPage() {
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
         <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Start
-            </label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
-            />
-          </div>
+          <FilterButton active={viewMode === 'open'} onClick={() => setViewMode('open')}>
+            Open Ledger
+          </FilterButton>
 
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              End
-            </label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setStartDate(firstDayOfCurrentMonthIso());
-              setEndDate(todayIso());
-            }}
-            className="rounded bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-          >
+          <FilterButton active={viewMode === 'current'} onClick={setCurrentMonthView}>
             Current Month
-          </button>
+          </FilterButton>
 
-          <button
-            type="button"
-            onClick={() => {
-              setStartDate('');
-              setEndDate('');
-            }}
-            className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Clear
-          </button>
+          <FilterButton active={viewMode === 'submitted'} onClick={() => setViewMode('submitted')}>
+            Submitted, Not Paid
+          </FilterButton>
+
+          <FilterButton active={viewMode === 'over30'} onClick={() => setViewMode('over30')}>
+            Over 30
+          </FilterButton>
+
+          <FilterButton active={viewMode === 'over60'} onClick={() => setViewMode('over60')}>
+            Over 60
+          </FilterButton>
+
+          <FilterButton active={viewMode === 'paid'} onClick={() => setViewMode('paid')}>
+            Paid / Closed
+          </FilterButton>
+
+          <div className="ml-0 flex flex-wrap items-end gap-3 lg:ml-auto">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Start
+              </label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setCustomDateStart(e.target.value)}
+                className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                End
+              </label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setCustomDateEnd(e.target.value)}
+                className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setStartDate('');
+                setEndDate('');
+                setViewMode('custom');
+              }}
+              className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Clear Dates
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Stat label="Jobs" value={totals.jobs.toString()} />
         <Stat label="Sales" value={money(totals.sales)} />
         <Stat label="Paid" value={money(totals.paid)} green />
         <Stat label="Outstanding" value={money(totals.outstanding)} red />
+        <Stat
+          label="Total Open A/R"
+          value={`${openTotal.count} / ${money(openTotal.amount)}`}
+          red
+        />
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-soft">
-        <table className="min-w-[900px] text-sm">
+        <table className="min-w-[1320px] text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
-              <th className="px-4 py-3">Date</th>
+              <th className="px-4 py-3">Job Date</th>
               <th className="px-4 py-3">Customer</th>
-              <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Shop</th>
+              <th className="px-4 py-3">Carrier</th>
+              <th className="px-4 py-3">Claim #</th>
+              <th className="px-4 py-3">Job Status</th>
+              <th className="px-4 py-3">Submission</th>
+              <th className="px-4 py-3">Payment</th>
               <th className="px-4 py-3">Invoice</th>
               <th className="px-4 py-3">Paid</th>
-              <th className="px-4 py-3">Outstanding</th>
+              <th className="px-4 py-3">Balance</th>
+              <th className="px-4 py-3">Aging</th>
             </tr>
           </thead>
 
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-slate-500">
+                <td colSpan={12} className="py-10 text-center text-slate-500">
                   Loading...
                 </td>
               </tr>
             ) : (
-              filteredJobs.map((job) => (
-                <tr
-                  key={job.id}
-                  onClick={() => router.push(`/jobs/${job.id}`)}
-                  className="cursor-pointer border-t hover:bg-slate-50"
-                >
-                  <td className="px-4 py-3">{jobDate(job)}</td>
-                  <td className="px-4 py-3 font-medium text-slate-900">
-                    {job.customer_name || '—'}
-                  </td>
-                  <td className="px-4 py-3">{job.job_status || '—'}</td>
-                  <td className="px-4 py-3">{job.assigned_account_name || '—'}</td>
-                  <td className="px-4 py-3">{money(invoiceAmount(job))}</td>
-                  <td className="px-4 py-3 font-semibold text-emerald-700">
-                    {money(paidAmount(job))}
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-rose-700">
-                    {money(outstandingAmount(job))}
-                  </td>
-                </tr>
-              ))
+              sortedJobs.map((job) => {
+                const balance = outstandingAmount(job);
+                const aging = daysOutstanding(job);
+
+                return (
+                  <tr
+                    key={job.id}
+                    onClick={() => router.push(`/jobs/${job.id}`)}
+                    className="cursor-pointer border-t hover:bg-slate-50"
+                  >
+                    <td className="px-4 py-3">{jobDate(job)}</td>
+
+                    <td className="px-4 py-3 font-medium text-slate-900">
+                      {job.customer_name || '—'}
+                    </td>
+
+                    <td className="px-4 py-3">{job.assigned_account_name || '—'}</td>
+                    <td className="px-4 py-3">{job.insurance_carrier || '—'}</td>
+                    <td className="px-4 py-3">{job.claim_number || '—'}</td>
+
+                    <td className="px-4 py-3">
+                      <Badge value={job.job_status || 'New'} />
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <Badge value={job.invoice?.submission_status || 'Not Submitted'} />
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <Badge value={job.invoice?.payment_status || 'Not Paid'} />
+                    </td>
+
+                    <td className="px-4 py-3 font-medium">
+                      {money(invoiceAmount(job))}
+                    </td>
+
+                    <td className="px-4 py-3 font-semibold text-emerald-700">
+                      {money(paidAmount(job))}
+                    </td>
+
+                    <td className="px-4 py-3 font-semibold text-rose-700">
+                      {money(balance)}
+                    </td>
+
+                    <td className={`px-4 py-3 ${agingClass(aging, balance)}`}>
+                      {balance > 0 ? `${aging} days` : 'Closed'}
+                    </td>
+                  </tr>
+                );
+              })
             )}
 
-            {!loading && !filteredJobs.length ? (
+            {!loading && !sortedJobs.length ? (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-slate-500">
-                  No jobs available for this date range.
+                <td colSpan={12} className="py-10 text-center text-slate-500">
+                  No jobs match this ledger view.
                 </td>
               </tr>
             ) : null}
@@ -444,6 +629,42 @@ export default function JobsPage() {
         </table>
       </div>
     </div>
+  );
+}
+
+function FilterButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        active
+          ? 'rounded bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800'
+          : 'rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50'
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+function Badge({ value }: { value: string }) {
+  return (
+    <span
+      className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${badgeClass(
+        value
+      )}`}
+    >
+      {value}
+    </span>
   );
 }
 
