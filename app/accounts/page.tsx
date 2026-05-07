@@ -27,7 +27,7 @@ type AccountRow = {
   outreach_status: string | null;
 };
 
-type Role = 'admin' | 'shop' | 'carrier' | null;
+type Role = 'admin' | 'shop' | 'carrier' | 'demo' | null;
 
 function AccountsPageContent() {
   const searchParams = useSearchParams();
@@ -36,6 +36,8 @@ function AccountsPageContent() {
   const [role, setRole] = useState<Role>(null);
   const [query, setQuery] = useState('');
   const [stateFilter, setStateFilter] = useState('');
+
+  const isReadOnly = role === 'demo';
 
   useEffect(() => {
     void loadAccounts();
@@ -63,7 +65,7 @@ function AccountsPageContent() {
 
     setRole(roleData.role);
 
-    if (roleData.role === 'admin') {
+    if (roleData.role === 'admin' || roleData.role === 'demo') {
       const { data } = await supabase
         .from('accounts')
         .select(
@@ -101,6 +103,8 @@ function AccountsPageContent() {
     field: keyof AccountRow,
     value: string
   ) {
+    if (isReadOnly) return;
+
     await supabase
       .from('accounts')
       .update({ [field]: value })
@@ -135,13 +139,23 @@ function AccountsPageContent() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold text-ink">Accounts</h1>
-        <p className="text-sm text-slate-500">
-          {role === 'admin'
-            ? 'Full access'
-            : 'You only have access to your assigned account.'}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-semibold text-ink">Accounts</h1>
+          <p className="text-sm text-slate-500">
+            {role === 'admin'
+              ? 'Full access'
+              : role === 'demo'
+                ? 'Demo view only'
+                : 'You only have access to your assigned account.'}
+          </p>
+        </div>
+
+        {isReadOnly ? (
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+            View Only
+          </div>
+        ) : null}
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-soft">
@@ -176,87 +190,69 @@ function AccountsPageContent() {
                 <td className="px-4 py-3">{account.state || '—'}</td>
 
                 <td className="px-4 py-3">
-                  <select
+                  <EditableCell
                     value={account.glasweld_certified || 'Unknown'}
-                    onChange={(e) =>
-                      updateAccount(account.id, 'glasweld_certified', e.target.value)
+                    options={YES_NO_UNKNOWN}
+                    readOnly={isReadOnly}
+                    onChange={(value) =>
+                      updateAccount(account.id, 'glasweld_certified', value)
                     }
-                    className="rounded border border-slate-300 px-2 py-1 text-sm"
-                  >
-                    {YES_NO_UNKNOWN.map((option) => (
-                      <option key={option}>{option}</option>
-                    ))}
-                  </select>
+                  />
                 </td>
 
                 <td className="px-4 py-3">
-                  <select
+                  <EditableCell
                     value={account.insurance || 'Unknown'}
-                    onChange={(e) =>
-                      updateAccount(account.id, 'insurance', e.target.value)
+                    options={YES_NO_UNKNOWN}
+                    readOnly={isReadOnly}
+                    onChange={(value) =>
+                      updateAccount(account.id, 'insurance', value)
                     }
-                    className="rounded border border-slate-300 px-2 py-1 text-sm"
-                  >
-                    {YES_NO_UNKNOWN.map((option) => (
-                      <option key={option}>{option}</option>
-                    ))}
-                  </select>
+                  />
                 </td>
 
                 <td className="px-4 py-3">
-                  <select
+                  <EditableCell
                     value={account.uses_onyx || 'Unknown'}
-                    onChange={(e) =>
-                      updateAccount(account.id, 'uses_onyx', e.target.value)
+                    options={YES_NO_UNKNOWN}
+                    readOnly={isReadOnly}
+                    onChange={(value) =>
+                      updateAccount(account.id, 'uses_onyx', value)
                     }
-                    className="rounded border border-slate-300 px-2 py-1 text-sm"
-                  >
-                    {YES_NO_UNKNOWN.map((option) => (
-                      <option key={option}>{option}</option>
-                    ))}
-                  </select>
+                  />
                 </td>
 
                 <td className="px-4 py-3">
-                  <select
+                  <EditableCell
                     value={account.uses_zoom_injector || 'Unknown'}
-                    onChange={(e) =>
-                      updateAccount(account.id, 'uses_zoom_injector', e.target.value)
+                    options={YES_NO_UNKNOWN}
+                    readOnly={isReadOnly}
+                    onChange={(value) =>
+                      updateAccount(account.id, 'uses_zoom_injector', value)
                     }
-                    className="rounded border border-slate-300 px-2 py-1 text-sm"
-                  >
-                    {YES_NO_UNKNOWN.map((option) => (
-                      <option key={option}>{option}</option>
-                    ))}
-                  </select>
+                  />
                 </td>
 
                 <td className="px-4 py-3">
-                  <select
+                  <EditableCell
                     value={account.repair_only || 'Unknown'}
-                    onChange={(e) =>
-                      updateAccount(account.id, 'repair_only', e.target.value)
+                    options={YES_NO_UNKNOWN}
+                    readOnly={isReadOnly}
+                    onChange={(value) =>
+                      updateAccount(account.id, 'repair_only', value)
                     }
-                    className="rounded border border-slate-300 px-2 py-1 text-sm"
-                  >
-                    {YES_NO_UNKNOWN.map((option) => (
-                      <option key={option}>{option}</option>
-                    ))}
-                  </select>
+                  />
                 </td>
 
                 <td className="px-4 py-3">
-                  <select
+                  <EditableCell
                     value={account.outreach_status || 'Not Contacted'}
-                    onChange={(e) =>
-                      updateAccount(account.id, 'outreach_status', e.target.value)
+                    options={OUTREACH_OPTIONS}
+                    readOnly={isReadOnly}
+                    onChange={(value) =>
+                      updateAccount(account.id, 'outreach_status', value)
                     }
-                    className="rounded border border-slate-300 px-2 py-1 text-sm"
-                  >
-                    {OUTREACH_OPTIONS.map((option) => (
-                      <option key={option}>{option}</option>
-                    ))}
-                  </select>
+                  />
                 </td>
               </tr>
             ))}
@@ -272,6 +268,38 @@ function AccountsPageContent() {
         </table>
       </div>
     </div>
+  );
+}
+
+function EditableCell({
+  value,
+  options,
+  readOnly,
+  onChange,
+}: {
+  value: string;
+  options: readonly string[];
+  readOnly: boolean;
+  onChange: (value: string) => void;
+}) {
+  if (readOnly) {
+    return (
+      <span className="text-sm text-slate-900">
+        {value || '—'}
+      </span>
+    );
+  }
+
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="rounded border border-slate-300 px-2 py-1 text-sm"
+    >
+      {options.map((option) => (
+        <option key={option}>{option}</option>
+      ))}
+    </select>
   );
 }
 
