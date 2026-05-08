@@ -47,11 +47,14 @@ export default function CarrierDetailPage() {
   const [carrier, setCarrier] = useState<Carrier | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
 
   const [newName, setNewName] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');
+
+  const isReadOnly = currentRole === 'demo';
 
   useEffect(() => {
     void load();
@@ -59,6 +62,27 @@ export default function CarrierDetailPage() {
 
   async function load() {
     setLoading(true);
+
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData.user?.email?.toLowerCase() || '';
+
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role, approved, access_status')
+      .eq('user_email', email)
+      .maybeSingle();
+
+    if (!roleData || roleData.approved !== true || roleData.access_status !== 'Active') {
+      window.location.href = '/login';
+      return;
+    }
+
+    if (roleData.role !== 'admin' && roleData.role !== 'demo') {
+      window.location.href = '/';
+      return;
+    }
+
+    setCurrentRole(roleData.role);
 
     const { data: carrierData } = await supabase
       .from('carrier_organizations')
@@ -79,6 +103,8 @@ export default function CarrierDetailPage() {
   }
 
   async function updateCarrier(field: keyof Carrier, value: string) {
+    if (isReadOnly) return;
+
     await supabase
       .from('carrier_organizations')
       .update({ [field]: value.trim() || null })
@@ -88,6 +114,7 @@ export default function CarrierDetailPage() {
   }
 
   async function addContact() {
+    if (isReadOnly) return;
     if (!newName.trim() && !newEmail.trim()) return;
 
     await supabase.from('carrier_contacts').insert({
@@ -111,6 +138,8 @@ export default function CarrierDetailPage() {
     field: keyof Contact,
     value: string | boolean
   ) {
+    if (isReadOnly) return;
+
     await supabase
       .from('carrier_contacts')
       .update({ [field]: value === '' ? null : value })
@@ -120,6 +149,8 @@ export default function CarrierDetailPage() {
   }
 
   async function setPrimaryContact(contactId: string) {
+    if (isReadOnly) return;
+
     await supabase
       .from('carrier_contacts')
       .update({ is_primary: false })
@@ -140,15 +171,24 @@ export default function CarrierDetailPage() {
 
   return (
     <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
-      <Link href="/admin/carriers" className="text-sm text-blue-600">
-        ← Back to Carriers
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link href="/admin/carriers" className="text-sm text-blue-600">
+          ← Back to Carriers
+        </Link>
+
+        {isReadOnly ? (
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+            Demo View Only
+          </div>
+        ) : null}
+      </div>
 
       <div>
         <EditableText
           value={carrier.organization_name}
           className="text-3xl font-semibold text-slate-900"
           onSave={(value) => updateCarrier('organization_name', value)}
+          readOnly={isReadOnly}
         />
         <p className="mt-1 text-sm text-slate-500">
           Carrier / TPA profile, claims information, and contacts.
@@ -156,7 +196,7 @@ export default function CarrierDetailPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft lg:col-span-2">
           <h2 className="text-lg font-semibold text-slate-900">
             General Information
           </h2>
@@ -166,36 +206,43 @@ export default function CarrierDetailPage() {
               label="Claims Email"
               value={carrier.claims_email}
               onSave={(value) => updateCarrier('claims_email', value)}
+              readOnly={isReadOnly}
             />
             <Field
               label="Claims Phone"
               value={carrier.claims_phone}
               onSave={(value) => updateCarrier('claims_phone', value)}
+              readOnly={isReadOnly}
             />
             <Field
               label="Website"
               value={carrier.website}
               onSave={(value) => updateCarrier('website', value)}
+              readOnly={isReadOnly}
             />
             <Field
               label="Street"
               value={carrier.street}
               onSave={(value) => updateCarrier('street', value)}
+              readOnly={isReadOnly}
             />
             <Field
               label="City"
               value={carrier.city}
               onSave={(value) => updateCarrier('city', value)}
+              readOnly={isReadOnly}
             />
             <Field
               label="State"
               value={carrier.state}
               onSave={(value) => updateCarrier('state', value)}
+              readOnly={isReadOnly}
             />
             <Field
               label="ZIP"
               value={carrier.postal_code}
               onSave={(value) => updateCarrier('postal_code', value)}
+              readOnly={isReadOnly}
             />
           </div>
 
@@ -205,11 +252,12 @@ export default function CarrierDetailPage() {
               value={carrier.notes}
               onSave={(value) => updateCarrier('notes', value)}
               large
+              readOnly={isReadOnly}
             />
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
           <h2 className="text-lg font-semibold text-slate-900">Quick View</h2>
 
           <div className="mt-4 space-y-4 text-sm">
@@ -297,7 +345,7 @@ export default function CarrierDetailPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
         <h2 className="text-lg font-semibold text-slate-900">Contacts</h2>
 
         <div className="mt-5 space-y-3">
@@ -315,11 +363,13 @@ export default function CarrierDetailPage() {
                   label="Name"
                   value={contact.full_name}
                   onSave={(value) => updateContact(contact.id, 'full_name', value)}
+                  readOnly={isReadOnly}
                 />
                 <ContactField
                   label="Title"
                   value={contact.title}
                   onSave={(value) => updateContact(contact.id, 'title', value)}
+                  readOnly={isReadOnly}
                 />
                 <ContactField
                   label="Email"
@@ -327,6 +377,7 @@ export default function CarrierDetailPage() {
                   isLink={Boolean(contact.email)}
                   href={emailHref(contact.email)}
                   onSave={(value) => updateContact(contact.id, 'email', value)}
+                  readOnly={isReadOnly}
                 />
                 <ContactField
                   label="Phone"
@@ -334,6 +385,7 @@ export default function CarrierDetailPage() {
                   isLink={Boolean(contact.phone)}
                   href={phoneHref(contact.phone)}
                   onSave={(value) => updateContact(contact.id, 'phone', value)}
+                  readOnly={isReadOnly}
                 />
 
                 <div>
@@ -348,8 +400,9 @@ export default function CarrierDetailPage() {
                   ) : (
                     <button
                       type="button"
+                      disabled={isReadOnly}
                       onClick={() => setPrimaryContact(contact.id)}
-                      className="mt-1 rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      className="mt-1 rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Make Primary
                     </button>
@@ -376,31 +429,37 @@ export default function CarrierDetailPage() {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="Name"
-              className="h-10 rounded-lg border border-slate-300 px-3 text-sm"
+              disabled={isReadOnly}
+              className="h-10 rounded-lg border border-slate-300 px-3 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
             />
             <input
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               placeholder="Title / Role"
-              className="h-10 rounded-lg border border-slate-300 px-3 text-sm"
+              disabled={isReadOnly}
+              className="h-10 rounded-lg border border-slate-300 px-3 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
             />
             <input
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
               placeholder="Email"
-              className="h-10 rounded-lg border border-slate-300 px-3 text-sm"
+              disabled={isReadOnly}
+              className="h-10 rounded-lg border border-slate-300 px-3 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
             />
             <input
               value={newPhone}
               onChange={(e) => setNewPhone(e.target.value)}
               placeholder="Phone"
-              className="h-10 rounded-lg border border-slate-300 px-3 text-sm"
+              disabled={isReadOnly}
+              className="h-10 rounded-lg border border-slate-300 px-3 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
             />
           </div>
 
           <button
-            onClick={addContact}
-            className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            type="button"
+            disabled={isReadOnly}
+            onClick={() => void addContact()}
+            className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Add Contact
           </button>
@@ -415,11 +474,13 @@ function Field({
   value,
   onSave,
   large = false,
+  readOnly,
 }: {
   label: string;
   value: string | null;
   onSave: (value: string) => void;
   large?: boolean;
+  readOnly: boolean;
 }) {
   return (
     <div>
@@ -427,7 +488,12 @@ function Field({
         {label}
       </div>
       <div className="mt-1">
-        <EditableText value={value || ''} onSave={onSave} large={large} />
+        <EditableText
+          value={value || ''}
+          onSave={onSave}
+          large={large}
+          readOnly={readOnly}
+        />
       </div>
     </div>
   );
@@ -439,12 +505,14 @@ function ContactField({
   onSave,
   isLink = false,
   href = '#',
+  readOnly,
 }: {
   label: string;
   value: string | null;
   onSave: (value: string) => void;
   isLink?: boolean;
   href?: string;
+  readOnly: boolean;
 }) {
   return (
     <div>
@@ -456,6 +524,7 @@ function ContactField({
         onSave={onSave}
         isLink={isLink}
         href={href}
+        readOnly={readOnly}
       />
     </div>
   );
@@ -468,6 +537,7 @@ function EditableText({
   large = false,
   isLink = false,
   href = '#',
+  readOnly,
 }: {
   value: string;
   onSave: (value: string) => void;
@@ -475,6 +545,7 @@ function EditableText({
   large?: boolean;
   isLink?: boolean;
   href?: string;
+  readOnly: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value || '');
@@ -482,6 +553,26 @@ function EditableText({
   useEffect(() => {
     setDraft(value || '');
   }, [value]);
+
+  if (readOnly) {
+    if (isLink && value) {
+      return (
+        <a
+          href={href}
+          onClick={(e) => e.stopPropagation()}
+          className="rounded px-2 py-1 text-sm text-blue-600 hover:bg-blue-50 hover:underline"
+        >
+          {value}
+        </a>
+      );
+    }
+
+    return (
+      <div className={`rounded px-2 py-1 ${className || 'text-sm text-slate-900'}`}>
+        {value || '—'}
+      </div>
+    );
+  }
 
   if (editing) {
     if (large) {

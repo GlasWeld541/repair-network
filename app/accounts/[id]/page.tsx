@@ -122,6 +122,8 @@ export default function AccountDetailPage() {
   const [newJobAmount, setNewJobAmount] = useState<number>(0);
   const [creatingJob, setCreatingJob] = useState(false);
 
+  const isReadOnly = currentRole === 'demo';
+
   useEffect(() => {
     void load();
   }, [id]);
@@ -158,8 +160,9 @@ export default function AccountDetailPage() {
 
     const isAdmin = roleData.role === 'admin';
     const isShop = roleData.role === 'shop';
+    const isDemo = roleData.role === 'demo';
 
-    if (!isAdmin && !isShop) {
+    if (!isAdmin && !isShop && !isDemo) {
       setBlocked(true);
       setLoading(false);
       return;
@@ -236,6 +239,8 @@ export default function AccountDetailPage() {
   }
 
   async function saveAccountField(field: keyof AccountRow) {
+    if (isReadOnly) return;
+
     await supabase
       .from('accounts')
       .update({ [field]: draftValue.trim() || null })
@@ -247,6 +252,8 @@ export default function AccountDetailPage() {
   }
 
   async function saveContactField(contactId: string, field: keyof ContactRow) {
+    if (isReadOnly) return;
+
     await supabase
       .from('contacts')
       .update({ [field]: draftValue.trim() || null })
@@ -258,6 +265,8 @@ export default function AccountDetailPage() {
   }
 
   async function addContact() {
+    if (isReadOnly) return;
+
     if (!newContactName.trim() && !newContactEmail.trim() && !newContactPhone.trim()) {
       window.alert('Enter at least one contact field before adding.');
       return;
@@ -283,6 +292,7 @@ export default function AccountDetailPage() {
   }
 
   async function createJobFromAccount() {
+    if (isReadOnly) return;
     if (!account) return;
 
     if (!newJobCustomer.trim()) {
@@ -324,6 +334,8 @@ export default function AccountDetailPage() {
   }
 
   async function grantAccessAndSendInvite(contact: ContactRow) {
+    if (isReadOnly) return;
+
     if (!canManageAccess()) {
       window.alert('Only admins can grant login access.');
       return;
@@ -386,6 +398,8 @@ export default function AccountDetailPage() {
   }
 
   async function suspendLoginAccess(contact: ContactRow) {
+    if (isReadOnly) return;
+
     if (!canManageAccess()) {
       window.alert('Only admins can suspend login access.');
       return;
@@ -417,10 +431,13 @@ export default function AccountDetailPage() {
   }
 
   async function reactivateAndSendInvite(contact: ContactRow) {
+    if (isReadOnly) return;
     await grantAccessAndSendInvite(contact);
   }
 
   function startAccountEdit(field: keyof AccountRow, value: string | null) {
+    if (isReadOnly) return;
+
     setEditing({ type: 'account', field });
     setDraftValue(
       field === 'company_phone' ? formatPhoneInput(value || '') : value || ''
@@ -432,6 +449,8 @@ export default function AccountDetailPage() {
     field: keyof ContactRow,
     value: string | null
   ) {
+    if (isReadOnly) return;
+
     setEditing({ type: 'contact', id: contactId, field });
     setDraftValue(
       field === 'mobile' || field === 'phone' ? formatPhoneInput(value || '') : value || ''
@@ -459,7 +478,7 @@ export default function AccountDetailPage() {
           {label}
         </div>
 
-        {isEditing ? (
+        {isEditing && !isReadOnly ? (
           <input
             autoFocus
             value={draftValue}
@@ -483,6 +502,10 @@ export default function AccountDetailPage() {
               <a href={`mailto:${value}`} className="rounded px-1 py-1 text-sm text-blue-700 hover:bg-slate-100">
                 {value}
               </a>
+            ) : isReadOnly ? (
+              <span className="rounded px-1 py-1 text-sm text-slate-900">
+                {value || '—'}
+              </span>
             ) : (
               <button
                 type="button"
@@ -493,7 +516,7 @@ export default function AccountDetailPage() {
               </button>
             )}
 
-            {(isPhone || isEmail) && (
+            {(isPhone || isEmail) && !isReadOnly && (
               <button
                 type="button"
                 onClick={() => startAccountEdit(field, value)}
@@ -526,7 +549,7 @@ export default function AccountDetailPage() {
       editing.id === contact.id &&
       editing.field === field;
 
-    if (isEditing) {
+    if (isEditing && !isReadOnly) {
       return (
         <input
           autoFocus
@@ -554,6 +577,10 @@ export default function AccountDetailPage() {
           <a href={`mailto:${value}`} className="rounded px-1 py-1 text-sm text-blue-700 hover:bg-slate-100">
             {value}
           </a>
+        ) : isReadOnly ? (
+          <span className="rounded px-1 py-1 text-sm text-slate-900">
+            {isPhone ? formatPhone(value) : value || '—'}
+          </span>
         ) : (
           <button
             type="button"
@@ -564,7 +591,7 @@ export default function AccountDetailPage() {
           </button>
         )}
 
-        {(isPhone || isEmail) && (
+        {(isPhone || isEmail) && !isReadOnly && (
           <button
             type="button"
             onClick={() => startContactEdit(contact.id, field, value)}
@@ -607,16 +634,24 @@ export default function AccountDetailPage() {
           Back to accounts
         </Link>
 
-        {savedMessage ? (
-          <div className="flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
-            <Check className="h-4 w-4" />
-            {savedMessage}
-          </div>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {savedMessage ? (
+            <div className="flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+              <Check className="h-4 w-4" />
+              {savedMessage}
+            </div>
+          ) : null}
+
+          {isReadOnly ? (
+            <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+              Demo View Only
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div>
-        {titleEditing ? (
+        {titleEditing && !isReadOnly ? (
           <input
             autoFocus
             value={draftValue}
@@ -628,6 +663,8 @@ export default function AccountDetailPage() {
             }}
             className="rounded border border-slate-300 px-3 py-2 text-2xl font-semibold"
           />
+        ) : isReadOnly ? (
+          <div className="text-2xl font-semibold">{account.account_name}</div>
         ) : (
           <button
             type="button"
@@ -715,23 +752,23 @@ export default function AccountDetailPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  {canManageAccess() ? (
+                  {canManageAccess() || isReadOnly ? (
                     <>
                       {!hasAccess || accessStatus === 'Revoked' || accessStatus === 'Not Approved' ? (
                         <button
                           type="button"
-                          disabled={busyContactId === contact.id}
+                          disabled={busyContactId === contact.id || isReadOnly}
                           onClick={() => void grantAccessAndSendInvite(contact)}
-                          className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                          className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           Grant Access
                         </button>
                       ) : accessStatus === 'Suspended' ? (
                         <button
                           type="button"
-                          disabled={busyContactId === contact.id}
+                          disabled={busyContactId === contact.id || isReadOnly}
                           onClick={() => void reactivateAndSendInvite(contact)}
-                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           Reactivate
                         </button>
@@ -739,18 +776,18 @@ export default function AccountDetailPage() {
                         <>
                           <button
                             type="button"
-                            disabled={busyContactId === contact.id}
+                            disabled={busyContactId === contact.id || isReadOnly}
                             onClick={() => void grantAccessAndSendInvite(contact)}
-                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Resend Invite
                           </button>
 
                           <button
                             type="button"
-                            disabled={busyContactId === contact.id}
+                            disabled={busyContactId === contact.id || isReadOnly}
                             onClick={() => void suspendLoginAccess(contact)}
-                            className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
+                            className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Suspend
                           </button>
@@ -780,27 +817,31 @@ export default function AccountDetailPage() {
               value={newContactName}
               onChange={(e) => setNewContactName(e.target.value)}
               placeholder="Contact name"
-              className="rounded border border-slate-300 px-3 py-2 text-sm"
+              disabled={isReadOnly}
+              className="rounded border border-slate-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
             />
 
             <input
               value={newContactEmail}
               onChange={(e) => setNewContactEmail(e.target.value)}
               placeholder="Email"
-              className="rounded border border-slate-300 px-3 py-2 text-sm"
+              disabled={isReadOnly}
+              className="rounded border border-slate-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
             />
 
             <input
               value={newContactPhone}
               onChange={(e) => setNewContactPhone(formatPhoneInput(e.target.value))}
               placeholder="Contact phone"
-              className="rounded border border-slate-300 px-3 py-2 text-sm"
+              disabled={isReadOnly}
+              className="rounded border border-slate-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
             />
 
             <button
               type="button"
+              disabled={isReadOnly}
               onClick={() => void addContact()}
-              className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Add Contact
             </button>
@@ -814,14 +855,15 @@ export default function AccountDetailPage() {
 
           <button
             type="button"
+            disabled={isReadOnly}
             onClick={() => setShowCreateJob((value) => !value)}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             + Add Job
           </button>
         </div>
 
-        {showCreateJob ? (
+        {showCreateJob && !isReadOnly ? (
           <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <h3 className="mb-3 font-semibold">Add Job for {account.account_name}</h3>
 

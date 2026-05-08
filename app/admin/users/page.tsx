@@ -42,6 +42,7 @@ const ROLE_OPTIONS = [
   { value: 'carrier', label: 'Carrier / TPA' },
   { value: 'shop', label: 'Shop' },
   { value: 'admin', label: 'Admin' },
+  { value: 'demo', label: 'Demo / View Only' },
 ];
 
 function statusBadge(status: string) {
@@ -69,6 +70,7 @@ export default function AdminUsersPage() {
   const [selection, setSelection] = useState<Record<string, Record<string, string>>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [currentEmail, setCurrentEmail] = useState('');
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
 
   const [manualUser, setManualUser] = useState({
     email: '',
@@ -76,6 +78,8 @@ export default function AdminUsersPage() {
     account_id: '',
     carrier_id: '',
   });
+
+  const isDemo = currentRole === 'demo';
 
   useEffect(() => {
     void load();
@@ -85,7 +89,20 @@ export default function AdminUsersPage() {
     setLoading(true);
 
     const { data: currentUser } = await supabase.auth.getUser();
-    setCurrentEmail(currentUser.user?.email?.toLowerCase() || '');
+    const email = currentUser.user?.email?.toLowerCase() || '';
+    setCurrentEmail(email);
+
+    if (email) {
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role, approved, access_status')
+        .eq('user_email', email)
+        .maybeSingle();
+
+      if (roleData?.approved === true && roleData?.access_status === 'Active') {
+        setCurrentRole(roleData.role);
+      }
+    }
 
     const [{ data: requestData }, { data: userRows }, { data: accountData }, { data: carrierData }] =
       await Promise.all([
@@ -114,7 +131,16 @@ export default function AdminUsersPage() {
     setLoading(false);
   }
 
+  function blockDemoAction() {
+    if (!isDemo) return false;
+
+    window.alert('Demo access is view-only. Changes are disabled.');
+    return true;
+  }
+
   function updateSelection(id: string, field: string, value: string) {
+    if (isDemo) return;
+
     setSelection((prev) => ({
       ...prev,
       [id]: {
@@ -139,6 +165,8 @@ export default function AdminUsersPage() {
   }
 
   async function ensureCarrierFromRequest(request: AccessRequest) {
+    if (isDemo) return null;
+
     const carrierName = request.company_name?.trim() || request.email;
 
     const { data: existing } = await supabase
@@ -176,6 +204,8 @@ export default function AdminUsersPage() {
     account_id?: string | null;
     carrier_id?: string | null;
   }) {
+    if (isDemo) return false;
+
     const email = args.email.trim().toLowerCase();
 
     if (!email) {
@@ -219,6 +249,8 @@ export default function AdminUsersPage() {
   }
 
   async function createManualUser() {
+    if (blockDemoAction()) return;
+
     setBusyId('manual-user');
 
     const saved = await upsertPlatformUser({
@@ -243,6 +275,8 @@ export default function AdminUsersPage() {
   }
 
   async function approveRequest(request: AccessRequest) {
+    if (blockDemoAction()) return;
+
     setBusyId(request.id);
 
     const selectedRole = getSelected(request.id, 'role', request.requested_role || 'carrier');
@@ -273,6 +307,8 @@ export default function AdminUsersPage() {
   }
 
   async function repairUserFromRequest(request: AccessRequest) {
+    if (blockDemoAction()) return;
+
     setBusyId(`repair-${request.id}`);
 
     const selectedRole = getSelected(request.id, 'role', request.requested_role || 'carrier');
@@ -303,6 +339,8 @@ export default function AdminUsersPage() {
   }
 
   async function rejectRequest(request: AccessRequest) {
+    if (blockDemoAction()) return;
+
     setBusyId(request.id);
 
     await supabase
@@ -315,6 +353,8 @@ export default function AdminUsersPage() {
   }
 
   async function reopenRequest(request: AccessRequest) {
+    if (blockDemoAction()) return;
+
     setBusyId(request.id);
 
     await supabase
@@ -327,6 +367,8 @@ export default function AdminUsersPage() {
   }
 
   async function archiveRequest(request: AccessRequest) {
+    if (blockDemoAction()) return;
+
     setBusyId(request.id);
 
     await supabase
@@ -339,6 +381,8 @@ export default function AdminUsersPage() {
   }
 
   async function saveUser(user: UserRole) {
+    if (blockDemoAction()) return;
+
     const selectedRole = getSelected(user.user_email, 'role', user.role);
     const selectedAccountId = getSelected(user.user_email, 'account_id', user.account_id || '');
     const selectedCarrierId = getSelected(user.user_email, 'carrier_id', user.carrier_id || '');
@@ -358,6 +402,8 @@ export default function AdminUsersPage() {
   }
 
   async function setUserStatus(user: UserRole, status: string) {
+    if (blockDemoAction()) return;
+
     if (user.user_email.toLowerCase() === currentEmail && status !== 'Active') {
       window.alert('You cannot suspend or revoke your own admin access.');
       return;
@@ -408,11 +454,19 @@ export default function AdminUsersPage() {
 
   return (
     <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
-      <div>
-        <h1 className="text-3xl font-semibold text-ink">User Access</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Review requests, create access profiles, assign organizations, and manage access status.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-semibold text-ink">User Access</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Review requests, create access profiles, assign organizations, and manage access status.
+          </p>
+        </div>
+
+        {isDemo ? (
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+            Demo View Only
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -447,7 +501,8 @@ export default function AdminUsersPage() {
             value={manualUser.email}
             onChange={(e) => setManualUser((current) => ({ ...current, email: e.target.value }))}
             placeholder="User email"
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            disabled={isDemo}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
           />
 
           <select
@@ -460,7 +515,8 @@ export default function AdminUsersPage() {
                 carrier_id: '',
               }))
             }
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            disabled={isDemo}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
           >
             {ROLE_OPTIONS.map((role) => (
               <option key={role.value} value={role.value}>
@@ -472,8 +528,8 @@ export default function AdminUsersPage() {
           <select
             value={manualUser.account_id}
             onChange={(e) => setManualUser((current) => ({ ...current, account_id: e.target.value }))}
-            disabled={manualUser.role !== 'shop'}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+            disabled={isDemo || manualUser.role !== 'shop'}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
           >
             <option value="">Select shop account</option>
             {accounts.map((account) => (
@@ -486,8 +542,8 @@ export default function AdminUsersPage() {
           <select
             value={manualUser.carrier_id}
             onChange={(e) => setManualUser((current) => ({ ...current, carrier_id: e.target.value }))}
-            disabled={manualUser.role !== 'carrier'}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+            disabled={isDemo || manualUser.role !== 'carrier'}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
           >
             <option value="">Select carrier / TPA</option>
             {carriers.map((carrier) => (
@@ -499,9 +555,9 @@ export default function AdminUsersPage() {
 
           <button
             type="button"
-            disabled={busyId === 'manual-user'}
+            disabled={isDemo || busyId === 'manual-user'}
             onClick={() => void createManualUser()}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Save Access
           </button>
@@ -542,7 +598,8 @@ export default function AdminUsersPage() {
                     <select
                       value={selectedRole}
                       onChange={(e) => updateSelection(request.id, 'role', e.target.value)}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                      disabled={isDemo}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     >
                       {ROLE_OPTIONS.map((role) => (
                         <option key={role.value} value={role.value}>
@@ -554,8 +611,8 @@ export default function AdminUsersPage() {
                     <select
                       value={getSelected(request.id, 'account_id')}
                       onChange={(e) => updateSelection(request.id, 'account_id', e.target.value)}
-                      disabled={selectedRole !== 'shop'}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                      disabled={isDemo || selectedRole !== 'shop'}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     >
                       <option value="">Select shop</option>
                       {accounts.map((account) => (
@@ -568,8 +625,8 @@ export default function AdminUsersPage() {
                     <select
                       value={getSelected(request.id, 'carrier_id')}
                       onChange={(e) => updateSelection(request.id, 'carrier_id', e.target.value)}
-                      disabled={selectedRole !== 'carrier'}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                      disabled={isDemo || selectedRole !== 'carrier'}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     >
                       <option value="">Create from company</option>
                       {carriers.map((carrier) => (
@@ -583,17 +640,17 @@ export default function AdminUsersPage() {
                   <div className="mt-4 flex justify-end gap-2">
                     <button
                       type="button"
-                      disabled={busyId === request.id}
+                      disabled={isDemo || busyId === request.id}
                       onClick={() => void rejectRequest(request)}
-                      className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                      className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Reject
                     </button>
                     <button
                       type="button"
-                      disabled={busyId === request.id}
+                      disabled={isDemo || busyId === request.id}
                       onClick={() => void approveRequest(request)}
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Approve
                     </button>
@@ -643,7 +700,8 @@ export default function AdminUsersPage() {
                       <select
                         value={selectedRole}
                         onChange={(e) => updateSelection(user.user_email, 'role', e.target.value)}
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                        disabled={isDemo}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                       >
                         {ROLE_OPTIONS.map((role) => (
                           <option key={role.value} value={role.value}>
@@ -658,7 +716,9 @@ export default function AdminUsersPage() {
                         ? accountName(user.account_id)
                         : user.role === 'carrier'
                           ? carrierName(user.carrier_id)
-                          : 'Admin access'}
+                          : user.role === 'demo'
+                            ? 'Demo access'
+                            : 'Admin access'}
                     </td>
 
                     <td className="px-5 py-4">
@@ -672,8 +732,8 @@ export default function AdminUsersPage() {
                         <select
                           value={selectedAccountId}
                           onChange={(e) => updateSelection(user.user_email, 'account_id', e.target.value)}
-                          disabled={selectedRole !== 'shop'}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                          disabled={isDemo || selectedRole !== 'shop'}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                         >
                           <option value="">Select shop</option>
                           {accounts.map((account) => (
@@ -686,8 +746,8 @@ export default function AdminUsersPage() {
                         <select
                           value={selectedCarrierId}
                           onChange={(e) => updateSelection(user.user_email, 'carrier_id', e.target.value)}
-                          disabled={selectedRole !== 'carrier'}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                          disabled={isDemo || selectedRole !== 'carrier'}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                         >
                           <option value="">Select carrier</option>
                           {carriers.map((carrier) => (
@@ -703,9 +763,9 @@ export default function AdminUsersPage() {
                       <div className="flex justify-end gap-2">
                         <button
                           type="button"
-                          disabled={busyId === user.user_email}
+                          disabled={isDemo || busyId === user.user_email}
                           onClick={() => void saveUser(user)}
-                          className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                          className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           Save
                         </button>
@@ -713,9 +773,9 @@ export default function AdminUsersPage() {
                         {status !== 'Active' ? (
                           <button
                             type="button"
-                            disabled={busyId === user.user_email}
+                            disabled={isDemo || busyId === user.user_email}
                             onClick={() => void setUserStatus(user, 'Active')}
-                            className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                            className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Reactivate
                           </button>
@@ -723,18 +783,18 @@ export default function AdminUsersPage() {
                           <>
                             <button
                               type="button"
-                              disabled={busyId === user.user_email}
+                              disabled={isDemo || busyId === user.user_email}
                               onClick={() => void setUserStatus(user, 'Suspended')}
-                              className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
+                              className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               Suspend
                             </button>
 
                             <button
                               type="button"
-                              disabled={busyId === user.user_email}
+                              disabled={isDemo || busyId === user.user_email}
                               onClick={() => void setUserStatus(user, 'Revoked')}
-                              className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                              className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               Revoke
                             </button>
@@ -789,7 +849,8 @@ export default function AdminUsersPage() {
                     <select
                       value={selectedRole}
                       onChange={(e) => updateSelection(request.id, 'role', e.target.value)}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                      disabled={isDemo}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     >
                       {ROLE_OPTIONS.map((role) => (
                         <option key={role.value} value={role.value}>
@@ -801,8 +862,8 @@ export default function AdminUsersPage() {
                     <select
                       value={getSelected(request.id, 'account_id')}
                       onChange={(e) => updateSelection(request.id, 'account_id', e.target.value)}
-                      disabled={selectedRole !== 'shop'}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                      disabled={isDemo || selectedRole !== 'shop'}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     >
                       <option value="">Select shop</option>
                       {accounts.map((account) => (
@@ -815,8 +876,8 @@ export default function AdminUsersPage() {
                     <select
                       value={getSelected(request.id, 'carrier_id')}
                       onChange={(e) => updateSelection(request.id, 'carrier_id', e.target.value)}
-                      disabled={selectedRole !== 'carrier'}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                      disabled={isDemo || selectedRole !== 'carrier'}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     >
                       <option value="">Create from company</option>
                       {carriers.map((carrier) => (
@@ -830,27 +891,27 @@ export default function AdminUsersPage() {
                   <div className="mt-4 flex justify-end gap-2">
                     <button
                       type="button"
-                      disabled={busyId === request.id}
+                      disabled={isDemo || busyId === request.id}
                       onClick={() => void reopenRequest(request)}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Reopen
                     </button>
 
                     <button
                       type="button"
-                      disabled={busyId === `repair-${request.id}`}
+                      disabled={isDemo || busyId === `repair-${request.id}`}
                       onClick={() => void repairUserFromRequest(request)}
-                      className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                      className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Create / Repair User
                     </button>
 
                     <button
                       type="button"
-                      disabled={busyId === request.id}
+                      disabled={isDemo || busyId === request.id}
                       onClick={() => void archiveRequest(request)}
-                      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Archive
                     </button>
