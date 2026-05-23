@@ -35,17 +35,47 @@ function ContactsPageContent() {
   const [editing, setEditing] = useState<EditingCell>(null);
   const [draft, setDraft] = useState('');
   const [saved, setSaved] = useState('');
+  const [role, setRole] = useState<string | null>(null);
+
+  const isReadOnly = role === 'demo';
 
   useEffect(() => {
     void load();
   }, []);
 
   async function load() {
-    const { data } = await supabase
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData.user?.email?.toLowerCase() || '';
+
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role, approved, access_status, account_id')
+      .eq('user_email', email)
+      .maybeSingle();
+
+    if (!roleData || !roleData.approved || roleData.access_status !== 'Active') {
+      window.location.href = '/login';
+      return;
+    }
+
+    setRole(roleData.role);
+
+    let query = supabase
       .from('contacts')
       .select('*')
       .order('account_name')
       .limit(2000);
+
+    if (roleData.role === 'shop') {
+      if (!roleData.account_id) {
+        setRows([]);
+        return;
+      }
+
+      query = query.eq('account_id', roleData.account_id);
+    }
+
+    const { data } = await query;
 
     setRows((data as Contact[]) || []);
   }
@@ -56,6 +86,8 @@ function ContactsPageContent() {
   }
 
   async function save(row: Contact, field: keyof Contact) {
+    if (isReadOnly) return;
+
     setEditing(null);
 
     await supabase
@@ -73,6 +105,8 @@ function ContactsPageContent() {
   }
 
   function startEdit(row: Contact, field: keyof Contact, isPhone?: boolean) {
+    if (isReadOnly) return;
+
     setEditing({ id: row.id, field });
     setDraft(isPhone ? formatPhoneInput(String(row[field] || '')) : String(row[field] || ''));
   }
@@ -109,6 +143,10 @@ function ContactsPageContent() {
           <a href={`mailto:${value}`} className="text-blue-700 hover:underline">
             {value}
           </a>
+        ) : isReadOnly ? (
+          <span className="rounded px-1 py-1">
+            {value || '—'}
+          </span>
         ) : (
           <button
             onClick={() => startEdit(row, field, opts?.phone)}
@@ -117,7 +155,7 @@ function ContactsPageContent() {
             {value || '—'}
           </button>
         )}
-        <Pencil className="h-3 w-3 text-slate-400" />
+        {!isReadOnly ? <Pencil className="h-3 w-3 text-slate-400" /> : null}
       </div>
     );
   }
@@ -137,7 +175,9 @@ function ContactsPageContent() {
         <div>
           <h1 className="text-3xl font-semibold text-ink">Contacts</h1>
           <p className="text-sm text-slate-500">
-            Click any field to edit. Press Enter to save or Escape to cancel.
+            {isReadOnly
+              ? 'Demo view only.'
+              : 'Click any field to edit. Press Enter to save or Escape to cancel.'}
           </p>
         </div>
 

@@ -9,6 +9,14 @@ type Account = {
   account_name: string | null;
 };
 
+type RoleRow = {
+  role: Role;
+  approved: boolean;
+  access_status: string | null;
+  account_id: string | null;
+  carrier_id: string | null;
+};
+
 type Job = {
   id: string;
   customer_name: string | null;
@@ -83,11 +91,15 @@ export default function JobsPage() {
   const [role, setRole] = useState<Role>(null);
   const [loading, setLoading] = useState(true);
 
-  const [viewMode, setViewMode] = useState<ViewMode>('open');
+  const [viewMode, setViewMode] = useState<ViewMode>('current');
   const [startDate, setStartDate] = useState(firstDayOfCurrentMonthIso());
   const [endDate, setEndDate] = useState(todayIso());
 
   const [showCreate, setShowCreate] = useState(false);
+  const [newCustomer, setNewCustomer] = useState('');
+  const [newAccountId, setNewAccountId] = useState('');
+  const [newAmount, setNewAmount] = useState<number>(0);
+  const [creating, setCreating] = useState(false);
 
   const isReadOnly = role === 'demo';
 
@@ -103,20 +115,58 @@ export default function JobsPage() {
 
     const { data: roleData } = await supabase
       .from('user_roles')
-      .select('role, approved, access_status')
+      .select('role, approved, access_status, account_id, carrier_id')
       .eq('user_email', email)
-      .maybeSingle();
+      .maybeSingle<RoleRow>();
 
     setRole(roleData?.role || null);
 
-    const { data: jobData } = await supabase.from('jobs').select('*');
+    if (!roleData || !roleData.approved || roleData.access_status !== 'Active') {
+      window.location.href = '/login';
+      return;
+    }
+
+    let jobQuery = supabase.from('jobs').select('*');
+
+    if (roleData.role === 'shop') {
+      if (!roleData.account_id) {
+        setJobs([]);
+        setAccounts([]);
+        setLoading(false);
+        return;
+      }
+
+      jobQuery = jobQuery.eq('assigned_account_id', roleData.account_id);
+    }
+
+    const { data: jobData } = await jobQuery.order('created_at', { ascending: false });
+
+    if (roleData.role === 'admin') {
+      const { data: accountData } = await supabase
+        .from('accounts')
+        .select('id, account_name')
+        .order('account_name');
+
+      setAccounts((accountData as Account[]) || []);
+    } else if (roleData.role === 'shop' && roleData.account_id) {
+      const { data: accountData } = await supabase
+        .from('accounts')
+        .select('id, account_name')
+        .eq('id', roleData.account_id)
+        .maybeSingle();
+
+      setAccounts(accountData ? [accountData as Account] : []);
+      setNewAccountId(roleData.account_id);
+    }
 
     const jobIds = (jobData || []).map((j) => j.id);
 
-    const { data: invoiceData } = await supabase
-      .from('invoices')
-      .select('*')
-      .in('job_id', jobIds);
+    const { data: invoiceData } = jobIds.length
+      ? await supabase
+          .from('invoices')
+          .select('*')
+          .in('job_id', jobIds)
+      : { data: [] };
 
     const map = new Map();
     (invoiceData || []).forEach((i) => map.set(i.job_id, i));
@@ -124,6 +174,53 @@ export default function JobsPage() {
     setJobs((jobData || []).map((j) => ({ ...j, invoice: map.get(j.id) || null })));
 
     setLoading(false);
+  }
+
+  async function createJob() {
+    if (isReadOnly) return;
+
+    const selectedAccount = accounts.find((account) => account.id === newAccountId);
+
+    if (!newCustomer.trim()) {
+      window.alert('Customer name is required.');
+      return;
+    }
+
+    if (!selectedAccount) {
+      window.alert('Select an account before creating the job.');
+      return;
+    }
+
+    setCreating(true);
+
+    const { data, error } = await supabase
+      .from('jobs')
+      .insert({
+        customer_name: newCustomer.trim(),
+        assigned_account_id: selectedAccount.id,
+        assigned_account_name: selectedAccount.account_name,
+        job_status: 'New',
+        invoice_amount: Number(newAmount || 0),
+        amount_paid: 0,
+        invoice_date: todayIso(),
+      })
+      .select('id')
+      .single();
+
+    setCreating(false);
+
+    if (error) {
+      window.alert(`Could not create job: ${error.message}`);
+      return;
+    }
+
+    setNewCustomer('');
+    setNewAmount(0);
+    setShowCreate(false);
+
+    if (data?.id) {
+      router.push(`/jobs/${data.id}`);
+    }
   }
 
   const filtered = useMemo(() => {
@@ -170,12 +267,68 @@ export default function JobsPage() {
         {!isReadOnly && (
           <button
             onClick={() => setShowCreate(!showCreate)}
-            className="rounded bg-black px-4 py-2 text-sm font-semibold text-white"
+            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-soft hover:bg-slate-800"
           >
             + Add Job
           </button>
         )}
       </div>
+
+      {showCreate && !isReadOnly ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
+          <div className="grid gap-3 lg:grid-cols-[1.3fr_1.4fr_0.8fr_auto]">
+            <input
+              value={newCustomer}
+              onChange={(e) => setNewCustomer(e.target.value)}
+              placeholder="Customer name"
+              className="h-11"
+            />
+
+            <select
+              value={newAccountId}
+              onChange={(e) => setNewAccountId(e.target.value)}
+              disabled={role === 'shop'}
+              className="h-11 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+            >
+              <option value="">Select account</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.account_name || 'Unnamed Account'}
+                </option>
+              ))}
+            </select>
+
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={newAmount}
+              onChange={(e) => setNewAmount(Number(e.target.value))}
+              placeholder="Invoice amount"
+              className="h-11"
+            />
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={creating}
+                onClick={() => void createJob()}
+                className="h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white shadow-soft hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {creating ? 'Creating...' : 'Create'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* FILTER BAR (FIXED ALIGNMENT) */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">

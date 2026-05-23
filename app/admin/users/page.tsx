@@ -34,8 +34,7 @@ type AccountRow = {
 
 type CarrierRow = {
   id: string;
-  name: string;
-  type: string | null;
+  organization_name: string;
 };
 
 const ROLE_OPTIONS = [
@@ -92,17 +91,32 @@ export default function AdminUsersPage() {
     const email = currentUser.user?.email?.toLowerCase() || '';
     setCurrentEmail(email);
 
-    if (email) {
-      const { data: roleData } = await supabase
-        .from('user_roles')
-        .select('role, approved, access_status')
-        .eq('user_email', email)
-        .maybeSingle();
-
-      if (roleData?.approved === true && roleData?.access_status === 'Active') {
-        setCurrentRole(roleData.role);
-      }
+    if (!email) {
+      window.location.href = '/login';
+      return;
     }
+
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role, approved, access_status')
+      .eq('user_email', email)
+      .maybeSingle();
+
+    if (
+      !roleData ||
+      roleData.approved !== true ||
+      roleData.access_status !== 'Active'
+    ) {
+      window.location.href = '/login';
+      return;
+    }
+
+    if (roleData.role !== 'admin' && roleData.role !== 'demo') {
+      window.location.href = '/';
+      return;
+    }
+
+    setCurrentRole(roleData.role);
 
     const [{ data: requestData }, { data: userRows }, { data: accountData }, { data: carrierData }] =
       await Promise.all([
@@ -119,9 +133,9 @@ export default function AdminUsersPage() {
           .select('id, account_name')
           .order('account_name'),
         supabase
-          .from('carriers')
-          .select('id, name, type')
-          .order('name'),
+          .from('carrier_organizations')
+          .select('id, organization_name')
+          .order('organization_name'),
       ]);
 
     setRequests((requestData as AccessRequest[]) || []);
@@ -161,7 +175,7 @@ export default function AdminUsersPage() {
 
   function carrierName(id: string | null) {
     if (!id) return '—';
-    return carriers.find((carrier) => carrier.id === id)?.name || 'Unknown carrier';
+    return carriers.find((carrier) => carrier.id === id)?.organization_name || 'Unknown carrier';
   }
 
   async function ensureCarrierFromRequest(request: AccessRequest) {
@@ -170,22 +184,27 @@ export default function AdminUsersPage() {
     const carrierName = request.company_name?.trim() || request.email;
 
     const { data: existing } = await supabase
-      .from('carriers')
+      .from('carrier_organizations')
       .select('id')
-      .eq('name', carrierName)
+      .eq('organization_name', carrierName)
       .maybeSingle();
 
     if (existing?.id) return existing.id;
 
     const { data: created, error } = await supabase
-      .from('carriers')
+      .from('carrier_organizations')
       .insert({
-        name: carrierName,
-        type: request.company_type === 'TPA' ? 'TPA' : 'Carrier',
-        contact_name: request.name,
-        contact_email: request.email,
-        phone: request.phone,
+        organization_name: carrierName,
+        claims_phone: request.phone,
         website: request.website,
+        notes: [
+          request.company_type ? `Company type: ${request.company_type}` : '',
+          request.name ? `Requested by: ${request.name}` : '',
+          request.email ? `Requester email: ${request.email}` : '',
+          request.notes ? `Request notes: ${request.notes}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
       })
       .select('id')
       .single();
@@ -548,7 +567,7 @@ export default function AdminUsersPage() {
             <option value="">Select carrier / TPA</option>
             {carriers.map((carrier) => (
               <option key={carrier.id} value={carrier.id}>
-                {carrier.name}
+                {carrier.organization_name}
               </option>
             ))}
           </select>
@@ -631,7 +650,7 @@ export default function AdminUsersPage() {
                       <option value="">Create from company</option>
                       {carriers.map((carrier) => (
                         <option key={carrier.id} value={carrier.id}>
-                          {carrier.name}
+                          {carrier.organization_name}
                         </option>
                       ))}
                     </select>
@@ -752,7 +771,7 @@ export default function AdminUsersPage() {
                           <option value="">Select carrier</option>
                           {carriers.map((carrier) => (
                             <option key={carrier.id} value={carrier.id}>
-                              {carrier.name}
+                              {carrier.organization_name}
                             </option>
                           ))}
                         </select>
@@ -882,7 +901,7 @@ export default function AdminUsersPage() {
                       <option value="">Create from company</option>
                       {carriers.map((carrier) => (
                         <option key={carrier.id} value={carrier.id}>
-                          {carrier.name}
+                          {carrier.organization_name}
                         </option>
                       ))}
                     </select>
