@@ -99,6 +99,13 @@ export default function JobsPage() {
   const [newCustomer, setNewCustomer] = useState('');
   const [newAccountId, setNewAccountId] = useState('');
   const [newAmount, setNewAmount] = useState<number>(0);
+  const [newInvoiceDate, setNewInvoiceDate] = useState(todayIso());
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
+  const [newVehicleYear, setNewVehicleYear] = useState('');
+  const [newVehicleMake, setNewVehicleMake] = useState('');
+  const [newVehicleModel, setNewVehicleModel] = useState('');
+  const [newInsuranceCarrier, setNewInsuranceCarrier] = useState('');
+  const [newClaimNumber, setNewClaimNumber] = useState('');
   const [creating, setCreating] = useState(false);
 
   const isReadOnly = role === 'demo';
@@ -202,7 +209,13 @@ export default function JobsPage() {
         job_status: 'New',
         invoice_amount: Number(newAmount || 0),
         amount_paid: 0,
-        invoice_date: todayIso(),
+        invoice_date: newInvoiceDate || todayIso(),
+        customer_phone: newCustomerPhone.trim() || null,
+        vehicle_year: newVehicleYear.trim() || null,
+        vehicle_make: newVehicleMake.trim() || null,
+        vehicle_model: newVehicleModel.trim() || null,
+        insurance_carrier: newInsuranceCarrier.trim() || null,
+        claim_number: newClaimNumber.trim() || null,
       })
       .select('id')
       .single();
@@ -216,6 +229,13 @@ export default function JobsPage() {
 
     setNewCustomer('');
     setNewAmount(0);
+    setNewInvoiceDate(todayIso());
+    setNewCustomerPhone('');
+    setNewVehicleYear('');
+    setNewVehicleMake('');
+    setNewVehicleModel('');
+    setNewInsuranceCarrier('');
+    setNewClaimNumber('');
     setShowCreate(false);
 
     if (data?.id) {
@@ -275,12 +295,36 @@ export default function JobsPage() {
       </div>
 
       {showCreate && !isReadOnly ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
-          <div className="grid gap-3 lg:grid-cols-[1.3fr_1.4fr_0.8fr_auto]">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Add Job</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Create the job here, then open it to add photos, invoice details, and payments.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowCreate(false)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <input
               value={newCustomer}
               onChange={(e) => setNewCustomer(e.target.value)}
               placeholder="Customer name"
+              className="h-11"
+            />
+
+            <input
+              value={newCustomerPhone}
+              onChange={(e) => setNewCustomerPhone(e.target.value)}
+              placeholder="Customer phone"
               className="h-11"
             />
 
@@ -299,6 +343,50 @@ export default function JobsPage() {
             </select>
 
             <input
+              type="date"
+              value={newInvoiceDate}
+              onChange={(e) => setNewInvoiceDate(e.target.value)}
+              className="h-11"
+            />
+
+            <div className="grid grid-cols-3 gap-2">
+              <input
+                value={newVehicleYear}
+                onChange={(e) => setNewVehicleYear(e.target.value)}
+                placeholder="Year"
+                className="h-11"
+              />
+
+              <input
+                value={newVehicleMake}
+                onChange={(e) => setNewVehicleMake(e.target.value)}
+                placeholder="Make"
+                className="h-11"
+              />
+
+              <input
+                value={newVehicleModel}
+                onChange={(e) => setNewVehicleModel(e.target.value)}
+                placeholder="Model"
+                className="h-11"
+              />
+            </div>
+
+            <input
+              value={newInsuranceCarrier}
+              onChange={(e) => setNewInsuranceCarrier(e.target.value)}
+              placeholder="Insurance carrier"
+              className="h-11"
+            />
+
+            <input
+              value={newClaimNumber}
+              onChange={(e) => setNewClaimNumber(e.target.value)}
+              placeholder="Claim number"
+              className="h-11"
+            />
+
+            <input
               type="number"
               step="0.01"
               min="0"
@@ -308,22 +396,14 @@ export default function JobsPage() {
               className="h-11"
             />
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 xl:justify-end">
               <button
                 type="button"
                 disabled={creating}
                 onClick={() => void createJob()}
-                className="h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white shadow-soft hover:bg-emerald-700 disabled:opacity-60"
+                className="h-11 rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white shadow-soft hover:bg-emerald-700 disabled:opacity-60"
               >
                 {creating ? 'Creating...' : 'Create'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowCreate(false)}
-                className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
               </button>
             </div>
           </div>

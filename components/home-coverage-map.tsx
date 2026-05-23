@@ -167,6 +167,29 @@ export default function HomeCoverageMap() {
   const [visibleAccounts, setVisibleAccounts] = useState<AccountMapRow[]>([]);
   const [popupAccount, setPopupAccount] = useState<PopupAccount | null>(null);
   const [hasFit, setHasFit] = useState(false);
+  const [canBackfillCoordinates, setCanBackfillCoordinates] = useState(false);
+
+  const loadWriteAccess = useCallback(async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData.user?.email?.toLowerCase();
+
+    if (!email) {
+      setCanBackfillCoordinates(false);
+      return;
+    }
+
+    const { data } = await supabase
+      .from('user_roles')
+      .select('role, approved, access_status')
+      .eq('user_email', email)
+      .maybeSingle();
+
+    setCanBackfillCoordinates(
+      data?.role === 'admin' &&
+        data.approved === true &&
+        data.access_status === 'Active'
+    );
+  }, []);
 
   const loadMappedAccounts = useCallback(async () => {
     const { data } = await supabase
@@ -180,6 +203,7 @@ export default function HomeCoverageMap() {
 
   const backfillCoordinates = useCallback(async () => {
     if (!MAPBOX_TOKEN) return;
+    if (!canBackfillCoordinates) return;
 
     const { data } = await supabase
       .from('accounts')
@@ -206,7 +230,7 @@ export default function HomeCoverageMap() {
         }
       })
     );
-  }, []);
+  }, [canBackfillCoordinates]);
 
   const loadVisibleAccounts = useCallback(async () => {
     const map = mapRef.current?.getMap();
@@ -229,9 +253,16 @@ export default function HomeCoverageMap() {
   }, []);
 
   useEffect(() => {
-    void backfillCoordinates();
+    void loadWriteAccess();
+  }, [loadWriteAccess]);
+
+  useEffect(() => {
     void loadMappedAccounts();
-  }, [backfillCoordinates, loadMappedAccounts]);
+  }, [loadMappedAccounts]);
+
+  useEffect(() => {
+    void backfillCoordinates();
+  }, [backfillCoordinates]);
 
   useEffect(() => {
     if (!mapRef.current || hasFit || !allAccounts.length) return;
