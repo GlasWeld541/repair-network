@@ -958,66 +958,32 @@ export default function AccountDetailPage() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
-            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <span>
-                <span className="block text-sm font-semibold text-slate-900">
-                  Monthly Billing
-                </span>
-                <span className="block text-xs text-slate-500">
-                  Group usage into a monthly bill.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                checked={account.monthly_billing_enabled !== false}
-                onChange={(e) =>
-                  void updateBillingSetting(
-                    'monthly_billing_enabled',
-                    e.target.checked
-                  )
-                }
-                className="h-4 w-4"
-              />
-            </label>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="text-sm font-semibold text-slate-900">
+                Monthly Billing
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                Required for all accounts.
+              </div>
+            </div>
 
-            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <span>
-                <span className="block text-sm font-semibold text-slate-900">
-                  AutoPay
-                </span>
-                <span className="block text-xs text-slate-500">
-                  Charge the saved method when billing is ready.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                checked={account.autopay_enabled === true}
-                onChange={(e) =>
-                  void updateBillingSetting('autopay_enabled', e.target.checked)
-                }
-                className="h-4 w-4"
-              />
-            </label>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="text-sm font-semibold text-slate-900">
+                Invoice Day
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                1st of every month for previous-month charges.
+              </div>
+            </div>
 
-            <label className="grid gap-1">
-              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Billing Day
-              </span>
-              <input
-                type="number"
-                min="1"
-                max="28"
-                step="1"
-                value={account.billing_cycle_day || 1}
-                onChange={(e) =>
-                  void updateBillingSetting(
-                    'billing_cycle_day',
-                    Math.min(28, Math.max(1, Number(e.target.value || 1)))
-                  )
-                }
-                className="w-full"
-              />
-            </label>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="text-sm font-semibold text-slate-900">
+                Auto Charge Day
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                5th of every month using the default payment method.
+              </div>
+            </div>
 
             <label className="grid gap-1">
               <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -1175,10 +1141,7 @@ export default function AccountDetailPage() {
           <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
             Current terms: {account.billing_enabled === false ? 'billing disabled' : `$${cents(account.completed_job_fee_cents)} per completed job`}
             {' '}with {gatewayLabel(account.payment_gateway_provider)} ({gatewayStatusLabel(account.payment_gateway_status)}).
-            {account.monthly_billing_enabled !== false
-              ? ` Monthly billing runs on day ${account.billing_cycle_day || 1}.`
-              : ' Monthly billing is disabled.'}
-            {account.autopay_enabled ? ' AutoPay is enabled.' : ' AutoPay is disabled.'}
+            Monthly invoices are created on the 1st for previous-month charges and auto charged on the 5th.
           </div>
 
           <div className="mt-6 border-t border-slate-200 pt-5">

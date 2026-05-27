@@ -191,11 +191,6 @@ export default function AdminBillingPage() {
     [accounts]
   );
 
-  const autopayAccounts = useMemo(
-    () => accounts.filter((account) => account.autopay_enabled === true),
-    [accounts]
-  );
-
   function defaultPaymentMethod(accountId: string) {
     return paymentMethods.find(
       (method) =>
@@ -281,7 +276,7 @@ export default function AdminBillingPage() {
         <Metric label="Invoiced" value={moneyFromCents(totals.invoiced)} tone="brand" />
         <Metric label="Collected" value={moneyFromCents(totals.paid)} tone="green" />
         <Metric label="Waived" value={moneyFromCents(totals.waived)} />
-        <Metric label="AutoPay" value={String(autopayAccounts.length)} tone="brand" />
+        <Metric label="Methods" value={String(paymentMethods.length)} tone="brand" />
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
@@ -450,8 +445,8 @@ export default function AdminBillingPage() {
                 <th className="px-4 py-3">Gateway</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Merchant ID</th>
-                <th className="px-4 py-3">Monthly</th>
-                <th className="px-4 py-3">AutoPay</th>
+                <th className="px-4 py-3">Schedule</th>
+                <th className="px-4 py-3">Charge</th>
                 <th className="px-4 py-3">Default Method</th>
                 <th className="px-4 py-3">Completed Job Fee</th>
                 <th className="px-4 py-3">EDI Fee</th>
@@ -477,14 +472,8 @@ export default function AdminBillingPage() {
                     <td className="px-4 py-3">{gatewayLabel(account.payment_gateway_provider)}</td>
                     <td className="px-4 py-3">{account.payment_gateway_status || 'not_connected'}</td>
                     <td className="px-4 py-3">{account.processor_merchant_id || '-'}</td>
-                    <td className="px-4 py-3">
-                      {account.monthly_billing_enabled === false
-                        ? 'Off'
-                        : `Day ${account.billing_cycle_day || 1}`}
-                    </td>
-                    <td className="px-4 py-3">
-                      {account.autopay_enabled ? 'On' : 'Off'}
-                    </td>
+                    <td className="px-4 py-3">Invoice on 1st</td>
+                    <td className="px-4 py-3">Auto charge on 5th</td>
                     <td className="px-4 py-3">
                       <div>{paymentMethodLabel(defaultMethod)}</div>
                       <div className="text-xs text-slate-500">

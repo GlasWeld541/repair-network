@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/billing/monthly-invoice",
+      "schedule": "0 8 1 * *"
+    },
+    {
+      "path": "/api/billing/auto-charge",
+      "schedule": "0 8 5 * *"
+    }
+  ]
+}

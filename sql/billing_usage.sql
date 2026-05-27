@@ -14,13 +14,24 @@ alter table public.accounts
   add column if not exists edi_submission_fee_cents integer not null default 0,
   add column if not exists monthly_billing_enabled boolean not null default true,
   add column if not exists billing_cycle_day integer not null default 1,
-  add column if not exists autopay_enabled boolean not null default false,
+  add column if not exists autopay_enabled boolean not null default true,
   add column if not exists billing_terms_notes text,
   add column if not exists payment_gateway_provider text not null default 'manual',
   add column if not exists payment_gateway_status text not null default 'not_connected',
   add column if not exists processor_merchant_id text,
   add column if not exists processor_rev_share_bps integer not null default 0,
   add column if not exists payment_gateway_notes text;
+
+alter table public.accounts
+  alter column monthly_billing_enabled set default true,
+  alter column billing_cycle_day set default 1,
+  alter column autopay_enabled set default true;
+
+update public.accounts
+set
+  monthly_billing_enabled = true,
+  billing_cycle_day = 1,
+  autopay_enabled = true;
 
 create table if not exists public.billing_events (
   id uuid primary key default gen_random_uuid(),
