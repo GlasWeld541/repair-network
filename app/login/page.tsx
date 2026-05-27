@@ -124,7 +124,7 @@ export default function LoginPage() {
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-10">
         <div className="w-full max-w-md rounded-3xl border border-white/70 bg-white/95 p-8 shadow-[0_40px_120px_rgba(0,0,0,0.65)] backdrop-blur-2xl">
           <div className="mb-7 text-center">
-            <div className="mx-auto mb-4 h-1.5 w-16 rounded-full bg-cyan-400 shadow-[0_0_24px_rgba(34,211,238,0.65)]" />
+            <div className="mx-auto mb-4 h-1.5 w-16 rounded-full bg-brand-300 shadow-[0_0_24px_rgba(34,211,238,0.65)]" />
 
             <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
               GlasWeld Repair Network
@@ -139,7 +139,7 @@ export default function LoginPage() {
 
           <div className="space-y-4">
             <input
-              className="w-full rounded-xl border border-slate-300 bg-white p-3.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
+              className="w-full rounded-xl border border-slate-300 bg-white p-3.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
               placeholder="Email"
               type="email"
               value={email}
@@ -148,7 +148,7 @@ export default function LoginPage() {
 
             {mode === 'login' ? (
               <input
-                className="w-full rounded-xl border border-slate-300 bg-white p-3.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
+                className="w-full rounded-xl border border-slate-300 bg-white p-3.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
                 placeholder="Password"
                 type="password"
                 value={password}
@@ -194,7 +194,7 @@ export default function LoginPage() {
                     setMessage('');
                     setMode('forgot');
                   }}
-                  className="font-semibold text-blue-700 hover:underline"
+                  className="font-semibold text-brand-700 hover:underline"
                 >
                   Forgot password?
                 </button>
@@ -206,7 +206,7 @@ export default function LoginPage() {
                     setMessage('');
                     setMode('login');
                   }}
-                  className="font-semibold text-blue-700 hover:underline"
+                  className="font-semibold text-brand-700 hover:underline"
                 >
                   Back to login
                 </button>
@@ -217,7 +217,7 @@ export default function LoginPage() {
               Need access?{' '}
               <Link
                 href="/request-access"
-                className="font-semibold text-blue-700 hover:underline"
+                className="font-semibold text-brand-700 hover:underline"
               >
                 Request it here
               </Link>

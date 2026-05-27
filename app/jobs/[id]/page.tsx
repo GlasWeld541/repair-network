@@ -394,7 +394,7 @@ export default function JobDetailPage() {
   return (
     <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
       <div className="flex items-center justify-between">
-        <Link href="/jobs" className="inline-flex items-center gap-2 text-sm text-blue-600">
+        <Link href="/jobs" className="inline-flex items-center gap-2 text-sm text-brand-700">
           <ArrowLeft className="h-4 w-4" />
           Back to Jobs
         </Link>
@@ -436,7 +436,7 @@ export default function JobDetailPage() {
             <button
               onClick={() => void generateInvoice()}
               disabled={working}
-              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
             >
               {working ? 'Generating...' : 'Generate Invoice'}
             </button>
@@ -463,7 +463,7 @@ export default function JobDetailPage() {
                   type="button"
                   disabled={working}
                   onClick={() => void submitToInsurance()}
-                  className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                  className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
                 >
                   Submit to Insurance
                 </button>

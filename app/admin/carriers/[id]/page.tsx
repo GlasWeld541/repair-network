@@ -172,7 +172,7 @@ export default function CarrierDetailPage() {
   return (
     <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
       <div className="flex items-center justify-between">
-        <Link href="/admin/carriers" className="text-sm text-blue-600">
+        <Link href="/admin/carriers" className="text-sm text-brand-700">
           ← Back to Carriers
         </Link>
 
@@ -269,7 +269,7 @@ export default function CarrierDetailPage() {
               {carrier.claims_email ? (
                 <a
                   href={emailHref(carrier.claims_email)}
-                  className="mt-1 block text-blue-600 hover:underline"
+                  className="mt-1 block text-brand-700 hover:underline"
                 >
                   {carrier.claims_email}
                 </a>
@@ -280,7 +280,7 @@ export default function CarrierDetailPage() {
               {carrier.claims_phone ? (
                 <a
                   href={phoneHref(carrier.claims_phone)}
-                  className="block text-blue-600 hover:underline"
+                  className="block text-brand-700 hover:underline"
                 >
                   {carrier.claims_phone}
                 </a>
@@ -316,7 +316,7 @@ export default function CarrierDetailPage() {
                   {primaryContact.email ? (
                     <a
                       href={emailHref(primaryContact.email)}
-                      className="block text-blue-600 hover:underline"
+                      className="block text-brand-700 hover:underline"
                     >
                       {primaryContact.email}
                     </a>
@@ -324,7 +324,7 @@ export default function CarrierDetailPage() {
                   {primaryContact.phone ? (
                     <a
                       href={phoneHref(primaryContact.phone)}
-                      className="block text-blue-600 hover:underline"
+                      className="block text-brand-700 hover:underline"
                     >
                       {primaryContact.phone}
                     </a>
@@ -560,7 +560,7 @@ function EditableText({
         <a
           href={href}
           onClick={(e) => e.stopPropagation()}
-          className="rounded px-2 py-1 text-sm text-blue-600 hover:bg-blue-50 hover:underline"
+          className="rounded px-2 py-1 text-sm text-brand-700 hover:bg-brand-50 hover:underline"
         >
           {value}
         </a>
@@ -613,7 +613,7 @@ function EditableText({
         <a
           href={href}
           onClick={(e) => e.stopPropagation()}
-          className="rounded px-2 py-1 text-sm text-blue-600 hover:bg-blue-50 hover:underline"
+          className="rounded px-2 py-1 text-sm text-brand-700 hover:bg-brand-50 hover:underline"
         >
           {value}
         </a>

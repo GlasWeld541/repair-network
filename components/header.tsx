@@ -143,7 +143,7 @@ export default function Header() {
             <div className="text-[17px] font-semibold text-white">
               GlasWeld Repair Network™
             </div>
-            <div className="mt-1 text-[10px] uppercase tracking-[0.32em] text-cyan-300/80">
+            <div className="mt-1 text-[10px] uppercase tracking-[0.32em] text-brand-200/80">
               Claims Control Platform
             </div>
           </div>
@@ -170,7 +170,7 @@ export default function Header() {
               ))}
             </select>
 
-            <button className="h-11 rounded-xl bg-cyan-400 px-5 text-sm font-semibold text-slate-950">
+            <button className="h-11 rounded-xl bg-brand-300 px-5 text-sm font-semibold text-slate-950">
               Search
             </button>
           </form>

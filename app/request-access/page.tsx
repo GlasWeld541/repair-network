@@ -124,7 +124,7 @@ export default function RequestAccessPage() {
             type="button"
             disabled={saving}
             onClick={() => void submitRequest()}
-            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"
+            className="rounded-lg bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-60"
           >
             {saving ? 'Submitting...' : 'Submit Request'}
           </button>

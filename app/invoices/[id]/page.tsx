@@ -138,7 +138,7 @@ export default function InvoicePage() {
           <div>
             <Link
               href="/jobs"
-              className="text-sm text-blue-600 hover:underline"
+              className="text-sm text-brand-700 hover:underline"
             >
               ← Back to Jobs
             </Link>

@@ -475,10 +475,10 @@ export default function HomeCoverageMap() {
                     className={[
                       'h-2.5 w-2.5 rounded-full',
                       popupAccount.qualificationStatus === 'green'
-                        ? 'bg-green-600'
+                        ? 'bg-emerald-600'
                         : popupAccount.qualificationStatus === 'yellow'
-                          ? 'bg-yellow-500'
-                          : 'bg-red-600',
+                          ? 'bg-amber-500'
+                          : 'bg-rose-600',
                     ].join(' ')}
                   />
                   <span className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
@@ -510,15 +510,15 @@ export default function HomeCoverageMap() {
 
           <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-600">
             <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-green-600" />
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />
               Insurance-ready
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-yellow-500" />
+              <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
               In progress
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-red-600" />
+              <span className="h-2.5 w-2.5 rounded-full bg-rose-600" />
               Needs review
             </span>
           </div>

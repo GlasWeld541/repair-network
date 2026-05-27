@@ -125,7 +125,7 @@ export default function AdminDashboardPage() {
           >
             <div className="flex items-start justify-between">
               <div>
-                <div className="text-lg font-semibold text-slate-900 group-hover:text-black">
+                <div className="text-lg font-semibold text-slate-900 group-hover:text-brand-800">
                   {card.title}
                 </div>
 
@@ -165,7 +165,7 @@ export default function AdminDashboardPage() {
           <div
             className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${
               isReadOnly
-                ? 'border border-blue-200 bg-blue-50 text-blue-700'
+                ? 'border border-brand-200 bg-brand-50 text-brand-700'
                 : 'border border-emerald-200 bg-emerald-50 text-emerald-700'
             }`}
           >

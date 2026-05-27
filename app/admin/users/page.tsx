@@ -576,7 +576,7 @@ export default function AdminUsersPage() {
             type="button"
             disabled={isDemo || busyId === 'manual-user'}
             onClick={() => void createManualUser()}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Save Access
           </button>
@@ -669,7 +669,7 @@ export default function AdminUsersPage() {
                       type="button"
                       disabled={isDemo || busyId === request.id}
                       onClick={() => void approveRequest(request)}
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Approve
                     </button>
@@ -921,7 +921,7 @@ export default function AdminUsersPage() {
                       type="button"
                       disabled={isDemo || busyId === `repair-${request.id}`}
                       onClick={() => void repairUserFromRequest(request)}
-                      className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Create / Repair User
                     </button>

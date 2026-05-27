@@ -136,11 +136,11 @@ function ContactsPageContent() {
     return (
       <div className="flex items-center gap-2">
         {opts?.phone && value ? (
-          <a href={`tel:${value}`} className="text-blue-700 hover:underline">
+          <a href={`tel:${value}`} className="text-brand-700 hover:underline">
             {formatPhone(value)}
           </a>
         ) : opts?.email && value ? (
-          <a href={`mailto:${value}`} className="text-blue-700 hover:underline">
+          <a href={`mailto:${value}`} className="text-brand-700 hover:underline">
             {value}
           </a>
         ) : isReadOnly ? (
@@ -221,7 +221,7 @@ function ContactsPageContent() {
                   {row.account_id ? (
                     <Link
                       href={`/accounts/${row.account_id}`}
-                      className="text-blue-700 hover:underline"
+                      className="text-brand-700 hover:underline"
                     >
                       {row.account_name}
                     </Link>

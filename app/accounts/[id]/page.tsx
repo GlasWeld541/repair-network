@@ -495,11 +495,11 @@ export default function AccountDetailPage() {
         ) : (
           <div className="flex items-center gap-2">
             {isPhone && value ? (
-              <a href={`tel:${value}`} className="rounded px-1 py-1 text-sm text-blue-700 hover:bg-slate-100">
+              <a href={`tel:${value}`} className="rounded px-1 py-1 text-sm text-brand-700 hover:bg-slate-100">
                 {formatPhone(value)}
               </a>
             ) : isEmail && value ? (
-              <a href={`mailto:${value}`} className="rounded px-1 py-1 text-sm text-blue-700 hover:bg-slate-100">
+              <a href={`mailto:${value}`} className="rounded px-1 py-1 text-sm text-brand-700 hover:bg-slate-100">
                 {value}
               </a>
             ) : isReadOnly ? (
@@ -570,11 +570,11 @@ export default function AccountDetailPage() {
     return (
       <div className="flex items-center gap-2">
         {isPhone && value ? (
-          <a href={`tel:${value}`} className="rounded px-1 py-1 text-sm text-blue-700 hover:bg-slate-100">
+          <a href={`tel:${value}`} className="rounded px-1 py-1 text-sm text-brand-700 hover:bg-slate-100">
             {formatPhone(value)}
           </a>
         ) : isEmail && value ? (
-          <a href={`mailto:${value}`} className="rounded px-1 py-1 text-sm text-blue-700 hover:bg-slate-100">
+          <a href={`mailto:${value}`} className="rounded px-1 py-1 text-sm text-brand-700 hover:bg-slate-100">
             {value}
           </a>
         ) : isReadOnly ? (
@@ -610,11 +610,11 @@ export default function AccountDetailPage() {
   if (blocked) {
     return (
       <div className="p-10 text-center">
-        <h1 className="text-xl font-semibold text-red-600">Access Denied</h1>
+        <h1 className="text-xl font-semibold text-rose-700">Access Denied</h1>
         <p className="mt-2 text-slate-500">
           You do not have permission to view this account.
         </p>
-        <Link href="/accounts" className="mt-4 inline-block text-blue-600 underline">
+        <Link href="/accounts" className="mt-4 inline-block text-brand-700 underline">
           Back to Accounts
         </Link>
       </div>
@@ -629,7 +629,7 @@ export default function AccountDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <Link href="/accounts" className="flex items-center gap-2 text-blue-600">
+        <Link href="/accounts" className="flex items-center gap-2 text-brand-700">
           <ArrowLeft className="h-4 w-4" />
           Back to accounts
         </Link>
@@ -759,7 +759,7 @@ export default function AccountDetailPage() {
                           type="button"
                           disabled={busyContactId === contact.id || isReadOnly}
                           onClick={() => void grantAccessAndSendInvite(contact)}
-                          className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           Grant Access
                         </button>
@@ -841,7 +841,7 @@ export default function AccountDetailPage() {
               type="button"
               disabled={isReadOnly}
               onClick={() => void addContact()}
-              className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Add Contact
             </button>
@@ -889,7 +889,7 @@ export default function AccountDetailPage() {
                   type="button"
                   disabled={creatingJob}
                   onClick={() => void createJobFromAccount()}
-                  className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                  className="rounded bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
                 >
                   {creatingJob ? 'Creating...' : 'Create Job'}
                 </button>

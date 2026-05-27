@@ -70,7 +70,7 @@ export default function CarriersPage() {
     <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
       <div className="flex items-start justify-between">
         <div>
-          <Link href="/admin" className="text-sm text-blue-600">
+          <Link href="/admin" className="text-sm text-brand-700">
             ← Back to Admin
           </Link>
 
@@ -104,7 +104,7 @@ export default function CarriersPage() {
             type="button"
             disabled={isReadOnly}
             onClick={() => void addCarrier()}
-            className="rounded-lg bg-black px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Add
           </button>

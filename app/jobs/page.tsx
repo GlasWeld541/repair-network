@@ -401,7 +401,7 @@ export default function JobsPage() {
                 type="button"
                 disabled={creating}
                 onClick={() => void createJob()}
-                className="h-11 rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white shadow-soft hover:bg-emerald-700 disabled:opacity-60"
+                className="h-11 rounded-xl bg-brand-600 px-5 text-sm font-semibold text-white shadow-soft hover:bg-brand-700 disabled:opacity-60"
               >
                 {creating ? 'Creating...' : 'Create'}
               </button>
@@ -497,8 +497,8 @@ export default function JobsPage() {
                 <td className="px-4 py-3">{j.insurance_carrier}</td>
                 <td className="px-4 py-3">{j.claim_number}</td>
                 <td className="px-4 py-3">{money(invoiceAmount(j))}</td>
-                <td className="px-4 py-3 text-green-600">{money(paidAmount(j))}</td>
-                <td className="px-4 py-3 text-red-600">{money(outstandingAmount(j))}</td>
+                <td className="px-4 py-3 text-emerald-700">{money(paidAmount(j))}</td>
+                <td className="px-4 py-3 text-rose-700">{money(outstandingAmount(j))}</td>
                 <td className="px-4 py-3">{daysOutstanding(j)}d</td>
               </tr>
             ))}
@@ -516,7 +516,7 @@ function Filter({ active, onClick, children }: any) {
       onClick={onClick}
       className={
         active
-          ? 'rounded bg-black px-3 py-1 text-sm text-white'
+          ? 'rounded bg-slate-950 px-3 py-1 text-sm text-white'
           : 'rounded border px-3 py-1 text-sm'
       }
     >
@@ -526,7 +526,7 @@ function Filter({ active, onClick, children }: any) {
 }
 
 function Stat({ label, value, green, red }: any) {
-  const color = green ? 'text-green-600' : red ? 'text-red-600' : '';
+  const color = green ? 'text-emerald-700' : red ? 'text-rose-700' : '';
 
   return (
     <div className="rounded-2xl border bg-white p-4 shadow-soft">
