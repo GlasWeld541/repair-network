@@ -33,6 +33,14 @@ function valueOrDash(value: string | null | undefined) {
   return value || '—';
 }
 
+function carrierStatusFromJobStatus(status: string | number | null) {
+  if (status === 'Completed') return 'Completed';
+  if (status === 'Submitted') return 'Submitted';
+  if (status === 'In Progress') return 'In Progress';
+  if (status === 'Canceled') return 'Canceled';
+  return 'Assigned';
+}
+
 export default function JobDetailPage() {
   const params = useParams();
   const id = params.id as string;
@@ -83,6 +91,11 @@ export default function JobDetailPage() {
 
     if (!roleData || !roleData.approved || roleData.access_status !== 'Active') {
       window.location.href = '/login';
+      return;
+    }
+
+    if (roleData.role === 'carrier') {
+      window.location.href = '/claims';
       return;
     }
 
@@ -175,6 +188,25 @@ export default function JobDetailPage() {
       previousStatus !== 'Completed'
     ) {
       await recordCompletedJobBillingEvent(nextJob);
+    }
+
+    if (field === 'job_status' && nextJob.claim_intake_id) {
+      const carrierStatus = carrierStatusFromJobStatus(value);
+
+      await supabase
+        .from('claim_intakes')
+        .update({
+          carrier_visible_status: carrierStatus,
+          intake_status: carrierStatus.toLowerCase().replace(/\s+/g, '_'),
+        })
+        .eq('id', nextJob.claim_intake_id);
+
+      await supabase.from('claim_status_events').insert({
+        claim_intake_id: nextJob.claim_intake_id,
+        event_type: carrierStatus,
+        visible_to_carrier: true,
+        note: `Job status updated to ${carrierStatus}.`,
+      });
     }
 
     flashSaved();

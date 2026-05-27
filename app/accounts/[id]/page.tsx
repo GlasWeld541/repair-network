@@ -251,6 +251,11 @@ export default function AccountDetailPage() {
     const isDemo = roleData.role === 'demo';
 
     if (!isAdmin && !isShop && !isDemo) {
+      if (roleData.role === 'carrier') {
+        window.location.href = '/claims';
+        return;
+      }
+
       setBlocked(true);
       setLoading(false);
       return;

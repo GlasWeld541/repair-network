@@ -79,6 +79,12 @@ export default function LoginPage() {
       return;
     }
 
+    if (roleData.role === 'carrier') {
+      router.replace('/claims');
+      router.refresh();
+      return;
+    }
+
     router.replace('/');
     router.refresh();
   }

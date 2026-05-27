@@ -121,9 +121,14 @@ export default function Header() {
   ];
 
   const navItems =
-    role === 'shop' || role === 'carrier'
-      ? baseNavItems
-      : [...baseNavItems, { href: '/admin', label: 'Admin' }];
+    role === 'carrier'
+      ? [
+          { href: '/', label: 'Dashboard' },
+          { href: '/claims', label: 'Claims' },
+        ]
+      : role === 'shop'
+        ? baseNavItems
+        : [...baseNavItems, { href: '/admin', label: 'Admin' }];
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.28)]">

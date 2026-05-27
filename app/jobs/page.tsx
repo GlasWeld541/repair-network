@@ -133,6 +133,11 @@ export default function JobsPage() {
       return;
     }
 
+    if (roleData.role === 'carrier') {
+      window.location.href = '/claims';
+      return;
+    }
+
     let jobQuery = supabase.from('jobs').select('*');
 
     if (roleData.role === 'shop') {

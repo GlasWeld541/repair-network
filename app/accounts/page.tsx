@@ -63,6 +63,11 @@ function AccountsPageContent() {
       return;
     }
 
+    if (roleData.role === 'carrier') {
+      window.location.href = '/claims';
+      return;
+    }
+
     setRole(roleData.role);
 
     if (roleData.role === 'admin' || roleData.role === 'demo') {
