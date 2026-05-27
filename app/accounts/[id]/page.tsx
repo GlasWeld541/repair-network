@@ -15,6 +15,10 @@ type AccountRow = {
   postal_code: string | null;
   company_phone: string | null;
   company_email: string | null;
+  claim_routing_enabled: boolean | null;
+  claim_routing_paused_reason: string | null;
+  claim_capacity_daily: number | null;
+  claim_capacity_weekly: number | null;
   billing_enabled: boolean | null;
   completed_job_fee_cents: number | null;
   edi_submission_fee_cents: number | null;
@@ -270,7 +274,7 @@ export default function AccountDetailPage() {
     const { data: accountData, error: accountError } = await supabase
       .from('accounts')
       .select(
-        'id, account_name, street, city, state, postal_code, company_phone, company_email, billing_enabled, completed_job_fee_cents, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes'
+        'id, account_name, street, city, state, postal_code, company_phone, company_email, claim_routing_enabled, claim_routing_paused_reason, claim_capacity_daily, claim_capacity_weekly, billing_enabled, completed_job_fee_cents, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes'
       )
       .eq('id', id)
       .single();
@@ -938,6 +942,93 @@ export default function AccountDetailPage() {
           />
         </div>
       </div>
+
+      {currentRole === 'admin' ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold">Claim Routing Controls</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Green qualification comes from account criteria. These controls decide whether this shop can receive live routed claims.
+              </p>
+            </div>
+
+            <label className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                checked={account.claim_routing_enabled !== false}
+                onChange={(e) =>
+                  void updateBillingSetting('claim_routing_enabled', e.target.checked)
+                }
+                className="h-4 w-4"
+              />
+              Routing Enabled
+            </label>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="grid gap-1 md:col-span-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Paused Reason
+              </span>
+              <textarea
+                value={account.claim_routing_paused_reason || ''}
+                onChange={(e) =>
+                  void updateBillingSetting(
+                    'claim_routing_paused_reason',
+                    e.target.value.trim() || null
+                  )
+                }
+                placeholder="Example: paused by request, capacity issue, carrier exclusion, quality review"
+                className="min-h-20"
+              />
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Daily Capacity
+              </span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={account.claim_capacity_daily ?? ''}
+                onChange={(e) =>
+                  void updateBillingSetting(
+                    'claim_capacity_daily',
+                    e.target.value ? Number(e.target.value) : null
+                  )
+                }
+                placeholder="No limit"
+              />
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Weekly Capacity
+              </span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={account.claim_capacity_weekly ?? ''}
+                onChange={(e) =>
+                  void updateBillingSetting(
+                    'claim_capacity_weekly',
+                    e.target.value ? Number(e.target.value) : null
+                  )
+                }
+                placeholder="No limit"
+              />
+            </label>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              Status: {account.claim_routing_enabled === false ? 'paused' : 'eligible if green'}
+              {account.claim_routing_paused_reason ? ` - ${account.claim_routing_paused_reason}` : ''}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {currentRole === 'admin' ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">

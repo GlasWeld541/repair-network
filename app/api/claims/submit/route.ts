@@ -44,6 +44,14 @@ type AccountRow = {
   uses_zoom_injector?: string | null;
   repair_only?: string | null;
   network_fit?: string | null;
+  claim_routing_enabled?: boolean | null;
+  claim_capacity_daily?: number | null;
+  claim_capacity_weekly?: number | null;
+};
+
+type CapacityCounts = {
+  today: Record<string, number>;
+  week: Record<string, number>;
 };
 
 function clean(value: unknown) {
@@ -187,11 +195,74 @@ function isGreenlitAccount(account: AccountRow) {
   }
 
   return (
+    account.claim_routing_enabled !== false &&
     account.glasweld_certified === 'Yes' &&
     account.uses_onyx === 'Yes' &&
     account.uses_zoom_injector === 'Yes' &&
     account.repair_only === 'Yes'
   );
+}
+
+function startOfUtcDay() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+function startOfUtcWeek() {
+  const today = startOfUtcDay();
+  const day = today.getUTCDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  today.setUTCDate(today.getUTCDate() + mondayOffset);
+  return today;
+}
+
+async function loadCapacityCounts(
+  admin: ReturnType<typeof createAdminClient>,
+  accountIds: string[]
+): Promise<CapacityCounts> {
+  if (!accountIds.length) return { today: {}, week: {} };
+
+  const weekStart = startOfUtcWeek().toISOString();
+
+  const { data } = await admin
+    .from('jobs')
+    .select('assigned_account_id, created_at')
+    .in('assigned_account_id', accountIds)
+    .gte('created_at', weekStart);
+
+  const todayStart = startOfUtcDay().toISOString();
+
+  return ((data as { assigned_account_id: string | null; created_at: string }[]) || []).reduce<CapacityCounts>(
+    (counts, job) => {
+      if (!job.assigned_account_id) return counts;
+
+      counts.week[job.assigned_account_id] =
+        (counts.week[job.assigned_account_id] || 0) + 1;
+
+      if (job.created_at >= todayStart) {
+        counts.today[job.assigned_account_id] =
+          (counts.today[job.assigned_account_id] || 0) + 1;
+      }
+
+      return counts;
+    },
+    { today: {}, week: {} }
+  );
+}
+
+function hasAvailableCapacity(account: AccountRow, counts: CapacityCounts) {
+  const dailyLimit = Number(account.claim_capacity_daily || 0);
+  const weeklyLimit = Number(account.claim_capacity_weekly || 0);
+
+  if (dailyLimit > 0 && (counts.today[account.id] || 0) >= dailyLimit) {
+    return false;
+  }
+
+  if (weeklyLimit > 0 && (counts.week[account.id] || 0) >= weeklyLimit) {
+    return false;
+  }
+
+  return true;
 }
 
 async function nearestGreenlitAccount(
@@ -203,13 +274,19 @@ async function nearestGreenlitAccount(
   const { data } = await admin
     .from('accounts')
     .select(
-      'id, account_name, latitude, longitude, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, network_fit'
+      'id, account_name, latitude, longitude, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, network_fit, claim_routing_enabled, claim_capacity_daily, claim_capacity_weekly'
     )
     .not('latitude', 'is', null)
     .not('longitude', 'is', null);
 
-  const candidates = ((data as AccountRow[]) || [])
-    .filter(isGreenlitAccount)
+  const greenlitAccounts = ((data as AccountRow[]) || []).filter(isGreenlitAccount);
+  const capacityCounts = await loadCapacityCounts(
+    admin,
+    greenlitAccounts.map((account) => account.id)
+  );
+
+  const candidates = greenlitAccounts
+    .filter((account) => hasAvailableCapacity(account, capacityCounts))
     .map((account) => ({
       account,
       distance: distanceMiles(
@@ -280,11 +357,18 @@ export async function POST(request: Request) {
     if (matchedRule?.account_id) {
       const { data: account } = await admin
         .from('accounts')
-        .select('id, account_name')
+        .select('id, account_name, claim_routing_enabled, claim_capacity_daily, claim_capacity_weekly')
         .eq('id', matchedRule.account_id)
         .maybeSingle();
 
-      selectedAccount = (account as AccountRow) || null;
+      const fallbackAccount = (account as AccountRow) || null;
+
+      if (fallbackAccount?.claim_routing_enabled !== false) {
+        const fallbackCounts = await loadCapacityCounts(admin, [fallbackAccount.id]);
+        selectedAccount = hasAvailableCapacity(fallbackAccount, fallbackCounts)
+          ? fallbackAccount
+          : null;
+      }
     }
 
     const { data: claim, error: claimError } = await admin
