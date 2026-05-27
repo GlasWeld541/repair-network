@@ -86,6 +86,12 @@ export default function AdminDashboardPage() {
         'Configure claim intake, routing rules, and workflow behavior.',
       href: '/admin/routing',
     },
+    {
+      title: 'Billing & Gateways',
+      description:
+        'Review usage fees, collection status, and account payment gateway settings.',
+      href: '/admin/billing',
+    },
   ];
 
   return (

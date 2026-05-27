@@ -12,7 +12,12 @@ alter table public.accounts
   add column if not exists billing_enabled boolean not null default true,
   add column if not exists completed_job_fee_cents integer not null default 150,
   add column if not exists edi_submission_fee_cents integer not null default 0,
-  add column if not exists billing_terms_notes text;
+  add column if not exists billing_terms_notes text,
+  add column if not exists payment_gateway_provider text not null default 'manual',
+  add column if not exists payment_gateway_status text not null default 'not_connected',
+  add column if not exists processor_merchant_id text,
+  add column if not exists processor_rev_share_bps integer not null default 0,
+  add column if not exists payment_gateway_notes text;
 
 create table if not exists public.billing_events (
   id uuid primary key default gen_random_uuid(),
@@ -26,6 +31,7 @@ create table if not exists public.billing_events (
   status text not null default 'pending',
   occurred_at timestamptz not null default now(),
   invoiced_at timestamptz,
+  paid_at timestamptz,
   waived_at timestamptz,
   waived_reason text,
   metadata jsonb not null default '{}'::jsonb,
@@ -44,6 +50,9 @@ create table if not exists public.billing_events (
     status in ('pending', 'invoiced', 'paid', 'waived', 'void')
   )
 );
+
+alter table public.billing_events
+  add column if not exists paid_at timestamptz;
 
 create index if not exists billing_events_account_idx
   on public.billing_events (account_id, occurred_at desc);

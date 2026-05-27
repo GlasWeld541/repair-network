@@ -15,6 +15,15 @@ type AccountRow = {
   postal_code: string | null;
   company_phone: string | null;
   company_email: string | null;
+  billing_enabled: boolean | null;
+  completed_job_fee_cents: number | null;
+  edi_submission_fee_cents: number | null;
+  billing_terms_notes: string | null;
+  payment_gateway_provider: string | null;
+  payment_gateway_status: string | null;
+  processor_merchant_id: string | null;
+  processor_rev_share_bps: number | null;
+  payment_gateway_notes: string | null;
 };
 
 type ContactRow = {
@@ -51,6 +60,21 @@ type EditingTarget =
   | { type: 'contact'; id: string; field: keyof ContactRow }
   | null;
 
+const GATEWAY_OPTIONS = [
+  { value: 'manual', label: 'Manual / Not Integrated' },
+  { value: 'preferred_processor', label: 'Preferred Processor' },
+  { value: 'stripe', label: 'Stripe' },
+  { value: 'square', label: 'Square' },
+  { value: 'other', label: 'Other' },
+];
+
+const GATEWAY_STATUS_OPTIONS = [
+  { value: 'not_connected', label: 'Not Connected' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'active', label: 'Active' },
+  { value: 'disabled', label: 'Disabled' },
+];
+
 function formatPhone(value: string | null) {
   const digits = String(value || '').replace(/\D/g, '');
 
@@ -78,6 +102,28 @@ function money(value: number | null | undefined) {
     style: 'currency',
     currency: 'USD',
   });
+}
+
+function cents(value: number | null | undefined) {
+  return (Number(value || 0) / 100).toFixed(2);
+}
+
+function basisPoints(value: number | null | undefined) {
+  return (Number(value || 0) / 100).toFixed(2);
+}
+
+function gatewayLabel(value: string | null | undefined) {
+  return (
+    GATEWAY_OPTIONS.find((option) => option.value === value)?.label ||
+    'Manual / Not Integrated'
+  );
+}
+
+function gatewayStatusLabel(value: string | null | undefined) {
+  return (
+    GATEWAY_STATUS_OPTIONS.find((option) => option.value === value)?.label ||
+    'Not Connected'
+  );
 }
 
 function normalizeEmail(value: string | null | undefined) {
@@ -177,7 +223,7 @@ export default function AccountDetailPage() {
     const { data: accountData, error: accountError } = await supabase
       .from('accounts')
       .select(
-        'id, account_name, street, city, state, postal_code, company_phone, company_email'
+        'id, account_name, street, city, state, postal_code, company_phone, company_email, billing_enabled, completed_job_fee_cents, edi_submission_fee_cents, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes'
       )
       .eq('id', id)
       .single();
@@ -249,6 +295,26 @@ export default function AccountDetailPage() {
     setEditing(null);
     flashSaved();
     await load();
+  }
+
+  async function updateBillingSetting(
+    field: keyof AccountRow,
+    value: string | number | boolean | null
+  ) {
+    if (isReadOnly || currentRole !== 'admin') return;
+
+    const { error } = await supabase
+      .from('accounts')
+      .update({ [field]: value })
+      .eq('id', id);
+
+    if (error) {
+      window.alert(`Could not update billing setting: ${error.message}`);
+      return;
+    }
+
+    setAccount((current) => (current ? { ...current, [field]: value } : current));
+    flashSaved('Billing updated');
   }
 
   async function saveContactField(contactId: string, field: keyof ContactRow) {
@@ -698,6 +764,190 @@ export default function AccountDetailPage() {
           />
         </div>
       </div>
+
+      {currentRole === 'admin' ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold">Billing & Payment Gateway</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Usage billing, preferred processor settings, and future EDI fees for this account.
+              </p>
+            </div>
+
+            <label className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                checked={account.billing_enabled !== false}
+                onChange={(e) =>
+                  void updateBillingSetting('billing_enabled', e.target.checked)
+                }
+                className="h-4 w-4"
+              />
+              Billing Enabled
+            </label>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Completed Job Fee
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-500">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={cents(account.completed_job_fee_cents)}
+                  onChange={(e) =>
+                    void updateBillingSetting(
+                      'completed_job_fee_cents',
+                      Math.round(Number(e.target.value || 0) * 100)
+                    )
+                  }
+                  className="w-full"
+                />
+              </div>
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Future EDI Fee
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-500">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={cents(account.edi_submission_fee_cents)}
+                  onChange={(e) =>
+                    void updateBillingSetting(
+                      'edi_submission_fee_cents',
+                      Math.round(Number(e.target.value || 0) * 100)
+                    )
+                  }
+                  className="w-full"
+                />
+              </div>
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Processor Revenue Share
+              </span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={basisPoints(account.processor_rev_share_bps)}
+                  onChange={(e) =>
+                    void updateBillingSetting(
+                      'processor_rev_share_bps',
+                      Math.round(Number(e.target.value || 0) * 100)
+                    )
+                  }
+                  className="w-full"
+                />
+                <span className="text-sm text-slate-500">%</span>
+              </div>
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Gateway
+              </span>
+              <select
+                value={account.payment_gateway_provider || 'manual'}
+                onChange={(e) =>
+                  void updateBillingSetting('payment_gateway_provider', e.target.value)
+                }
+              >
+                {GATEWAY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Gateway Status
+              </span>
+              <select
+                value={account.payment_gateway_status || 'not_connected'}
+                onChange={(e) =>
+                  void updateBillingSetting('payment_gateway_status', e.target.value)
+                }
+              >
+                {GATEWAY_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Merchant / Gateway ID
+              </span>
+              <input
+                value={account.processor_merchant_id || ''}
+                onChange={(e) =>
+                  void updateBillingSetting(
+                    'processor_merchant_id',
+                    e.target.value.trim() || null
+                  )
+                }
+                placeholder="Processor merchant ID"
+              />
+            </label>
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Billing Notes
+              </span>
+              <textarea
+                value={account.billing_terms_notes || ''}
+                onChange={(e) =>
+                  void updateBillingSetting(
+                    'billing_terms_notes',
+                    e.target.value.trim() || null
+                  )
+                }
+                className="min-h-24"
+              />
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Gateway Notes
+              </span>
+              <textarea
+                value={account.payment_gateway_notes || ''}
+                onChange={(e) =>
+                  void updateBillingSetting(
+                    'payment_gateway_notes',
+                    e.target.value.trim() || null
+                  )
+                }
+                className="min-h-24"
+              />
+            </label>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+            Current terms: {account.billing_enabled === false ? 'billing disabled' : `$${cents(account.completed_job_fee_cents)} per completed job`}
+            {' '}with {gatewayLabel(account.payment_gateway_provider)} ({gatewayStatusLabel(account.payment_gateway_status)}).
+          </div>
+        </div>
+      ) : null}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
         <h2 className="mb-4 text-lg font-semibold">Contacts & Login Access</h2>

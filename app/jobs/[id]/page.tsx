@@ -9,8 +9,6 @@ import { supabase } from '@/lib/supabase';
 
 const JOB_STATUSES = ['New', 'In Progress', 'Submitted', 'Completed', 'Canceled'];
 const DAMAGE_TYPES = ['Combo Break', 'Bullseye', 'Star Break', 'Crack', 'Pit', 'Other'];
-const COMPLETED_JOB_USAGE_FEE_CENTS = 150;
-
 type EditableTarget = { table: 'jobs'; field: string } | null;
 
 function money(value: number | null | undefined) {
@@ -188,6 +186,20 @@ export default function JobDetailPage() {
     const { data: userData } = await supabase.auth.getUser();
     const userEmail = userData.user?.email?.toLowerCase() || null;
 
+    const { data: accountBilling } = await supabase
+      .from('accounts')
+      .select('billing_enabled, completed_job_fee_cents')
+      .eq('id', completedJob.assigned_account_id)
+      .maybeSingle();
+
+    if (accountBilling?.billing_enabled === false) return;
+
+    const usageFeeCents = Number(
+      accountBilling?.completed_job_fee_cents ?? 150
+    );
+
+    if (usageFeeCents <= 0) return;
+
     const invoiceAmount = Number(
       invoice?.invoice_amount ?? completedJob.invoice_amount ?? 0
     );
@@ -200,7 +212,7 @@ export default function JobDetailPage() {
         invoice_id: invoice?.id ?? null,
         event_type: 'completed_job',
         description: 'Completed job usage fee',
-        amount_cents: COMPLETED_JOB_USAGE_FEE_CENTS,
+        amount_cents: usageFeeCents,
         status: 'pending',
         created_by_email: userEmail,
         metadata: {
