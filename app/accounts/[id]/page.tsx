@@ -18,12 +18,32 @@ type AccountRow = {
   billing_enabled: boolean | null;
   completed_job_fee_cents: number | null;
   edi_submission_fee_cents: number | null;
+  monthly_billing_enabled: boolean | null;
+  billing_cycle_day: number | null;
+  autopay_enabled: boolean | null;
   billing_terms_notes: string | null;
   payment_gateway_provider: string | null;
   payment_gateway_status: string | null;
   processor_merchant_id: string | null;
   processor_rev_share_bps: number | null;
   payment_gateway_notes: string | null;
+};
+
+type AccountPaymentMethod = {
+  id: string;
+  account_id: string;
+  method_type: 'card' | 'ach';
+  nickname: string | null;
+  status: string;
+  is_default: boolean;
+  card_brand: string | null;
+  last4: string | null;
+  exp_month: number | null;
+  exp_year: number | null;
+  bank_name: string | null;
+  routing_last4: string | null;
+  external_payment_method_id: string | null;
+  notes: string | null;
 };
 
 type ContactRow = {
@@ -71,6 +91,16 @@ const GATEWAY_OPTIONS = [
 const GATEWAY_STATUS_OPTIONS = [
   { value: 'not_connected', label: 'Not Connected' },
   { value: 'pending', label: 'Pending' },
+  { value: 'active', label: 'Active' },
+  { value: 'disabled', label: 'Disabled' },
+];
+
+const PAYMENT_METHOD_TYPES = [
+  { value: 'card', label: 'Card' },
+  { value: 'ach', label: 'ACH' },
+];
+
+const PAYMENT_METHOD_STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'disabled', label: 'Disabled' },
 ];
@@ -147,6 +177,7 @@ export default function AccountDetailPage() {
   const id = params.id as string;
 
   const [account, setAccount] = useState<AccountRow | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<AccountPaymentMethod[]>([]);
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [userRoles, setUserRoles] = useState<UserRoleRow[]>([]);
@@ -167,6 +198,17 @@ export default function AccountDetailPage() {
   const [newJobCustomer, setNewJobCustomer] = useState('');
   const [newJobAmount, setNewJobAmount] = useState<number>(0);
   const [creatingJob, setCreatingJob] = useState(false);
+  const [newPaymentMethodType, setNewPaymentMethodType] = useState<'card' | 'ach'>('card');
+  const [newPaymentMethodNickname, setNewPaymentMethodNickname] = useState('');
+  const [newPaymentMethodBrand, setNewPaymentMethodBrand] = useState('');
+  const [newPaymentMethodLast4, setNewPaymentMethodLast4] = useState('');
+  const [newPaymentMethodExpMonth, setNewPaymentMethodExpMonth] = useState('');
+  const [newPaymentMethodExpYear, setNewPaymentMethodExpYear] = useState('');
+  const [newPaymentMethodBankName, setNewPaymentMethodBankName] = useState('');
+  const [newPaymentMethodRoutingLast4, setNewPaymentMethodRoutingLast4] = useState('');
+  const [newPaymentMethodExternalId, setNewPaymentMethodExternalId] = useState('');
+  const [newPaymentMethodNotes, setNewPaymentMethodNotes] = useState('');
+  const [addingPaymentMethod, setAddingPaymentMethod] = useState(false);
 
   const isReadOnly = currentRole === 'demo';
 
@@ -223,7 +265,7 @@ export default function AccountDetailPage() {
     const { data: accountData, error: accountError } = await supabase
       .from('accounts')
       .select(
-        'id, account_name, street, city, state, postal_code, company_phone, company_email, billing_enabled, completed_job_fee_cents, edi_submission_fee_cents, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes'
+        'id, account_name, street, city, state, postal_code, company_phone, company_email, billing_enabled, completed_job_fee_cents, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes'
       )
       .eq('id', id)
       .single();
@@ -234,8 +276,16 @@ export default function AccountDetailPage() {
       return;
     }
 
-    const [{ data: contactData }, { data: jobData }, { data: roleRows }] =
+    const [{ data: paymentMethodData }, { data: contactData }, { data: jobData }, { data: roleRows }] =
       await Promise.all([
+        supabase
+          .from('account_payment_methods')
+          .select(
+            'id, account_id, method_type, nickname, status, is_default, card_brand, last4, exp_month, exp_year, bank_name, routing_last4, external_payment_method_id, notes'
+          )
+          .eq('account_id', id)
+          .order('is_default', { ascending: false })
+          .order('created_at', { ascending: false }),
         supabase
           .from('contacts')
           .select('id, account_id, full_name, email, mobile, phone')
@@ -257,6 +307,7 @@ export default function AccountDetailPage() {
       ]);
 
     setAccount(accountData as AccountRow);
+    setPaymentMethods((paymentMethodData as AccountPaymentMethod[]) || []);
     setContacts((contactData as ContactRow[]) || []);
     setJobs((jobData as JobRow[]) || []);
     setUserRoles((roleRows as UserRoleRow[]) || []);
@@ -315,6 +366,124 @@ export default function AccountDetailPage() {
 
     setAccount((current) => (current ? { ...current, [field]: value } : current));
     flashSaved('Billing updated');
+  }
+
+  async function addPaymentMethod() {
+    if (isReadOnly || currentRole !== 'admin') return;
+
+    if (!newPaymentMethodLast4.trim() || newPaymentMethodLast4.trim().length !== 4) {
+      window.alert('Enter the last 4 digits for the payment method.');
+      return;
+    }
+
+    if (newPaymentMethodType === 'card' && !newPaymentMethodBrand.trim()) {
+      window.alert('Enter the card brand.');
+      return;
+    }
+
+    if (newPaymentMethodType === 'ach' && !newPaymentMethodBankName.trim()) {
+      window.alert('Enter the bank name.');
+      return;
+    }
+
+    setAddingPaymentMethod(true);
+
+    const { error } = await supabase.from('account_payment_methods').insert({
+      account_id: id,
+      method_type: newPaymentMethodType,
+      nickname: newPaymentMethodNickname.trim() || null,
+      status: 'active',
+      is_default: paymentMethods.length === 0,
+      card_brand:
+        newPaymentMethodType === 'card'
+          ? newPaymentMethodBrand.trim() || null
+          : null,
+      last4: newPaymentMethodLast4.trim(),
+      exp_month:
+        newPaymentMethodType === 'card' && newPaymentMethodExpMonth
+          ? Number(newPaymentMethodExpMonth)
+          : null,
+      exp_year:
+        newPaymentMethodType === 'card' && newPaymentMethodExpYear
+          ? Number(newPaymentMethodExpYear)
+          : null,
+      bank_name:
+        newPaymentMethodType === 'ach'
+          ? newPaymentMethodBankName.trim() || null
+          : null,
+      routing_last4:
+        newPaymentMethodType === 'ach'
+          ? newPaymentMethodRoutingLast4.trim() || null
+          : null,
+      external_payment_method_id: newPaymentMethodExternalId.trim() || null,
+      notes: newPaymentMethodNotes.trim() || null,
+    });
+
+    setAddingPaymentMethod(false);
+
+    if (error) {
+      window.alert(`Could not add payment method: ${error.message}`);
+      return;
+    }
+
+    setNewPaymentMethodNickname('');
+    setNewPaymentMethodBrand('');
+    setNewPaymentMethodLast4('');
+    setNewPaymentMethodExpMonth('');
+    setNewPaymentMethodExpYear('');
+    setNewPaymentMethodBankName('');
+    setNewPaymentMethodRoutingLast4('');
+    setNewPaymentMethodExternalId('');
+    setNewPaymentMethodNotes('');
+    flashSaved('Payment method added');
+    await load();
+  }
+
+  async function updatePaymentMethod(
+    paymentMethodId: string,
+    patch: Partial<AccountPaymentMethod>
+  ) {
+    if (isReadOnly || currentRole !== 'admin') return;
+
+    if (patch.is_default === true) {
+      await supabase
+        .from('account_payment_methods')
+        .update({ is_default: false })
+        .eq('account_id', id);
+    }
+
+    const { error } = await supabase
+      .from('account_payment_methods')
+      .update(patch)
+      .eq('id', paymentMethodId);
+
+    if (error) {
+      window.alert(`Could not update payment method: ${error.message}`);
+      return;
+    }
+
+    flashSaved('Payment method updated');
+    await load();
+  }
+
+  async function deletePaymentMethod(paymentMethodId: string) {
+    if (isReadOnly || currentRole !== 'admin') return;
+
+    const confirmed = window.confirm('Remove this payment method from the account?');
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from('account_payment_methods')
+      .delete()
+      .eq('id', paymentMethodId);
+
+    if (error) {
+      window.alert(`Could not remove payment method: ${error.message}`);
+      return;
+    }
+
+    flashSaved('Payment method removed');
+    await load();
   }
 
   async function saveContactField(contactId: string, field: keyof ContactRow) {
@@ -789,6 +958,67 @@ export default function AccountDetailPage() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <span>
+                <span className="block text-sm font-semibold text-slate-900">
+                  Monthly Billing
+                </span>
+                <span className="block text-xs text-slate-500">
+                  Group usage into a monthly bill.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={account.monthly_billing_enabled !== false}
+                onChange={(e) =>
+                  void updateBillingSetting(
+                    'monthly_billing_enabled',
+                    e.target.checked
+                  )
+                }
+                className="h-4 w-4"
+              />
+            </label>
+
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <span>
+                <span className="block text-sm font-semibold text-slate-900">
+                  AutoPay
+                </span>
+                <span className="block text-xs text-slate-500">
+                  Charge the saved method when billing is ready.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={account.autopay_enabled === true}
+                onChange={(e) =>
+                  void updateBillingSetting('autopay_enabled', e.target.checked)
+                }
+                className="h-4 w-4"
+              />
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Billing Day
+              </span>
+              <input
+                type="number"
+                min="1"
+                max="28"
+                step="1"
+                value={account.billing_cycle_day || 1}
+                onChange={(e) =>
+                  void updateBillingSetting(
+                    'billing_cycle_day',
+                    Math.min(28, Math.max(1, Number(e.target.value || 1)))
+                  )
+                }
+                className="w-full"
+              />
+            </label>
+
             <label className="grid gap-1">
               <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Completed Job Fee
@@ -945,6 +1175,269 @@ export default function AccountDetailPage() {
           <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
             Current terms: {account.billing_enabled === false ? 'billing disabled' : `$${cents(account.completed_job_fee_cents)} per completed job`}
             {' '}with {gatewayLabel(account.payment_gateway_provider)} ({gatewayStatusLabel(account.payment_gateway_status)}).
+            {account.monthly_billing_enabled !== false
+              ? ` Monthly billing runs on day ${account.billing_cycle_day || 1}.`
+              : ' Monthly billing is disabled.'}
+            {account.autopay_enabled ? ' AutoPay is enabled.' : ' AutoPay is disabled.'}
+          </div>
+
+          <div className="mt-6 border-t border-slate-200 pt-5">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">
+                  Payment Methods
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Store only safe card or ACH references. Full card and bank numbers stay with the processor.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {paymentMethods.map((method) => (
+                <div
+                  key={method.id}
+                  className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 lg:grid-cols-[1.4fr_1fr_1fr_1fr_auto]"
+                >
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">
+                      {method.nickname ||
+                        (method.method_type === 'card'
+                          ? method.card_brand || 'Card'
+                          : method.bank_name || 'ACH')}
+                      {method.is_default ? (
+                        <span className="ml-2 rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
+                          Default
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {method.method_type === 'card'
+                        ? `${method.card_brand || 'Card'} ending ${method.last4 || '----'}${
+                            method.exp_month && method.exp_year
+                              ? `, expires ${method.exp_month}/${method.exp_year}`
+                              : ''
+                          }`
+                        : `${method.bank_name || 'ACH'} ending ${method.last4 || '----'}${
+                            method.routing_last4
+                              ? `, routing ending ${method.routing_last4}`
+                              : ''
+                          }`}
+                    </div>
+                  </div>
+
+                  <label className="grid gap-1">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Status
+                    </span>
+                    <select
+                      value={method.status}
+                      onChange={(e) =>
+                        void updatePaymentMethod(method.id, {
+                          status: e.target.value,
+                        })
+                      }
+                    >
+                      {PAYMENT_METHOD_STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Processor ID
+                    </div>
+                    <div className="mt-2 text-sm text-slate-700">
+                      {method.external_payment_method_id || '-'}
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={method.is_default}
+                      onChange={(e) =>
+                        void updatePaymentMethod(method.id, {
+                          is_default: e.target.checked,
+                        })
+                      }
+                      className="h-4 w-4"
+                    />
+                    Default
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => void deletePaymentMethod(method.id)}
+                    className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+
+              {!paymentMethods.length ? (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
+                  No payment method references have been saved for this account.
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <h4 className="mb-3 text-sm font-semibold text-slate-900">
+                Add Payment Method
+              </h4>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <label className="grid gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Type
+                  </span>
+                  <select
+                    value={newPaymentMethodType}
+                    onChange={(e) =>
+                      setNewPaymentMethodType(e.target.value as 'card' | 'ach')
+                    }
+                  >
+                    {PAYMENT_METHOD_TYPES.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="grid gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Nickname
+                  </span>
+                  <input
+                    value={newPaymentMethodNickname}
+                    onChange={(e) => setNewPaymentMethodNickname(e.target.value)}
+                    placeholder="Main billing method"
+                  />
+                </label>
+
+                <label className="grid gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Last 4
+                  </span>
+                  <input
+                    value={newPaymentMethodLast4}
+                    onChange={(e) =>
+                      setNewPaymentMethodLast4(
+                        e.target.value.replace(/\D/g, '').slice(0, 4)
+                      )
+                    }
+                    inputMode="numeric"
+                    placeholder="1234"
+                  />
+                </label>
+
+                {newPaymentMethodType === 'card' ? (
+                  <>
+                    <label className="grid gap-1">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Card Brand
+                      </span>
+                      <input
+                        value={newPaymentMethodBrand}
+                        onChange={(e) => setNewPaymentMethodBrand(e.target.value)}
+                        placeholder="Visa"
+                      />
+                    </label>
+
+                    <label className="grid gap-1">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Exp Month
+                      </span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="12"
+                        value={newPaymentMethodExpMonth}
+                        onChange={(e) => setNewPaymentMethodExpMonth(e.target.value)}
+                      />
+                    </label>
+
+                    <label className="grid gap-1">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Exp Year
+                      </span>
+                      <input
+                        type="number"
+                        min="2026"
+                        value={newPaymentMethodExpYear}
+                        onChange={(e) => setNewPaymentMethodExpYear(e.target.value)}
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label className="grid gap-1">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Bank Name
+                      </span>
+                      <input
+                        value={newPaymentMethodBankName}
+                        onChange={(e) => setNewPaymentMethodBankName(e.target.value)}
+                        placeholder="Bank name"
+                      />
+                    </label>
+
+                    <label className="grid gap-1">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Routing Last 4
+                      </span>
+                      <input
+                        value={newPaymentMethodRoutingLast4}
+                        onChange={(e) =>
+                          setNewPaymentMethodRoutingLast4(
+                            e.target.value.replace(/\D/g, '').slice(0, 4)
+                          )
+                        }
+                        inputMode="numeric"
+                        placeholder="6789"
+                      />
+                    </label>
+                  </>
+                )}
+
+                <label className="grid gap-1 md:col-span-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Processor Payment Method ID
+                  </span>
+                  <input
+                    value={newPaymentMethodExternalId}
+                    onChange={(e) => setNewPaymentMethodExternalId(e.target.value)}
+                    placeholder="Token/reference from processor"
+                  />
+                </label>
+
+                <label className="grid gap-1 md:col-span-3">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Notes
+                  </span>
+                  <textarea
+                    value={newPaymentMethodNotes}
+                    onChange={(e) => setNewPaymentMethodNotes(e.target.value)}
+                    className="min-h-20"
+                  />
+                </label>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void addPaymentMethod()}
+                disabled={addingPaymentMethod}
+                className="mt-4 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-soft hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {addingPaymentMethod ? 'Adding...' : 'Add Payment Method'}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

@@ -28,10 +28,28 @@ type AccountBilling = {
   billing_enabled: boolean | null;
   completed_job_fee_cents: number | null;
   edi_submission_fee_cents: number | null;
+  monthly_billing_enabled: boolean | null;
+  billing_cycle_day: number | null;
+  autopay_enabled: boolean | null;
   payment_gateway_provider: string | null;
   payment_gateway_status: string | null;
   processor_merchant_id: string | null;
   processor_rev_share_bps: number | null;
+};
+
+type PaymentMethodSummary = {
+  id: string;
+  account_id: string;
+  method_type: string;
+  nickname: string | null;
+  status: string;
+  is_default: boolean;
+  card_brand: string | null;
+  last4: string | null;
+  exp_month: number | null;
+  exp_year: number | null;
+  bank_name: string | null;
+  routing_last4: string | null;
 };
 
 const STATUS_OPTIONS = ['all', 'pending', 'invoiced', 'paid', 'waived', 'void'];
@@ -67,6 +85,7 @@ export default function AdminBillingPage() {
   const [role, setRole] = useState<string | null>(null);
   const [events, setEvents] = useState<BillingEvent[]>([]);
   const [accounts, setAccounts] = useState<AccountBilling[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodSummary[]>([]);
   const [statusFilter, setStatusFilter] = useState('pending');
   const [accountFilter, setAccountFilter] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -106,11 +125,11 @@ export default function AdminBillingPage() {
 
     setRole(roleData.role);
 
-    const [{ data: accountRows }, { data: eventRows }] = await Promise.all([
+    const [{ data: accountRows }, { data: eventRows }, { data: paymentMethodRows }] = await Promise.all([
       supabase
         .from('accounts')
         .select(
-          'id, account_name, billing_enabled, completed_job_fee_cents, edi_submission_fee_cents, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps'
+          'id, account_name, billing_enabled, completed_job_fee_cents, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps'
         )
         .order('account_name'),
       supabase
@@ -118,10 +137,18 @@ export default function AdminBillingPage() {
         .select('*')
         .order('occurred_at', { ascending: false })
         .limit(1000),
+      supabase
+        .from('account_payment_methods')
+        .select(
+          'id, account_id, method_type, nickname, status, is_default, card_brand, last4, exp_month, exp_year, bank_name, routing_last4'
+        )
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: false }),
     ]);
 
     setAccounts((accountRows as AccountBilling[]) || []);
     setEvents((eventRows as BillingEvent[]) || []);
+    setPaymentMethods((paymentMethodRows as PaymentMethodSummary[]) || []);
     setLoading(false);
   }
 
@@ -163,6 +190,34 @@ export default function AdminBillingPage() {
       ),
     [accounts]
   );
+
+  const autopayAccounts = useMemo(
+    () => accounts.filter((account) => account.autopay_enabled === true),
+    [accounts]
+  );
+
+  function defaultPaymentMethod(accountId: string) {
+    return paymentMethods.find(
+      (method) =>
+        method.account_id === accountId &&
+        method.is_default &&
+        method.status === 'active'
+    );
+  }
+
+  function paymentMethodCount(accountId: string) {
+    return paymentMethods.filter(
+      (method) => method.account_id === accountId && method.status === 'active'
+    ).length;
+  }
+
+  function paymentMethodLabel(method: PaymentMethodSummary | undefined) {
+    if (!method) return 'None';
+    if (method.method_type === 'card') {
+      return `${method.card_brand || 'Card'} ending ${method.last4 || '----'}`;
+    }
+    return `${method.bank_name || 'ACH'} ending ${method.last4 || '----'}`;
+  }
 
   async function updateEventStatus(event: BillingEvent, status: string) {
     if (isReadOnly) return;
@@ -221,11 +276,12 @@ export default function AdminBillingPage() {
         ) : null}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Metric label="Pending" value={moneyFromCents(totals.pending)} tone="amber" />
         <Metric label="Invoiced" value={moneyFromCents(totals.invoiced)} tone="brand" />
         <Metric label="Collected" value={moneyFromCents(totals.paid)} tone="green" />
         <Metric label="Waived" value={moneyFromCents(totals.waived)} />
+        <Metric label="AutoPay" value={String(autopayAccounts.length)} tone="brand" />
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
@@ -387,13 +443,16 @@ export default function AdminBillingPage() {
         </p>
 
         <div className="mt-5 overflow-x-auto">
-          <table className="min-w-[1000px] text-sm">
+          <table className="min-w-[1350px] text-sm">
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
                 <th className="px-4 py-3">Account</th>
                 <th className="px-4 py-3">Gateway</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Merchant ID</th>
+                <th className="px-4 py-3">Monthly</th>
+                <th className="px-4 py-3">AutoPay</th>
+                <th className="px-4 py-3">Default Method</th>
                 <th className="px-4 py-3">Completed Job Fee</th>
                 <th className="px-4 py-3">EDI Fee</th>
                 <th className="px-4 py-3">Processor Share</th>
@@ -401,24 +460,43 @@ export default function AdminBillingPage() {
             </thead>
 
             <tbody>
-              {accounts.map((account) => (
-                <tr key={account.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-medium text-slate-900">
-                    <Link
-                      href={`/accounts/${account.id}`}
-                      className="text-brand-700 hover:underline"
-                    >
-                      {account.account_name || 'Unnamed Account'}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3">{gatewayLabel(account.payment_gateway_provider)}</td>
-                  <td className="px-4 py-3">{account.payment_gateway_status || 'not_connected'}</td>
-                  <td className="px-4 py-3">{account.processor_merchant_id || '-'}</td>
-                  <td className="px-4 py-3">{moneyFromCents(account.completed_job_fee_cents)}</td>
-                  <td className="px-4 py-3">{moneyFromCents(account.edi_submission_fee_cents)}</td>
-                  <td className="px-4 py-3">{percentFromBps(account.processor_rev_share_bps)}</td>
-                </tr>
-              ))}
+              {accounts.map((account) => {
+                const defaultMethod = defaultPaymentMethod(account.id);
+                const activeMethodCount = paymentMethodCount(account.id);
+
+                return (
+                  <tr key={account.id} className="border-t border-slate-100">
+                    <td className="px-4 py-3 font-medium text-slate-900">
+                      <Link
+                        href={`/accounts/${account.id}`}
+                        className="text-brand-700 hover:underline"
+                      >
+                        {account.account_name || 'Unnamed Account'}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3">{gatewayLabel(account.payment_gateway_provider)}</td>
+                    <td className="px-4 py-3">{account.payment_gateway_status || 'not_connected'}</td>
+                    <td className="px-4 py-3">{account.processor_merchant_id || '-'}</td>
+                    <td className="px-4 py-3">
+                      {account.monthly_billing_enabled === false
+                        ? 'Off'
+                        : `Day ${account.billing_cycle_day || 1}`}
+                    </td>
+                    <td className="px-4 py-3">
+                      {account.autopay_enabled ? 'On' : 'Off'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>{paymentMethodLabel(defaultMethod)}</div>
+                      <div className="text-xs text-slate-500">
+                        {activeMethodCount} active
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">{moneyFromCents(account.completed_job_fee_cents)}</td>
+                    <td className="px-4 py-3">{moneyFromCents(account.edi_submission_fee_cents)}</td>
+                    <td className="px-4 py-3">{percentFromBps(account.processor_rev_share_bps)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
