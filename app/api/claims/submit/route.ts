@@ -115,6 +115,51 @@ function numeric(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+async function geocodeClaimLocation(payload: ClaimPayload) {
+  const suppliedLatitude = numeric(payload.loss_latitude);
+  const suppliedLongitude = numeric(payload.loss_longitude);
+
+  if (suppliedLatitude !== null && suppliedLongitude !== null) {
+    return {
+      latitude: suppliedLatitude,
+      longitude: suppliedLongitude,
+    };
+  }
+
+  const token =
+    process.env.MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
+
+  if (!token) return null;
+
+  const location = [
+    clean(payload.loss_street),
+    clean(payload.loss_city),
+    clean(payload.loss_state),
+    clean(payload.loss_postal_code),
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  if (!location) return null;
+
+  const query = encodeURIComponent(location);
+  const response = await fetch(
+    `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?access_token=${token}&limit=1&country=US`
+  );
+
+  if (!response.ok) return null;
+
+  const data = await response.json();
+  const center = data.features?.[0]?.center;
+
+  if (!center || center.length !== 2) return null;
+
+  return {
+    longitude: Number(center[0]),
+    latitude: Number(center[1]),
+  };
+}
+
 function distanceMiles(
   originLat: number,
   originLng: number,
@@ -151,12 +196,9 @@ function isGreenlitAccount(account: AccountRow) {
 
 async function nearestGreenlitAccount(
   admin: ReturnType<typeof createAdminClient>,
-  payload: ClaimPayload
+  coordinates: { latitude: number; longitude: number } | null
 ) {
-  const lossLatitude = numeric(payload.loss_latitude);
-  const lossLongitude = numeric(payload.loss_longitude);
-
-  if (lossLatitude === null || lossLongitude === null) return null;
+  if (!coordinates) return null;
 
   const { data } = await admin
     .from('accounts')
@@ -171,8 +213,8 @@ async function nearestGreenlitAccount(
     .map((account) => ({
       account,
       distance: distanceMiles(
-        lossLatitude,
-        lossLongitude,
+        coordinates.latitude,
+        coordinates.longitude,
         Number(account.latitude),
         Number(account.longitude)
       ),
@@ -217,7 +259,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const nearestAccount = await nearestGreenlitAccount(admin, payload);
+    const geocodedLocation = await geocodeClaimLocation(payload);
+    const nearestAccount = await nearestGreenlitAccount(admin, geocodedLocation);
 
     const { data: rules } = await admin
       .from('carrier_claim_routing_rules')
@@ -270,8 +313,8 @@ export async function POST(request: Request) {
         loss_city: clean(payload.loss_city) || null,
         loss_state: clean(payload.loss_state).toUpperCase() || null,
         loss_postal_code: clean(payload.loss_postal_code) || null,
-        loss_latitude: numeric(payload.loss_latitude),
-        loss_longitude: numeric(payload.loss_longitude),
+        loss_latitude: geocodedLocation?.latitude ?? null,
+        loss_longitude: geocodedLocation?.longitude ?? null,
         preferred_contact_method: clean(payload.preferred_contact_method) || null,
         raw_payload: payload,
         notes: clean(payload.notes) || null,

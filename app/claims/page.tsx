@@ -199,6 +199,7 @@ export default function CarrierClaimsPage() {
           <input value={form.vehicle_make} onChange={(e) => updateField('vehicle_make', e.target.value)} placeholder="Vehicle make" className="h-11" />
           <input value={form.vehicle_model} onChange={(e) => updateField('vehicle_model', e.target.value)} placeholder="Vehicle model" className="h-11" />
           <input value={form.vehicle_vin} onChange={(e) => updateField('vehicle_vin', e.target.value)} placeholder="VIN" className="h-11" />
+          <input value={form.loss_street} onChange={(e) => updateField('loss_street', e.target.value)} placeholder="Loss street" className="h-11" />
           <input value={form.loss_city} onChange={(e) => updateField('loss_city', e.target.value)} placeholder="Loss city" className="h-11" />
           <input value={form.loss_state} onChange={(e) => updateField('loss_state', e.target.value.toUpperCase().slice(0, 2))} placeholder="State" className="h-11" />
           <input value={form.loss_postal_code} onChange={(e) => updateField('loss_postal_code', e.target.value)} placeholder="ZIP" className="h-11" />
