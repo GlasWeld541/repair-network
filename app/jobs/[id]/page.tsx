@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 
 const JOB_STATUSES = ['New', 'In Progress', 'Submitted', 'Completed', 'Canceled'];
 const DAMAGE_TYPES = ['Combo Break', 'Bullseye', 'Star Break', 'Crack', 'Pit', 'Other'];
+const COMPLETED_JOB_USAGE_FEE_CENTS = 150;
 
 type EditableTarget = { table: 'jobs'; field: string } | null;
 
@@ -154,6 +155,8 @@ export default function JobDetailPage() {
   async function updateJobField(field: string, value: string | number | null) {
     if (!job || isReadOnly) return;
 
+    const previousStatus = job.job_status;
+
     const { error } = await supabase
       .from('jobs')
       .update({ [field]: value === '' ? null : value })
@@ -164,8 +167,54 @@ export default function JobDetailPage() {
       return;
     }
 
-    setJob({ ...job, [field]: value === '' ? null : value });
+    const nextJob = { ...job, [field]: value === '' ? null : value };
+
+    setJob(nextJob);
+
+    if (
+      field === 'job_status' &&
+      value === 'Completed' &&
+      previousStatus !== 'Completed'
+    ) {
+      await recordCompletedJobBillingEvent(nextJob);
+    }
+
     flashSaved();
+  }
+
+  async function recordCompletedJobBillingEvent(completedJob = job) {
+    if (!completedJob?.assigned_account_id || isReadOnly) return;
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = userData.user?.email?.toLowerCase() || null;
+
+    const invoiceAmount = Number(
+      invoice?.invoice_amount ?? completedJob.invoice_amount ?? 0
+    );
+
+    const { error } = await supabase.from('billing_events').upsert(
+      {
+        billing_key: `completed_job:${completedJob.id}`,
+        account_id: completedJob.assigned_account_id,
+        job_id: completedJob.id,
+        invoice_id: invoice?.id ?? null,
+        event_type: 'completed_job',
+        description: 'Completed job usage fee',
+        amount_cents: COMPLETED_JOB_USAGE_FEE_CENTS,
+        status: 'pending',
+        created_by_email: userEmail,
+        metadata: {
+          customer_name: completedJob.customer_name,
+          invoice_amount: invoiceAmount,
+          assigned_account_name: completedJob.assigned_account_name,
+        },
+      },
+      { onConflict: 'billing_key' }
+    );
+
+    if (error) {
+      console.warn('Completed job billing event was not recorded.', error.message);
+    }
   }
 
   async function saveDraftField(field: string) {
@@ -359,6 +408,15 @@ export default function JobDetailPage() {
         job_status: newOutstanding <= 0 ? 'Completed' : job.job_status,
       })
       .eq('id', job.id);
+
+    if (newOutstanding <= 0 && job.job_status !== 'Completed') {
+      await recordCompletedJobBillingEvent({
+        ...job,
+        amount_paid: newPaid,
+        payment_status: paymentStatus,
+        job_status: 'Completed',
+      });
+    }
 
     await supabase.from('invoice_events').insert({
       invoice_id: invoice.id,
