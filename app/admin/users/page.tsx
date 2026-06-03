@@ -77,6 +77,7 @@ export default function AdminUsersPage() {
     account_id: '',
     carrier_id: '',
   });
+  const [newAdminEmail, setNewAdminEmail] = useState('');
 
   const isDemo = currentRole === 'demo';
 
@@ -293,6 +294,55 @@ export default function AdminUsersPage() {
     setBusyId(null);
   }
 
+  async function createAdminAndSendInvite() {
+    if (blockDemoAction()) return;
+
+    const email = newAdminEmail.trim().toLowerCase();
+
+    if (!email) {
+      window.alert('Enter the admin email address.');
+      return;
+    }
+
+    setBusyId('new-admin');
+
+    const saved = await upsertPlatformUser({
+      email,
+      role: 'admin',
+      account_id: null,
+      carrier_id: null,
+    });
+
+    if (!saved) {
+      setBusyId(null);
+      return;
+    }
+
+    const response = await fetch('/api/invite-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+
+    const result = await response.json().catch(() => ({}));
+
+    setBusyId(null);
+
+    if (!response.ok) {
+      window.alert(
+        result.error ||
+          'Admin access was created, but the invite email could not be sent.'
+      );
+      setNewAdminEmail('');
+      await load();
+      return;
+    }
+
+    window.alert('Admin access created and invite sent.');
+    setNewAdminEmail('');
+    await load();
+  }
+
   async function approveRequest(request: AccessRequest) {
     if (blockDemoAction()) return;
 
@@ -506,6 +556,34 @@ export default function AdminUsersPage() {
           <div className="mt-2 text-3xl font-semibold text-rose-700">{revokedUsers.length}</div>
         </div>
       </div>
+
+      <section className="overflow-hidden rounded-2xl border border-brand-200 bg-white shadow-soft">
+        <div className="border-b border-brand-100 bg-brand-50 px-5 py-4">
+          <div className="text-sm font-semibold text-slate-900">Add Admin</div>
+          <div className="mt-1 text-xs text-slate-600">
+            Use this for leadership or internal staff who should have full admin access.
+          </div>
+        </div>
+
+        <div className="grid gap-3 p-5 md:grid-cols-[1fr_auto]">
+          <input
+            value={newAdminEmail}
+            onChange={(e) => setNewAdminEmail(e.target.value)}
+            placeholder="Admin email address"
+            disabled={isDemo}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+          />
+
+          <button
+            type="button"
+            disabled={isDemo || busyId === 'new-admin'}
+            onClick={() => void createAdminAndSendInvite()}
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busyId === 'new-admin' ? 'Sending...' : 'Create Admin + Send Invite'}
+          </button>
+        </div>
+      </section>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
         <div className="border-b border-slate-200 px-5 py-4">
