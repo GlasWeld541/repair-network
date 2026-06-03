@@ -19,6 +19,14 @@ type ClaimIntake = {
   created_at: string;
 };
 
+type ClaimEvent = {
+  id: string;
+  claim_intake_id: string;
+  event_type: string;
+  note: string | null;
+  created_at: string;
+};
+
 type ClaimForm = {
   customer_name: string;
   customer_phone: string;
@@ -72,6 +80,7 @@ export default function CarrierClaimsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [claims, setClaims] = useState<ClaimIntake[]>([]);
+  const [events, setEvents] = useState<ClaimEvent[]>([]);
   const [form, setForm] = useState<ClaimForm>(EMPTY_FORM);
   const [message, setMessage] = useState('');
 
@@ -123,7 +132,20 @@ export default function CarrierClaimsPage() {
       .eq('carrier_id', roleData.carrier_id)
       .order('created_at', { ascending: false });
 
-    setClaims((data as ClaimIntake[]) || []);
+    const claimRows = (data as ClaimIntake[]) || [];
+    const claimIds = claimRows.map((claim) => claim.id);
+
+    const { data: eventRows } = claimIds.length
+      ? await supabase
+          .from('claim_status_events')
+          .select('id, claim_intake_id, event_type, note, created_at')
+          .in('claim_intake_id', claimIds)
+          .eq('visible_to_carrier', true)
+          .order('created_at', { ascending: false })
+      : { data: [] };
+
+    setClaims(claimRows);
+    setEvents((eventRows as ClaimEvent[]) || []);
     setLoading(false);
   }
 
@@ -167,6 +189,10 @@ export default function CarrierClaimsPage() {
     () => claims.filter((claim) => claim.carrier_visible_status !== 'Completed'),
     [claims]
   );
+
+  function eventsForClaim(claimId: string) {
+    return events.filter((event) => event.claim_intake_id === claimId).slice(0, 4);
+  }
 
   if (loading) return <div className="p-6 text-sm text-slate-500">Loading claims...</div>;
 
@@ -220,7 +246,7 @@ export default function CarrierClaimsPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[950px] text-sm">
+          <table className="min-w-[1150px] text-sm">
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
                 <th className="px-4 py-3">Submitted</th>
@@ -230,6 +256,7 @@ export default function CarrierClaimsPage() {
                 <th className="px-4 py-3">Vehicle</th>
                 <th className="px-4 py-3">Loss Area</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Timeline</th>
               </tr>
             </thead>
             <tbody>
@@ -246,11 +273,27 @@ export default function CarrierClaimsPage() {
                       {claim.carrier_visible_status}
                     </span>
                   </td>
+                  <td className="px-4 py-3">
+                    <div className="space-y-2">
+                      {eventsForClaim(claim.id).map((event) => (
+                        <div key={event.id} className="text-xs text-slate-600">
+                          <div className="font-semibold text-slate-900">
+                            {event.event_type}
+                          </div>
+                          <div>{event.created_at.slice(0, 10)}</div>
+                          {event.note ? <div>{event.note}</div> : null}
+                        </div>
+                      ))}
+                      {!eventsForClaim(claim.id).length ? (
+                        <div className="text-xs text-slate-500">No timeline yet.</div>
+                      ) : null}
+                    </div>
+                  </td>
                 </tr>
               ))}
               {!claims.length ? (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-slate-500">
+                  <td colSpan={8} className="py-10 text-center text-slate-500">
                     No claims submitted yet.
                   </td>
                 </tr>

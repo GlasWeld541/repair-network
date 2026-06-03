@@ -54,6 +54,20 @@ type CapacityCounts = {
   week: Record<string, number>;
 };
 
+type RoutingResult = {
+  account: AccountRow | null;
+  distanceMiles: number | null;
+  candidateCount: number;
+};
+
+type DuplicateMatch = {
+  id: string;
+  claim_number: string | null;
+  policy_number: string | null;
+  customer_name: string | null;
+  loss_date: string | null;
+};
+
 function clean(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -268,8 +282,10 @@ function hasAvailableCapacity(account: AccountRow, counts: CapacityCounts) {
 async function nearestGreenlitAccount(
   admin: ReturnType<typeof createAdminClient>,
   coordinates: { latitude: number; longitude: number } | null
-) {
-  if (!coordinates) return null;
+): Promise<RoutingResult> {
+  if (!coordinates) {
+    return { account: null, distanceMiles: null, candidateCount: 0 };
+  }
 
   const { data } = await admin
     .from('accounts')
@@ -298,7 +314,87 @@ async function nearestGreenlitAccount(
     }))
     .sort((a, b) => a.distance - b.distance);
 
-  return candidates[0]?.account || null;
+  return {
+    account: candidates[0]?.account || null,
+    distanceMiles: candidates[0]?.distance ?? null,
+    candidateCount: candidates.length,
+  };
+}
+
+async function findDuplicateClaim(
+  admin: ReturnType<typeof createAdminClient>,
+  carrierId: string,
+  payload: ClaimPayload
+) {
+  const claimNumber = clean(payload.claim_number);
+
+  if (claimNumber) {
+    const { data } = await admin
+      .from('claim_intakes')
+      .select('id, claim_number, policy_number, customer_name, loss_date')
+      .eq('carrier_id', carrierId)
+      .eq('claim_number', claimNumber)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (data) {
+      return {
+        match: data as DuplicateMatch,
+        reason: `Same carrier and claim number ${claimNumber}.`,
+      };
+    }
+  }
+
+  const policyNumber = clean(payload.policy_number);
+  const customerName = clean(payload.customer_name).toLowerCase();
+  const lossDate = clean(payload.loss_date);
+
+  if (!policyNumber || !customerName || !lossDate) {
+    return { match: null, reason: null };
+  }
+
+  const { data } = await admin
+    .from('claim_intakes')
+    .select('id, claim_number, policy_number, customer_name, loss_date')
+    .eq('carrier_id', carrierId)
+    .eq('policy_number', policyNumber)
+    .eq('loss_date', lossDate)
+    .ilike('customer_name', clean(payload.customer_name))
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (data) {
+    return {
+      match: data as DuplicateMatch,
+      reason: 'Same carrier, policy number, customer, and loss date.',
+    };
+  }
+
+  return { match: null, reason: null };
+}
+
+async function queueNotification(
+  admin: ReturnType<typeof createAdminClient>,
+  event: {
+    event_type: string;
+    audience: 'admin' | 'shop' | 'carrier' | 'billing';
+    claim_intake_id?: string | null;
+    job_id?: string | null;
+    account_id?: string | null;
+    carrier_id?: string | null;
+    recipient_email?: string | null;
+    subject: string;
+    body: string;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  await admin.from('notification_events').insert({
+    ...event,
+    status: 'pending',
+    metadata: event.metadata || {},
+  });
 }
 
 export async function POST(request: Request) {
@@ -336,8 +432,10 @@ export async function POST(request: Request) {
       );
     }
 
+    const duplicate = await findDuplicateClaim(admin, carrierId, payload);
     const geocodedLocation = await geocodeClaimLocation(payload);
-    const nearestAccount = await nearestGreenlitAccount(admin, geocodedLocation);
+    const nearestResult = await nearestGreenlitAccount(admin, geocodedLocation);
+    const nearestAccount = nearestResult.account;
 
     const { data: rules } = await admin
       .from('carrier_claim_routing_rules')
@@ -353,6 +451,9 @@ export async function POST(request: Request) {
     );
 
     let selectedAccount: AccountRow | null = nearestAccount;
+    let selectedDistanceMiles: number | null = nearestResult.distanceMiles;
+    let routingMethod: 'nearest_greenlit' | 'fallback_rule' | 'admin_review' =
+      selectedAccount ? 'nearest_greenlit' : 'admin_review';
 
     if (matchedRule?.account_id) {
       const { data: account } = await admin
@@ -368,6 +469,8 @@ export async function POST(request: Request) {
         selectedAccount = hasAvailableCapacity(fallbackAccount, fallbackCounts)
           ? fallbackAccount
           : null;
+        selectedDistanceMiles = null;
+        routingMethod = selectedAccount ? 'fallback_rule' : 'admin_review';
       }
     }
 
@@ -381,6 +484,9 @@ export async function POST(request: Request) {
         carrier_visible_status: selectedAccount ? 'Assigned' : 'Received',
         assignment_status: selectedAccount ? 'Auto Assigned' : 'Needs Review',
         assigned_account_id: selectedAccount?.id || null,
+        duplicate_warning: Boolean(duplicate.match),
+        duplicate_of_claim_id: duplicate.match?.id || null,
+        duplicate_reason: duplicate.reason,
         claim_number: clean(payload.claim_number) || null,
         policy_number: clean(payload.policy_number) || null,
         loss_date: clean(payload.loss_date) || null,
@@ -412,6 +518,17 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
+
+    await admin.from('claim_routing_audits').insert({
+      claim_intake_id: claim.id,
+      routing_method: routingMethod,
+      selected_account_id: selectedAccount?.id || null,
+      selected_distance_miles: selectedDistanceMiles,
+      candidate_count: nearestResult.candidateCount,
+      notes: selectedAccount
+        ? `Claim routed by ${routingMethod.replace('_', ' ')}.`
+        : 'No eligible greenlit shop or fallback route was available.',
+    });
 
     let jobId: string | null = null;
 
@@ -465,11 +582,40 @@ export async function POST(request: Request) {
       created_by_email: submittedByEmail,
     });
 
+    await queueNotification(admin, {
+      event_type: 'Claim Received',
+      audience: 'admin',
+      claim_intake_id: claim.id,
+      carrier_id: carrierId,
+      subject: `New claim received: ${claim.customer_name}`,
+      body: selectedAccount
+        ? 'A new claim was received and automatically assigned.'
+        : 'A new claim was received and needs routing review.',
+      metadata: {
+        assigned: Boolean(jobId),
+        duplicate_warning: Boolean(duplicate.match),
+      },
+    });
+
+    if (jobId && selectedAccount) {
+      await queueNotification(admin, {
+        event_type: 'Claim Assigned',
+        audience: 'shop',
+        claim_intake_id: claim.id,
+        job_id: jobId,
+        account_id: selectedAccount.id,
+        carrier_id: carrierId,
+        subject: `New routed claim: ${claim.customer_name}`,
+        body: 'A carrier claim has been assigned to this shop.',
+      });
+    }
+
     return NextResponse.json({
       success: true,
       claimId: claim.id,
       assigned: Boolean(jobId),
       status: selectedAccount ? 'Assigned' : 'Received',
+      duplicateWarning: Boolean(duplicate.match),
     });
   } catch (error) {
     return NextResponse.json(

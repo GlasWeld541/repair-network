@@ -28,6 +28,9 @@ type ClaimIntake = {
   carrier_visible_status: string;
   assignment_status: string;
   source: string;
+  duplicate_warning: boolean | null;
+  duplicate_reason: string | null;
+  duplicate_of_claim_id: string | null;
   created_at: string;
 };
 
@@ -41,6 +44,36 @@ type Account = {
   account_name: string | null;
 };
 
+type ClaimEvent = {
+  id: string;
+  claim_intake_id: string;
+  event_type: string;
+  note: string | null;
+  visible_to_carrier: boolean;
+  created_at: string;
+};
+
+type RoutingAudit = {
+  id: string;
+  claim_intake_id: string;
+  routing_method: string;
+  selected_account_id: string | null;
+  selected_distance_miles: number | null;
+  candidate_count: number;
+  notes: string | null;
+  created_at: string;
+};
+
+type NotificationEvent = {
+  id: string;
+  event_type: string;
+  audience: string;
+  claim_intake_id: string | null;
+  status: string;
+  subject: string | null;
+  created_at: string;
+};
+
 function statusClass(status: string) {
   if (status === 'Completed') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (status === 'Assigned' || status === 'In Progress') return 'border-brand-200 bg-brand-50 text-brand-700';
@@ -52,6 +85,9 @@ export default function AdminClaimsPage() {
   const [loading, setLoading] = useState(true);
   const [currentRole, setCurrentRole] = useState<string | null>(null);
   const [claims, setClaims] = useState<ClaimIntake[]>([]);
+  const [events, setEvents] = useState<ClaimEvent[]>([]);
+  const [audits, setAudits] = useState<RoutingAudit[]>([]);
+  const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
   const [carriers, setCarriers] = useState<Carrier[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string>>({});
@@ -92,7 +128,14 @@ export default function AdminClaimsPage() {
 
     setCurrentRole(roleData.role);
 
-    const [{ data: claimRows }, { data: carrierRows }, { data: accountRows }] =
+    const [
+      { data: claimRows },
+      { data: carrierRows },
+      { data: accountRows },
+      { data: eventRows },
+      { data: auditRows },
+      { data: notificationRows },
+    ] =
       await Promise.all([
         supabase
           .from('claim_intakes')
@@ -106,9 +149,27 @@ export default function AdminClaimsPage() {
           .from('accounts')
           .select('id, account_name')
           .order('account_name'),
+        supabase
+          .from('claim_status_events')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(500),
+        supabase
+          .from('claim_routing_audits')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(500),
+        supabase
+          .from('notification_events')
+          .select('id, event_type, audience, claim_intake_id, status, subject, created_at')
+          .order('created_at', { ascending: false })
+          .limit(100),
       ]);
 
     setClaims((claimRows as ClaimIntake[]) || []);
+    setEvents((eventRows as ClaimEvent[]) || []);
+    setAudits((auditRows as RoutingAudit[]) || []);
+    setNotifications((notificationRows as NotificationEvent[]) || []);
     setCarriers((carrierRows as Carrier[]) || []);
     setAccounts((accountRows as Account[]) || []);
     setLoading(false);
@@ -125,6 +186,14 @@ export default function AdminClaimsPage() {
 
   function selectedAccountForClaim(claim: ClaimIntake) {
     return selectedAccounts[claim.id] || claim.assigned_account_id || '';
+  }
+
+  function eventsForClaim(claimId: string) {
+    return events.filter((event) => event.claim_intake_id === claimId).slice(0, 4);
+  }
+
+  function auditForClaim(claimId: string) {
+    return audits.find((audit) => audit.claim_intake_id === claimId);
   }
 
   async function assignClaim(claim: ClaimIntake) {
@@ -199,6 +268,37 @@ export default function AdminClaimsPage() {
       note: 'Claim was assigned into the repair network.',
     });
 
+    await supabase.from('claim_routing_audits').insert({
+      claim_intake_id: claim.id,
+      routing_method: 'manual_override',
+      selected_account_id: account.id,
+      notes: 'Admin manually assigned or updated the claim assignment.',
+    });
+
+    await supabase.from('notification_events').insert([
+      {
+        event_type: 'Claim Assigned',
+        audience: 'shop',
+        claim_intake_id: claim.id,
+        job_id: jobId,
+        account_id: account.id,
+        carrier_id: claim.carrier_id,
+        status: 'pending',
+        subject: `New routed claim: ${claim.customer_name}`,
+        body: 'A carrier claim was manually assigned to this shop.',
+      },
+      {
+        event_type: 'Claim Assigned',
+        audience: 'carrier',
+        claim_intake_id: claim.id,
+        job_id: jobId,
+        carrier_id: claim.carrier_id,
+        status: 'pending',
+        subject: `Claim assigned: ${claim.customer_name}`,
+        body: 'Your claim has been assigned in the repair network.',
+      },
+    ]);
+
     setBusyId(null);
 
     if (error) {
@@ -232,6 +332,16 @@ export default function AdminClaimsPage() {
       note: `Carrier-facing status updated to ${status}.`,
     });
 
+    await supabase.from('notification_events').insert({
+      event_type: 'Claim Status Updated',
+      audience: 'carrier',
+      claim_intake_id: claim.id,
+      carrier_id: claim.carrier_id,
+      status: 'pending',
+      subject: `Claim status updated: ${status}`,
+      body: `Carrier-facing claim status was updated to ${status}.`,
+    });
+
     await load();
   }
 
@@ -262,7 +372,7 @@ export default function AdminClaimsPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <Metric label="Needs Review" value={String(needsReview.length)} tone="amber" />
         <Metric label="Total Claims" value={String(claims.length)} />
-        <Metric label="EDI/API Ready" value="/api/claims/submit" tone="brand" />
+        <Metric label="Pending Notifications" value={String(notifications.filter((event) => event.status === 'pending').length)} tone="brand" />
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
@@ -296,6 +406,11 @@ export default function AdminClaimsPage() {
                   <td className="px-4 py-3">
                     <div>{claim.claim_number || '-'}</div>
                     <div className="text-xs text-slate-500">{claim.policy_number || '-'}</div>
+                    {claim.duplicate_warning ? (
+                      <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                        Possible duplicate: {claim.duplicate_reason || 'similar claim found'}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3">
                     {[claim.loss_city, claim.loss_state, claim.loss_postal_code].filter(Boolean).join(', ') || '-'}
@@ -356,6 +471,31 @@ export default function AdminClaimsPage() {
                         {claim.assigned_job_id ? 'Update' : 'Create Job'}
                       </button>
                     </div>
+                    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Timeline
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {eventsForClaim(claim.id).map((event) => (
+                          <div key={event.id} className="text-xs text-slate-600">
+                            <span className="font-semibold text-slate-900">{event.event_type}</span>
+                            {' '}
+                            {event.created_at.slice(0, 10)}
+                          </div>
+                        ))}
+                        {!eventsForClaim(claim.id).length ? (
+                          <div className="text-xs text-slate-500">No timeline yet.</div>
+                        ) : null}
+                      </div>
+                    </div>
+                    {auditForClaim(claim.id) ? (
+                      <div className="mt-2 text-xs text-slate-500">
+                        Route: {auditForClaim(claim.id)?.routing_method.replace('_', ' ')}
+                        {auditForClaim(claim.id)?.selected_distance_miles
+                          ? `, ${Number(auditForClaim(claim.id)?.selected_distance_miles).toFixed(1)} mi`
+                          : ''}
+                      </div>
+                    ) : null}
                   </td>
                 </tr>
               ))}
@@ -369,6 +509,57 @@ export default function AdminClaimsPage() {
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
+        <div className="border-b border-slate-200 px-5 py-4">
+          <h2 className="text-lg font-semibold text-slate-900">Notification Queue</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            These events are queued for email/SMS wiring once provider credentials are added.
+          </p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-[900px] text-sm">
+            <thead className="bg-slate-50 text-left text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Created</th>
+                <th className="px-4 py-3">Audience</th>
+                <th className="px-4 py-3">Event</th>
+                <th className="px-4 py-3">Subject</th>
+                <th className="px-4 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {notifications.map((event) => (
+                <tr key={event.id} className="border-t border-slate-100">
+                  <td className="px-4 py-3">{event.created_at.slice(0, 10)}</td>
+                  <td className="px-4 py-3">{event.audience}</td>
+                  <td className="px-4 py-3">{event.event_type}</td>
+                  <td className="px-4 py-3">{event.subject || '-'}</td>
+                  <td className="px-4 py-3">{event.status}</td>
+                </tr>
+              ))}
+              {!notifications.length ? (
+                <tr>
+                  <td colSpan={5} className="py-10 text-center text-slate-500">
+                    No notification events yet.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+        <h2 className="text-lg font-semibold text-slate-900">EDI/API Intake</h2>
+        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4 font-mono text-xs text-slate-700">
+          POST /api/claims/submit
+        </div>
+        <p className="mt-3 text-sm text-slate-500">
+          Manual portal, JSON API, and future EDI-translated claims all use this same intake path, so duplicate detection, geocoding, nearest greenlit routing, fallback rules, timeline, audit, and notifications stay consistent.
+        </p>
       </section>
     </div>
   );
