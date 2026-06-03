@@ -507,6 +507,11 @@ export default function AdminUsersPage() {
     [users]
   );
 
+  const adminUsers = useMemo(
+    () => users.filter((user) => user.role === 'admin'),
+    [users]
+  );
+
   const suspendedUsers = useMemo(
     () => users.filter((user) => user.access_status === 'Suspended'),
     [users]
@@ -544,16 +549,16 @@ export default function AdminUsersPage() {
           <div className="mt-2 text-3xl font-semibold text-slate-900">{pendingRequests.length}</div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Admins</div>
+          <div className="mt-2 text-3xl font-semibold text-brand-700">{adminUsers.length}</div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Active Users</div>
           <div className="mt-2 text-3xl font-semibold text-emerald-700">{activeUsers.length}</div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Suspended</div>
           <div className="mt-2 text-3xl font-semibold text-amber-700">{suspendedUsers.length}</div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Revoked</div>
-          <div className="mt-2 text-3xl font-semibold text-rose-700">{revokedUsers.length}</div>
         </div>
       </div>
 
@@ -582,6 +587,83 @@ export default function AdminUsersPage() {
           >
             {busyId === 'new-admin' ? 'Sending...' : 'Create Admin + Send Invite'}
           </button>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
+        <div className="border-b border-slate-200 px-5 py-4">
+          <div className="text-sm font-semibold text-slate-900">Admins</div>
+          <div className="mt-1 text-xs text-slate-500">
+            These users have full system access.
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-sm">
+            <thead className="bg-slate-50 text-left text-slate-500">
+              <tr>
+                <th className="px-5 py-3 font-semibold">Email</th>
+                <th className="px-5 py-3 font-semibold">Status</th>
+                <th className="px-5 py-3 text-right font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {adminUsers.map((user) => {
+                const status = user.access_status || 'Active';
+                const isSelf = user.user_email.toLowerCase() === currentEmail;
+
+                return (
+                  <tr key={user.user_email} className="border-t border-slate-100">
+                    <td className="px-5 py-4 font-medium text-slate-900">
+                      {user.user_email}
+                      {isSelf ? (
+                        <span className="ml-2 rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
+                          You
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusBadge(status)}`}>
+                        {status}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex justify-end gap-2">
+                        {status !== 'Active' ? (
+                          <button
+                            type="button"
+                            disabled={isDemo || busyId === user.user_email}
+                            onClick={() => void setUserStatus(user, 'Active')}
+                            className="rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Activate
+                          </button>
+                        ) : null}
+                        {status === 'Active' && !isSelf ? (
+                          <button
+                            type="button"
+                            disabled={isDemo || busyId === user.user_email}
+                            onClick={() => void setUserStatus(user, 'Suspended')}
+                            className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Suspend
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {!adminUsers.length ? (
+                <tr>
+                  <td colSpan={3} className="py-10 text-center text-slate-500">
+                    No admins found.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
         </div>
       </section>
 
