@@ -294,6 +294,30 @@ export default function AdminUsersPage() {
     setBusyId(null);
   }
 
+  async function sendInvite(email: string) {
+    const response = await fetch('/api/invite-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+
+    const result = await response.json().catch(() => ({}));
+
+    return {
+      ok: response.ok,
+      mode: result.mode as string | undefined,
+      error: result.error as string | undefined,
+    };
+  }
+
+  function inviteSuccessMessage(mode?: string) {
+    if (mode === 'password_reset') {
+      return 'User already existed, so a fresh password setup email was sent.';
+    }
+
+    return 'Invite email sent.';
+  }
+
   async function createAdminAndSendInvite() {
     if (blockDemoAction()) return;
 
@@ -318,19 +342,13 @@ export default function AdminUsersPage() {
       return;
     }
 
-    const response = await fetch('/api/invite-user', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    });
-
-    const result = await response.json().catch(() => ({}));
+    const invite = await sendInvite(email);
 
     setBusyId(null);
 
-    if (!response.ok) {
+    if (!invite.ok) {
       window.alert(
-        result.error ||
+        invite.error ||
           'Admin access was created, but the invite email could not be sent.'
       );
       setNewAdminEmail('');
@@ -338,7 +356,7 @@ export default function AdminUsersPage() {
       return;
     }
 
-    window.alert('Admin access created and invite sent.');
+    window.alert(`Admin access created. ${inviteSuccessMessage(invite.mode)}`);
     setNewAdminEmail('');
     await load();
   }
@@ -368,6 +386,18 @@ export default function AdminUsersPage() {
         .from('user_access_requests')
         .update({ status: 'Approved' })
         .eq('id', request.id);
+
+      const invite = await sendInvite(request.email);
+
+      if (!invite.ok) {
+        window.alert(
+          `Access was approved, but the invite email could not be sent: ${
+            invite.error || 'Unknown error'
+          }`
+        );
+      } else {
+        window.alert(`Access approved. ${inviteSuccessMessage(invite.mode)}`);
+      }
 
       await load();
     }
@@ -400,6 +430,18 @@ export default function AdminUsersPage() {
         .from('user_access_requests')
         .update({ status: 'Approved' })
         .eq('id', request.id);
+
+      const invite = await sendInvite(request.email);
+
+      if (!invite.ok) {
+        window.alert(
+          `User access was repaired, but the invite email could not be sent: ${
+            invite.error || 'Unknown error'
+          }`
+        );
+      } else {
+        window.alert(`User access repaired. ${inviteSuccessMessage(invite.mode)}`);
+      }
 
       await load();
     }
@@ -466,6 +508,22 @@ export default function AdminUsersPage() {
     });
 
     if (saved) await load();
+
+    setBusyId(null);
+  }
+
+  async function resendInviteToUser(user: UserRole) {
+    if (blockDemoAction()) return;
+
+    setBusyId(`invite-${user.user_email}`);
+
+    const invite = await sendInvite(user.user_email);
+
+    if (!invite.ok) {
+      window.alert(invite.error || 'The invite email could not be sent.');
+    } else {
+      window.alert(inviteSuccessMessage(invite.mode));
+    }
 
     setBusyId(null);
   }
@@ -628,7 +686,16 @@ export default function AdminUsersPage() {
                       </span>
                     </td>
                     <td className="px-5 py-4">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled={isDemo || busyId === `invite-${user.user_email}`}
+                          onClick={() => void resendInviteToUser(user)}
+                          className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {busyId === `invite-${user.user_email}` ? 'Sending...' : 'Send Invite'}
+                        </button>
+
                         {status !== 'Active' ? (
                           <button
                             type="button"
@@ -939,7 +1006,7 @@ export default function AdminUsersPage() {
                     </td>
 
                     <td className="px-5 py-4">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex flex-wrap justify-end gap-2">
                         <button
                           type="button"
                           disabled={isDemo || busyId === user.user_email}
@@ -947,6 +1014,15 @@ export default function AdminUsersPage() {
                           className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           Save
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isDemo || busyId === `invite-${user.user_email}`}
+                          onClick={() => void resendInviteToUser(user)}
+                          className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {busyId === `invite-${user.user_email}` ? 'Sending...' : 'Send Invite'}
                         </button>
 
                         {status !== 'Active' ? (
