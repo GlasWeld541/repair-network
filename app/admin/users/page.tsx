@@ -318,6 +318,24 @@ export default function AdminUsersPage() {
     return 'Invite email sent.';
   }
 
+  function inviteErrorMessage(error?: string) {
+    if (error && /rate limit/i.test(error)) {
+      return 'Email rate limit exceeded. Use Copy Setup Link and send the link directly to the user.';
+    }
+
+    return error || 'The invite email could not be sent.';
+  }
+
+  async function copyText(value: string) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+
+    window.prompt('Copy this setup link:', value);
+    return false;
+  }
+
   async function createAdminAndSendInvite() {
     if (blockDemoAction()) return;
 
@@ -348,8 +366,9 @@ export default function AdminUsersPage() {
 
     if (!invite.ok) {
       window.alert(
-        invite.error ||
-          'Admin access was created, but the invite email could not be sent.'
+        `Admin access was created, but the invite email could not be sent. ${inviteErrorMessage(
+          invite.error
+        )}`
       );
       setNewAdminEmail('');
       await load();
@@ -391,9 +410,9 @@ export default function AdminUsersPage() {
 
       if (!invite.ok) {
         window.alert(
-          `Access was approved, but the invite email could not be sent: ${
-            invite.error || 'Unknown error'
-          }`
+          `Access was approved, but the invite email could not be sent. ${inviteErrorMessage(
+            invite.error
+          )}`
         );
       } else {
         window.alert(`Access approved. ${inviteSuccessMessage(invite.mode)}`);
@@ -435,9 +454,9 @@ export default function AdminUsersPage() {
 
       if (!invite.ok) {
         window.alert(
-          `User access was repaired, but the invite email could not be sent: ${
-            invite.error || 'Unknown error'
-          }`
+          `User access was repaired, but the invite email could not be sent. ${inviteErrorMessage(
+            invite.error
+          )}`
         );
       } else {
         window.alert(`User access repaired. ${inviteSuccessMessage(invite.mode)}`);
@@ -520,12 +539,39 @@ export default function AdminUsersPage() {
     const invite = await sendInvite(user.user_email);
 
     if (!invite.ok) {
-      window.alert(invite.error || 'The invite email could not be sent.');
+      window.alert(inviteErrorMessage(invite.error));
     } else {
       window.alert(inviteSuccessMessage(invite.mode));
     }
 
     setBusyId(null);
+  }
+
+  async function copySetupLinkForUser(user: UserRole) {
+    if (blockDemoAction()) return;
+
+    setBusyId(`link-${user.user_email}`);
+
+    const response = await fetch('/api/admin-user-link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: user.user_email }),
+    });
+
+    const result = await response.json().catch(() => ({}));
+
+    setBusyId(null);
+
+    if (!response.ok || !result.setupLink) {
+      window.alert(result.error || 'Could not generate setup link.');
+      return;
+    }
+
+    const copied = await copyText(result.setupLink);
+
+    if (copied) {
+      window.alert('Setup link copied. Send it directly to the user.');
+    }
   }
 
   async function setUserStatus(user: UserRole, status: string) {
@@ -694,6 +740,15 @@ export default function AdminUsersPage() {
                           className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {busyId === `invite-${user.user_email}` ? 'Sending...' : 'Send Invite'}
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isDemo || busyId === `link-${user.user_email}`}
+                          onClick={() => void copySetupLinkForUser(user)}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {busyId === `link-${user.user_email}` ? 'Generating...' : 'Copy Setup Link'}
                         </button>
 
                         {status !== 'Active' ? (
@@ -1023,6 +1078,15 @@ export default function AdminUsersPage() {
                           className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {busyId === `invite-${user.user_email}` ? 'Sending...' : 'Send Invite'}
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isDemo || busyId === `link-${user.user_email}`}
+                          onClick={() => void copySetupLinkForUser(user)}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {busyId === `link-${user.user_email}` ? 'Generating...' : 'Copy Setup Link'}
                         </button>
 
                         {status !== 'Active' ? (
