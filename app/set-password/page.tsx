@@ -8,23 +8,49 @@ export default function SetPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState('');
 
-  // 🔑 CRITICAL: establish session from URL tokens
   useEffect(() => {
     async function init() {
+      setError('');
+
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get('code');
       const hash = window.location.hash;
 
-      if (hash) {
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+
+        if (exchangeError) {
+          setError(exchangeError.message);
+        } else {
+          window.history.replaceState({}, document.title, '/set-password');
+        }
+      } else if (hash) {
         const params = new URLSearchParams(hash.replace('#', ''));
 
         const access_token = params.get('access_token');
         const refresh_token = params.get('refresh_token');
 
         if (access_token && refresh_token) {
-          await supabase.auth.setSession({
+          const { error: sessionError } = await supabase.auth.setSession({
             access_token,
             refresh_token,
           });
+
+          if (sessionError) {
+            setError(sessionError.message);
+          } else {
+            window.history.replaceState({}, document.title, '/set-password');
+          }
+        } else {
+          setError('This password setup link is missing its security tokens.');
+        }
+      } else {
+        const { data } = await supabase.auth.getSession();
+
+        if (!data.session) {
+          setError('This password setup link is expired or incomplete. Ask an admin to send a new invite.');
         }
       }
 
@@ -49,6 +75,14 @@ export default function SetPasswordPage() {
 
     setLoading(true);
 
+    const { data: sessionData } = await supabase.auth.getSession();
+
+    if (!sessionData.session) {
+      setLoading(false);
+      setError('This password setup link is expired or incomplete. Ask an admin to send a new invite.');
+      return;
+    }
+
     const { error } = await supabase.auth.updateUser({
       password,
     });
@@ -56,7 +90,7 @@ export default function SetPasswordPage() {
     setLoading(false);
 
     if (error) {
-      alert(error.message);
+      setError(error.message);
       return;
     }
 
@@ -85,6 +119,12 @@ export default function SetPasswordPage() {
         <p className="mt-2 text-sm text-slate-500">
           Create a password for your GlasWeld Repair Network account.
         </p>
+
+        {error ? (
+          <div className="mt-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+            {error}
+          </div>
+        ) : null}
 
         <div className="mt-6 space-y-4">
           <input
