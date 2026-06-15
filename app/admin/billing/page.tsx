@@ -35,6 +35,10 @@ type AccountBilling = {
   payment_gateway_status: string | null;
   processor_merchant_id: string | null;
   processor_rev_share_bps: number | null;
+  repair_platform_fee_bps: number | null;
+  replacement_platform_fee_bps: number | null;
+  consumer_repair_enabled: boolean | null;
+  consumer_replacement_enabled: boolean | null;
 };
 
 type PaymentMethodSummary = {
@@ -129,7 +133,7 @@ export default function AdminBillingPage() {
       supabase
         .from('accounts')
         .select(
-          'id, account_name, billing_enabled, completed_job_fee_cents, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps'
+          'id, account_name, billing_enabled, completed_job_fee_cents, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled'
         )
         .order('account_name'),
       supabase
@@ -257,7 +261,7 @@ export default function AdminBillingPage() {
           </h1>
 
           <p className="mt-1 text-sm text-slate-500">
-            Track completed-job usage fees, collection status, and account payment gateway terms.
+            Track platform revenue share, collection status, and account payment gateway terms.
           </p>
         </div>
 
@@ -284,7 +288,7 @@ export default function AdminBillingPage() {
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Usage Events</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Completed jobs create pending $1.50 events unless the account has custom terms.
+              Consumer and agent jobs use percentage revenue share. Older internal jobs can still use legacy flat fees.
             </p>
           </div>
 
@@ -448,7 +452,9 @@ export default function AdminBillingPage() {
                 <th className="px-4 py-3">Schedule</th>
                 <th className="px-4 py-3">Charge</th>
                 <th className="px-4 py-3">Default Method</th>
-                <th className="px-4 py-3">Completed Job Fee</th>
+                <th className="px-4 py-3">Repair Share</th>
+                <th className="px-4 py-3">Replacement Share</th>
+                <th className="px-4 py-3">Legacy Job Fee</th>
                 <th className="px-4 py-3">EDI Fee</th>
                 <th className="px-4 py-3">Processor Share</th>
               </tr>
@@ -478,6 +484,18 @@ export default function AdminBillingPage() {
                       <div>{paymentMethodLabel(defaultMethod)}</div>
                       <div className="text-xs text-slate-500">
                         {activeMethodCount} active
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>{percentFromBps(account.repair_platform_fee_bps ?? 300)}</div>
+                      <div className="text-xs text-slate-500">
+                        {account.consumer_repair_enabled === false ? 'paused' : 'enabled'}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>{percentFromBps(account.replacement_platform_fee_bps ?? 700)}</div>
+                      <div className="text-xs text-slate-500">
+                        {account.consumer_replacement_enabled ? 'enabled' : 'paused'}
                       </div>
                     </td>
                     <td className="px-4 py-3">{moneyFromCents(account.completed_job_fee_cents)}</td>

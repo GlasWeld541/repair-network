@@ -31,6 +31,12 @@ type AccountRow = {
   processor_merchant_id: string | null;
   processor_rev_share_bps: number | null;
   payment_gateway_notes: string | null;
+  consumer_repair_enabled: boolean | null;
+  consumer_replacement_enabled: boolean | null;
+  agent_referral_enabled: boolean | null;
+  consumer_routing_notes: string | null;
+  repair_platform_fee_bps: number | null;
+  replacement_platform_fee_bps: number | null;
 };
 
 type AccountPaymentMethod = {
@@ -274,7 +280,7 @@ export default function AccountDetailPage() {
     const { data: accountData, error: accountError } = await supabase
       .from('accounts')
       .select(
-        'id, account_name, street, city, state, postal_code, company_phone, company_email, claim_routing_enabled, claim_routing_paused_reason, claim_capacity_daily, claim_capacity_weekly, billing_enabled, completed_job_fee_cents, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes'
+        'id, account_name, street, city, state, postal_code, company_phone, company_email, claim_routing_enabled, claim_routing_paused_reason, claim_capacity_daily, claim_capacity_weekly, billing_enabled, completed_job_fee_cents, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes, consumer_repair_enabled, consumer_replacement_enabled, agent_referral_enabled, consumer_routing_notes, repair_platform_fee_bps, replacement_platform_fee_bps'
       )
       .eq('id', id)
       .single();
@@ -1026,6 +1032,115 @@ export default function AccountDetailPage() {
               Status: {account.claim_routing_enabled === false ? 'paused' : 'eligible if green'}
               {account.claim_routing_paused_reason ? ` - ${account.claim_routing_paused_reason}` : ''}
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {currentRole === 'admin' ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+          <div className="mb-5">
+            <h2 className="text-lg font-semibold">Shop Segment & Consumer Routing</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Segment this account for repair, replacement, and agent-referred work.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                checked={account.consumer_repair_enabled !== false}
+                onChange={(e) =>
+                  void updateBillingSetting('consumer_repair_enabled', e.target.checked)
+                }
+                className="h-4 w-4"
+              />
+              Repair Partner
+            </label>
+
+            <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                checked={account.consumer_replacement_enabled === true}
+                onChange={(e) =>
+                  void updateBillingSetting('consumer_replacement_enabled', e.target.checked)
+                }
+                className="h-4 w-4"
+              />
+              Replacement Partner
+            </label>
+
+            <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                checked={account.agent_referral_enabled !== false}
+                onChange={(e) =>
+                  void updateBillingSetting('agent_referral_enabled', e.target.checked)
+                }
+                className="h-4 w-4"
+              />
+              Agent Referrals
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Repair Platform Fee
+              </span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={basisPoints(account.repair_platform_fee_bps ?? 300)}
+                  onChange={(e) =>
+                    void updateBillingSetting(
+                      'repair_platform_fee_bps',
+                      Math.round(Number(e.target.value || 0) * 100)
+                    )
+                  }
+                  className="w-full"
+                />
+                <span className="text-sm text-slate-500">%</span>
+              </div>
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Replacement Platform Fee
+              </span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={basisPoints(account.replacement_platform_fee_bps ?? 700)}
+                  onChange={(e) =>
+                    void updateBillingSetting(
+                      'replacement_platform_fee_bps',
+                      Math.round(Number(e.target.value || 0) * 100)
+                    )
+                  }
+                  className="w-full"
+                />
+                <span className="text-sm text-slate-500">%</span>
+              </div>
+            </label>
+
+            <label className="grid gap-1 md:col-span-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Consumer Routing Notes
+              </span>
+              <textarea
+                value={account.consumer_routing_notes || ''}
+                onChange={(e) =>
+                  void updateBillingSetting(
+                    'consumer_routing_notes',
+                    e.target.value.trim() || null
+                  )
+                }
+                className="min-h-20"
+              />
+            </label>
           </div>
         </div>
       ) : null}

@@ -81,6 +81,12 @@ export default function AdminDashboardPage() {
       href: '/admin/carriers',
     },
     {
+      title: 'Consumer & Agent Intake',
+      description:
+        'Review public leads, triage repair versus replacement, and create routed jobs.',
+      href: '/admin/intake',
+    },
+    {
       title: 'Claims & Routing',
       description:
         'Configure claim intake, routing rules, and workflow behavior.',

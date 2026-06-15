@@ -29,6 +29,11 @@ type Job = {
   assigned_account_name: string | null;
   insurance_carrier: string | null;
   claim_number: string | null;
+  intake_origin: string | null;
+  service_type: string | null;
+  payment_path: string | null;
+  platform_fee_cents: number | null;
+  marketing_source: string | null;
 };
 
 type Invoice = {
@@ -209,6 +214,9 @@ export default function JobsPage() {
       .from('jobs')
       .insert({
         customer_name: newCustomer.trim(),
+        intake_origin: role === 'shop' ? 'shop' : 'admin',
+        service_type: 'repair',
+        payment_path: newInsuranceCarrier.trim() ? 'insurance' : 'cash',
         assigned_account_id: selectedAccount.id,
         assigned_account_name: selectedAccount.account_name,
         job_status: 'New',
@@ -481,6 +489,8 @@ export default function JobsPage() {
             <tr>
               <th className="px-4 py-3">Date</th>
               <th className="px-4 py-3">Customer</th>
+              <th className="px-4 py-3">Origin</th>
+              <th className="px-4 py-3">Service</th>
               <th className="px-4 py-3">Carrier</th>
               <th className="px-4 py-3">Claim</th>
               <th className="px-4 py-3">Invoice</th>
@@ -499,6 +509,14 @@ export default function JobsPage() {
               >
                 <td className="px-4 py-3">{jobDate(j)}</td>
                 <td className="px-4 py-3">{j.customer_name}</td>
+                <td className="px-4 py-3">
+                  <div>{j.intake_origin || 'admin'}</div>
+                  <div className="text-xs text-slate-500">{j.marketing_source || '-'}</div>
+                </td>
+                <td className="px-4 py-3">
+                  <div>{j.service_type || 'repair'}</div>
+                  <div className="text-xs text-slate-500">{j.payment_path || 'unknown'}</div>
+                </td>
                 <td className="px-4 py-3">{j.insurance_carrier}</td>
                 <td className="px-4 py-3">{j.claim_number}</td>
                 <td className="px-4 py-3">{money(invoiceAmount(j))}</td>

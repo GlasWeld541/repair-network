@@ -9,6 +9,8 @@ import { supabase } from '@/lib/supabase';
 
 const JOB_STATUSES = ['New', 'In Progress', 'Submitted', 'Completed', 'Canceled'];
 const DAMAGE_TYPES = ['Combo Break', 'Bullseye', 'Star Break', 'Crack', 'Pit', 'Other'];
+const SERVICE_TYPES = ['repair', 'replacement', 'unknown'];
+const PAYMENT_PATHS = ['unknown', 'cash', 'insurance'];
 type EditableTarget = { table: 'jobs'; field: string } | null;
 
 function money(value: number | null | undefined) {
@@ -220,37 +222,71 @@ export default function JobDetailPage() {
 
     const { data: accountBilling } = await supabase
       .from('accounts')
-      .select('billing_enabled, completed_job_fee_cents')
+      .select('billing_enabled, completed_job_fee_cents, repair_platform_fee_bps, replacement_platform_fee_bps')
       .eq('id', completedJob.assigned_account_id)
       .maybeSingle();
 
     if (accountBilling?.billing_enabled === false) return;
 
-    const usageFeeCents = Number(
-      accountBilling?.completed_job_fee_cents ?? 150
-    );
-
-    if (usageFeeCents <= 0) return;
-
     const invoiceAmount = Number(
       invoice?.invoice_amount ?? completedJob.invoice_amount ?? 0
     );
 
+    const shouldUsePercentage =
+      completedJob.intake_origin === 'consumer' ||
+      completedJob.intake_origin === 'agent' ||
+      Number(completedJob.platform_fee_bps || 0) > 0;
+    const serviceType = completedJob.service_type || 'repair';
+    const percentageBps = Number(
+      completedJob.platform_fee_bps ||
+        (serviceType === 'replacement'
+          ? accountBilling?.replacement_platform_fee_bps
+          : accountBilling?.repair_platform_fee_bps) ||
+        0
+    );
+    const percentageFeeCents = Math.round(
+      (invoiceAmount * 100 * percentageBps) / 10000
+    );
+    const fallbackFeeCents = Number(accountBilling?.completed_job_fee_cents ?? 150);
+    const platformFeeCents = shouldUsePercentage
+      ? percentageFeeCents
+      : fallbackFeeCents;
+    const eventType = shouldUsePercentage
+      ? 'platform_revenue_share'
+      : 'completed_job';
+
+    if (platformFeeCents <= 0) return;
+
+    await supabase
+      .from('jobs')
+      .update({
+        platform_fee_bps: shouldUsePercentage ? percentageBps : Number(completedJob.platform_fee_bps || 0),
+        platform_fee_cents: platformFeeCents,
+        platform_fee_status: 'pending',
+      })
+      .eq('id', completedJob.id);
+
     const { error } = await supabase.from('billing_events').upsert(
       {
-        billing_key: `completed_job:${completedJob.id}`,
+        billing_key: `${eventType}:${completedJob.id}`,
         account_id: completedJob.assigned_account_id,
         job_id: completedJob.id,
         invoice_id: invoice?.id ?? null,
-        event_type: 'completed_job',
-        description: 'Completed job usage fee',
-        amount_cents: usageFeeCents,
+        event_type: eventType,
+        description: shouldUsePercentage
+          ? `${serviceType === 'replacement' ? 'Replacement' : 'Repair'} platform revenue share`
+          : 'Completed job usage fee',
+        amount_cents: platformFeeCents,
         status: 'pending',
         created_by_email: userEmail,
         metadata: {
           customer_name: completedJob.customer_name,
           invoice_amount: invoiceAmount,
           assigned_account_name: completedJob.assigned_account_name,
+          intake_origin: completedJob.intake_origin || 'admin',
+          service_type: serviceType,
+          payment_path: completedJob.payment_path || 'unknown',
+          platform_fee_bps: shouldUsePercentage ? percentageBps : null,
         },
       },
       { onConflict: 'billing_key' }
@@ -609,6 +645,20 @@ export default function JobDetailPage() {
                 onSave={(value) => void updateJobField('job_status', value)}
                 readOnly={isReadOnly}
               />
+              <EditableSelect
+                label="Service Type"
+                value={job.service_type || 'repair'}
+                options={SERVICE_TYPES}
+                onSave={(value) => void updateJobField('service_type', value)}
+                readOnly={isReadOnly}
+              />
+              <EditableSelect
+                label="Payment Path"
+                value={job.payment_path || 'unknown'}
+                options={PAYMENT_PATHS}
+                onSave={(value) => void updateJobField('payment_path', value)}
+                readOnly={isReadOnly}
+              />
               <EditableField
                 label="Invoice Date"
                 value={job.invoice_date}
@@ -799,6 +849,17 @@ export default function JobDetailPage() {
               <Quick label="Shop" value={job.assigned_account_name} />
               <Quick label="Vehicle" value={vehicle} />
               <Quick label="Insurance" value={job.insurance_carrier} />
+              <Quick label="Origin" value={job.intake_origin || 'admin'} />
+              <Quick label="Service" value={job.service_type || 'repair'} />
+              <Quick label="Payment Path" value={job.payment_path || 'unknown'} />
+              <Quick
+                label="Platform Fee"
+                value={
+                  job.platform_fee_cents
+                    ? money(Number(job.platform_fee_cents) / 100)
+                    : `${(Number(job.platform_fee_bps || 0) / 100).toFixed(2)}%`
+                }
+              />
               <Quick
                 label="Last Activity"
                 value={

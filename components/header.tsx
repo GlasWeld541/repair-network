@@ -11,7 +11,7 @@ type StateOption = {
   label: string;
 };
 
-type UserRole = 'admin' | 'shop' | 'carrier' | null;
+type UserRole = 'admin' | 'shop' | 'carrier' | 'demo' | null;
 
 const STATE_NAMES: Record<string, string> = {
   AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas',
@@ -59,9 +59,10 @@ export default function Header() {
         if (
           normalizedRole === 'admin' ||
           normalizedRole === 'shop' ||
-          normalizedRole === 'carrier'
+          normalizedRole === 'carrier' ||
+          normalizedRole === 'demo'
         ) {
-          setRole(normalizedRole);
+          setRole(normalizedRole as UserRole);
         }
       }
     }
@@ -114,11 +115,13 @@ export default function Header() {
     window.location.href = '/login';
   }
 
-  const baseNavItems = [
-    { href: '/', label: 'Dashboard' },
-    { href: '/accounts', label: 'Accounts' },
-    { href: '/jobs', label: 'Jobs' },
-  ];
+  const baseNavItems = role
+    ? [
+        { href: '/', label: 'Dashboard' },
+        { href: '/accounts', label: 'Accounts' },
+        { href: '/jobs', label: 'Jobs' },
+      ]
+    : [{ href: '/start', label: 'Start' }];
 
   const navItems =
     role === 'carrier'
@@ -128,7 +131,9 @@ export default function Header() {
         ]
       : role === 'shop'
         ? baseNavItems
-        : [...baseNavItems, { href: '/admin', label: 'Admin' }];
+        : role === 'admin' || role === 'demo'
+          ? [...baseNavItems, { href: '/admin', label: 'Admin' }]
+          : baseNavItems;
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.28)]">
@@ -203,12 +208,21 @@ export default function Header() {
             })}
           </nav>
 
-          <button
-            onClick={handleLogout}
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200"
-          >
-            Logout
-          </button>
+          {role ? (
+            <button
+              onClick={handleLogout}
+              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200"
+            >
+              Logout
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200 hover:bg-white/10 hover:text-white"
+            >
+              Login
+            </Link>
+          )}
         </div>
       </div>
     </header>
