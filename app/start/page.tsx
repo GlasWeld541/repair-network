@@ -180,11 +180,13 @@ export default function ConsumerStartPage() {
 
         <div className="relative mx-auto grid min-h-screen max-w-[1380px] gap-10 px-6 py-8 lg:grid-cols-[0.96fr_1.04fr] lg:items-center lg:px-10">
           <div className="max-w-3xl">
-            <img
-              src="/glasweld-logo.png"
-              alt="GlasWeld"
-              className="mb-8 h-14 w-auto object-contain"
-            />
+            <div className="mb-8 inline-flex rounded-2xl bg-white/90 px-5 py-3 shadow-[0_0_42px_rgba(255,255,255,0.7)] ring-1 ring-white/80 backdrop-blur">
+              <img
+                src="/glasweld-logo.png"
+                alt="GlasWeld"
+                className="h-16 w-auto object-contain drop-shadow-[0_2px_8px_rgba(255,255,255,0.85)]"
+              />
+            </div>
 
             <div className="inline-flex items-center gap-2 rounded-full border border-brand-300/30 bg-brand-300/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-brand-100">
               <ShieldCheck className="h-4 w-4" />
