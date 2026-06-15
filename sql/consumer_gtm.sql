@@ -121,6 +121,18 @@ create table if not exists public.consumer_intake_photos (
 create index if not exists consumer_intake_photos_intake_idx
   on public.consumer_intake_photos (consumer_intake_id, created_at);
 
+alter table public.notification_events
+  add column if not exists consumer_intake_id uuid references public.consumer_intakes(id) on delete cascade;
+
+alter table public.notification_events
+  drop constraint if exists notification_events_audience_check,
+  add constraint notification_events_audience_check check (
+    audience in ('admin', 'shop', 'carrier', 'billing', 'customer')
+  );
+
+create index if not exists notification_events_consumer_intake_idx
+  on public.notification_events (consumer_intake_id, created_at desc);
+
 alter table public.jobs
   add column if not exists consumer_intake_id uuid references public.consumer_intakes(id) on delete set null,
   add column if not exists intake_origin text not null default 'admin',

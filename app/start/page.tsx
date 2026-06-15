@@ -396,8 +396,9 @@ function DamageReviewForm({
             We received your request.
           </h2>
           <p className="mt-3 max-w-md text-sm leading-6 text-slate-600">
-            Your damage information is now in review. The next step is figuring out whether
-            repair, replacement, cash pay, or insurance makes the most sense.
+            Your damage information is now queued for a repair-first review. We will use your
+            photos, vehicle, location, and insurance details to help determine whether repair,
+            replacement, cash pay, or insurance makes the most sense.
           </p>
           <button
             type="button"

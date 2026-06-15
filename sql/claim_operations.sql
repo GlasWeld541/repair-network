@@ -50,7 +50,7 @@ create table if not exists public.notification_events (
     status in ('pending', 'sent', 'failed', 'skipped')
   ),
   constraint notification_events_audience_check check (
-    audience in ('admin', 'shop', 'carrier', 'billing')
+    audience in ('admin', 'shop', 'carrier', 'billing', 'customer')
   )
 );
 

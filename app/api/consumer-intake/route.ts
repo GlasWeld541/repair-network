@@ -179,19 +179,36 @@ export async function POST(request: Request) {
       });
     }
 
-    await admin.from('notification_events').insert({
-      event_type: 'Consumer Intake Received',
-      audience: 'admin',
-      status: 'pending',
-      subject: `New ${leadType} glass intake: ${customerName}`,
-      body: 'A new consumer-first intake was submitted and needs triage.',
-      metadata: {
+    await admin.from('notification_events').insert([
+      {
+        event_type: 'Consumer Intake Received',
+        audience: 'admin',
         consumer_intake_id: intake.id,
-        source,
-        postal_code: payload.postal_code,
-        payment_path: normalizedPaymentPath(formData.get('payment_path') as string),
+        status: 'pending',
+        subject: `New ${leadType} glass intake: ${customerName}`,
+        body: 'A new consumer-first intake was submitted and needs triage.',
+        metadata: {
+          source,
+          postal_code: payload.postal_code,
+          payment_path: normalizedPaymentPath(formData.get('payment_path') as string),
+        },
       },
-    });
+      {
+        event_type: 'Consumer Intake Confirmation',
+        audience: 'customer',
+        consumer_intake_id: intake.id,
+        recipient_email: customerEmail || null,
+        status: 'pending',
+        subject: 'We received your windshield review request',
+        body:
+          'We received your windshield damage information. The next step is a repair-first review so we can help determine whether repair, replacement, cash pay, or insurance is the smarter path.',
+        metadata: {
+          customer_phone: customerPhone || null,
+          source,
+          postal_code: payload.postal_code,
+        },
+      },
+    ]);
 
     return NextResponse.json({
       success: true,

@@ -43,6 +43,9 @@ type Intake = {
 type Account = {
   id: string;
   account_name: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
   repair_platform_fee_bps: number | null;
   replacement_platform_fee_bps: number | null;
   consumer_repair_enabled: boolean | null;
@@ -132,7 +135,7 @@ export default function AdminConsumerIntakePage() {
           .order('created_at', { ascending: false }),
         supabase
           .from('accounts')
-          .select('id, account_name, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled')
+          .select('id, account_name, city, state, postal_code, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled')
           .order('account_name'),
         supabase
           .from('consumer_intake_photos')
@@ -172,6 +175,35 @@ export default function AdminConsumerIntakePage() {
       if (triageResult === 'repair') return account.consumer_repair_enabled !== false;
       return true;
     });
+  }
+
+  function rankedAccountOptions(intake: Intake, triageResult: string) {
+    const intakeState = String(intake.state || '').trim().toLowerCase();
+    const intakeCity = String(intake.city || '').trim().toLowerCase();
+    const intakeZip = String(intake.postal_code || '').trim();
+
+    return accountOptions(triageResult)
+      .map((account) => {
+        let score = 0;
+        const accountState = String(account.state || '').trim().toLowerCase();
+        const accountCity = String(account.city || '').trim().toLowerCase();
+        const accountZip = String(account.postal_code || '').trim();
+
+        if (intakeState && accountState && intakeState === accountState) score += 4;
+        if (intakeCity && accountCity && intakeCity === accountCity) score += 2;
+        if (intakeZip && accountZip && intakeZip.slice(0, 3) === accountZip.slice(0, 3)) score += 1;
+
+        return { account, score };
+      })
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return String(a.account.account_name || '').localeCompare(String(b.account.account_name || ''));
+      })
+      .map((row) => row.account);
+  }
+
+  function suggestedAccount(intake: Intake, triageResult: string) {
+    return rankedAccountOptions(intake, triageResult)[0] || null;
   }
 
   function selectedAccount(intake: Intake) {
@@ -228,9 +260,11 @@ export default function AdminConsumerIntakePage() {
   async function createJob(intake: Intake) {
     if (isDemo) return;
 
-    const account = selectedAccount(intake);
     const triageResult = getSelected(intake, 'triage_result');
     const paymentPath = getSelected(intake, 'payment_path') || 'unknown';
+    const account =
+      selectedAccount(intake) ||
+      suggestedAccount(intake, triageResult);
 
     if (!account) {
       window.alert('Select an account before creating the job.');
@@ -320,6 +354,39 @@ export default function AdminConsumerIntakePage() {
       })
       .eq('id', intake.id);
 
+    await supabase.from('notification_events').insert([
+      {
+        event_type: 'Consumer Job Assigned',
+        audience: 'shop',
+        consumer_intake_id: intake.id,
+        job_id: job.id,
+        account_id: account.id,
+        status: 'pending',
+        subject: `New consumer ${triageResult} job: ${intake.customer_name}`,
+        body: 'A consumer-first intake was reviewed and assigned to this account.',
+        metadata: {
+          payment_path: paymentPath,
+          source: marketingSource,
+        },
+      },
+      {
+        event_type: 'Consumer Job Assigned',
+        audience: 'customer',
+        consumer_intake_id: intake.id,
+        job_id: job.id,
+        account_id: account.id,
+        recipient_email: intake.customer_email,
+        status: 'pending',
+        subject: 'Your windshield review has been routed',
+        body: `Your windshield review has been routed for ${triageResult}. The assigned provider is ${account.account_name || 'your repair network provider'}.`,
+        metadata: {
+          customer_phone: intake.customer_phone,
+          payment_path: paymentPath,
+          assigned_account_name: account.account_name,
+        },
+      },
+    ]);
+
     setBusyId(null);
     await load();
   }
@@ -374,7 +441,9 @@ export default function AdminConsumerIntakePage() {
           {intakes.map((intake) => {
             const triageResult = getSelected(intake, 'triage_result') || 'needs_review';
             const intakePhotos = photosForIntake(intake.id);
-            const options = accountOptions(triageResult);
+            const options = rankedAccountOptions(intake, triageResult);
+            const recommendedAccount = suggestedAccount(intake, triageResult);
+            const selectedPartnerId = getSelected(intake, 'assigned_account_id');
 
             return (
               <div key={intake.id} className="grid gap-5 p-5 xl:grid-cols-[1.1fr_1.4fr]">
@@ -456,7 +525,7 @@ export default function AdminConsumerIntakePage() {
                         {triageResult === 'replacement' ? 'Replacement Partner' : triageResult === 'repair' ? 'Repair Partner' : 'Assigned Partner'}
                       </span>
                       <select
-                        value={getSelected(intake, 'assigned_account_id')}
+                        value={selectedPartnerId}
                         disabled={isDemo}
                         onChange={(e) => updateSelection(intake.id, 'assigned_account_id', e.target.value)}
                       >
@@ -470,9 +539,16 @@ export default function AdminConsumerIntakePage() {
                         {options.map((account) => (
                           <option key={account.id} value={account.id}>
                             {account.account_name || 'Unnamed Account'}
+                            {recommendedAccount?.id === account.id ? ' (Suggested)' : ''}
                           </option>
                         ))}
                       </select>
+                      {!selectedPartnerId && recommendedAccount ? (
+                        <span className="text-xs leading-5 text-slate-500">
+                          Suggested: {recommendedAccount.account_name || 'Unnamed Account'}.
+                          Create Job will use this partner unless you choose another.
+                        </span>
+                      ) : null}
                     </label>
                   </div>
 
@@ -514,7 +590,11 @@ export default function AdminConsumerIntakePage() {
                       onClick={() => void createJob(intake)}
                       className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {busyId === `job-${intake.id}` ? 'Creating...' : 'Create Job'}
+                      {busyId === `job-${intake.id}`
+                        ? 'Creating...'
+                        : selectedPartnerId
+                          ? 'Create Job'
+                          : 'Create With Suggested'}
                     </button>
                   </div>
                 </div>
