@@ -115,6 +115,10 @@ export default function Header() {
     window.location.href = '/login';
   }
 
+  if (pathname === '/start' || pathname.startsWith('/start/')) {
+    return null;
+  }
+
   const baseNavItems = role
     ? [
         { href: '/', label: 'Dashboard' },

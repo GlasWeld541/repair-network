@@ -166,19 +166,26 @@ export default function ConsumerStartPage() {
   }
 
   return (
-    <div className="-mx-6 -my-8 bg-[#f6fbfc] text-slate-950">
+    <div className="-mx-6 -my-8 bg-[#f7fbfc] text-slate-950">
       <section className="relative overflow-hidden bg-slate-950 text-white">
         <div className="absolute inset-0">
           <img
-            src="/login-bg.png"
+            src="/windshield-chip-hero.png"
             alt=""
-            className="h-full w-full object-cover opacity-55"
+            className="h-full w-full object-cover object-center opacity-85"
           />
-          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(2,6,23,0.92),rgba(2,6,23,0.72),rgba(2,6,23,0.45))]" />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(2,6,23,0.9),rgba(2,6,23,0.68),rgba(2,6,23,0.25))]" />
+          <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#f7fbfc] to-transparent" />
         </div>
 
-        <div className="relative mx-auto grid min-h-[calc(100vh-112px)] max-w-[1380px] gap-10 px-6 py-10 lg:grid-cols-[0.96fr_1.04fr] lg:items-center lg:px-10">
+        <div className="relative mx-auto grid min-h-screen max-w-[1380px] gap-10 px-6 py-8 lg:grid-cols-[0.96fr_1.04fr] lg:items-center lg:px-10">
           <div className="max-w-3xl">
+            <img
+              src="/glasweld-logo.png"
+              alt="GlasWeld"
+              className="mb-8 h-14 w-auto object-contain"
+            />
+
             <div className="inline-flex items-center gap-2 rounded-full border border-brand-300/30 bg-brand-300/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-brand-100">
               <ShieldCheck className="h-4 w-4" />
               Windshield chip and crack help
@@ -281,9 +288,9 @@ export default function ConsumerStartPage() {
         <div className="mx-auto grid max-w-[1380px] gap-8 px-6 lg:grid-cols-[1fr_1fr] lg:px-10">
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 text-white shadow-[0_25px_70px_rgba(15,23,42,0.25)]">
             <img
-              src="/login-bg.png"
+              src="/windshield-chip-hero.png"
               alt=""
-              className="h-72 w-full object-cover opacity-80"
+              className="h-72 w-full object-cover object-center opacity-95"
             />
             <div className="p-6">
               <div className="inline-flex items-center gap-2 rounded-full bg-brand-300/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-brand-100">
@@ -455,7 +462,7 @@ function DamageReviewForm({
             placeholder="What happened? Any cracks, chips, edge damage, or visibility concerns?"
           />
 
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-3">
             <select name="payment_path" defaultValue="unknown">
               <option value="unknown">Cash or insurance?</option>
               <option value="cash">Prefer cash if sensible</option>
@@ -463,6 +470,7 @@ function DamageReviewForm({
             </select>
 
             <input name="insurance_carrier" placeholder="Insurance carrier, optional" />
+            <input name="policy_number" placeholder="Policy ID / number, optional" />
           </div>
 
           <label className="block rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
