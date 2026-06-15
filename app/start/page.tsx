@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Camera,
   CheckCircle2,
+  ChevronDown,
   CircleDollarSign,
   FileQuestion,
   MapPin,
@@ -31,14 +32,14 @@ const DAMAGE_SIZES = [
 
 const trustPoints = [
   {
-    label: 'First question',
-    value: 'Repair?',
-    body: 'Before you file a claim or book replacement, find out if the original windshield can be safely saved.',
+    label: 'Repair-first network',
+    value: 'Largest',
+    body: 'The largest independent network of repair-only windshield businesses in the world.',
   },
   {
-    label: 'Why it matters',
-    value: '$1,300+',
-    body: 'Replacement can cost dramatically more than repair, which creates real pressure toward the bigger job.',
+    label: 'Replacement backup',
+    value: 'Full service',
+    body: 'If the windshield must be replaced, we also have the largest full-service auto glass network in the world.',
   },
   {
     label: 'What we protect',
@@ -63,7 +64,7 @@ const storyCards = [
   {
     title: 'Replacement incentives are real',
     body:
-      'Repair can be a small invoice. Replacement can be $1,300 or more. We separate repair-first routing from replacement work.',
+      'Repair can be a small invoice. Replacement can be $1,300 or more. Repairable damage goes to repair-only companies first.',
     icon: CircleDollarSign,
   },
 ];
@@ -79,7 +80,7 @@ const processSteps = [
   },
   {
     title: 'Use the right provider',
-    body: 'Repairable damage goes first to repair-only partners. Replacement work goes to replacement partners.',
+    body: 'Repairable damage goes first to repair-only partners. Replacement work goes to full-service partners only when needed.',
   },
 ];
 
@@ -196,6 +197,12 @@ export default function ConsumerStartPage() {
               the work.
             </p>
 
+            <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
+              Repairable damage routes into the world&apos;s largest independent network of
+              repair-only providers. If replacement is truly unavoidable, the job can move into
+              the world&apos;s largest full-service auto glass network.
+            </p>
+
             <div className="mt-8 flex flex-wrap gap-3">
               <a
                 href="#damage-review"
@@ -222,6 +229,15 @@ export default function ConsumerStartPage() {
                 </div>
               ))}
             </div>
+
+            <a
+              href="#what-to-know"
+              className="mt-8 inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-100 shadow-[0_18px_60px_rgba(0,0,0,0.22)] backdrop-blur transition hover:bg-white/15"
+              aria-label="Scroll to learn why this matters"
+            >
+              <span>Scroll for the catch</span>
+              <ChevronDown className="h-4 w-4 animate-bounce text-brand-100" />
+            </a>
           </div>
 
           <DamageReviewForm
@@ -299,7 +315,9 @@ export default function ConsumerStartPage() {
               <p className="mt-3 text-sm leading-6 text-slate-300">
                 Insurance can be useful when replacement is truly needed. But if a chip can be
                 repaired affordably, using insurance first may create more paperwork and claim
-                history than the damage deserves.
+                history than the damage deserves. If replacement is unavoidable, routing moves
+                to full-service auto glass providers instead of forcing a repair-first shop to
+                do work it should not do.
               </p>
             </div>
           </div>
@@ -361,9 +379,10 @@ export default function ConsumerStartPage() {
           <div className="flex items-start gap-3">
             <MapPin className="mt-0.5 h-5 w-5 flex-shrink-0 text-brand-700" />
             <div>
-              If your damage looks repairable, it routes first to repair-only providers. They do
-              not make more money by turning a repairable chip into a replacement job, which is
-              exactly the point.
+              If your damage looks repairable, it routes first to the world&apos;s largest
+              independent network of repair-only providers. If the windshield truly must be
+              replaced, the job can route to the world&apos;s largest full-service auto glass
+              network instead.
             </div>
           </div>
         </div>
