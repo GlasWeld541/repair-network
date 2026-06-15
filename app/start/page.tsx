@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   Camera,
@@ -31,70 +31,70 @@ const DAMAGE_SIZES = [
 
 const trustPoints = [
   {
-    label: 'Network',
-    value: 'Independent',
-    body: 'A repair-first network built outside the usual replacement-driven claims funnel.',
+    label: 'First question',
+    value: 'Repair?',
+    body: 'Before you file a claim or book replacement, find out if the original windshield can be safely saved.',
   },
   {
-    label: 'Repair-first',
-    value: 'Always',
-    body: 'If the original glass can be safely repaired, that is the first path reviewed.',
+    label: 'Why it matters',
+    value: '$1,300+',
+    body: 'Replacement can cost dramatically more than repair, which creates real pressure toward the bigger job.',
   },
   {
-    label: 'Original seal',
-    value: 'Preserve',
-    body: 'When safe repair is possible, keeping the factory-installed seal has real value.',
+    label: 'What we protect',
+    value: 'OEM seal',
+    body: 'When repair is safe, preserving the factory-installed glass and seal is usually the cleaner outcome.',
   },
 ];
 
 const storyCards = [
   {
-    title: 'Can it be repaired?',
+    title: 'The wrong first call can cost you',
     body:
-      'Repairable damage routes first to repair-only companies, so there is no incentive to turn a repair into a replacement.',
-    icon: CircleDollarSign,
-  },
-  {
-    title: 'Should you use insurance?',
-    body:
-      'Even covered glass claims can become part of your claim history. A low-cost repair may be cleaner as cash pay.',
+      'A small chip can turn into a claim, a replacement recommendation, and a much larger bill before anyone clearly explains your options.',
     icon: AlertTriangle,
   },
   {
-    title: 'Who should do the work?',
+    title: 'Insurance is not always the smartest first move',
     body:
-      'Auto glass companies often make far more on replacement than repair. The network separates repair and replacement partners.',
-    icon: Camera,
+      'Glass coverage can help, but a claim may still become part of your history. If repair is affordable, cash pay may be cleaner.',
+    icon: FileQuestion,
+  },
+  {
+    title: 'Replacement incentives are real',
+    body:
+      'Repair can be a small invoice. Replacement can be $1,300 or more. We separate repair-first routing from replacement work.',
+    icon: CircleDollarSign,
   },
 ];
 
 const processSteps = [
   {
-    title: 'Upload photos',
-    body: 'Send a few clear pictures of the chip or crack, plus your ZIP code and vehicle.',
+    title: 'Show us the damage',
+    body: 'Upload a few clear photos, your ZIP code, and basic vehicle information.',
   },
   {
-    title: 'Get triaged',
-    body: 'The damage is reviewed for repair, replacement, cash-pay, or insurance handling.',
+    title: 'Get the right path',
+    body: 'We review repairability, claim risk, cash-pay sense, and whether replacement is actually needed.',
   },
   {
-    title: 'Route correctly',
-    body: 'Repairable damage goes to repair partners. Replacement work goes to replacement partners.',
+    title: 'Use the right provider',
+    body: 'Repairable damage goes first to repair-only partners. Replacement work goes to replacement partners.',
   },
 ];
 
 const proofPoints = [
-  'No obligation photo review',
-  'Repair-only routing when repairable',
-  'Cash and insurance paths considered',
-  'No random sale of your information',
+  'Repair-first review',
+  'Independent routing',
+  'Cash and insurance options',
+  'No replacement pressure',
 ];
 
 const comparisonRows = [
-  ['Usually repairable', 'Small chip, limited cracking, not in a sensor or camera area'],
-  ['Needs review', 'Long crack, edge damage, multiple chips, or damage in the driver view'],
-  ['Likely replacement', 'Large spreading crack, severe impact, or compromised safety area'],
-  ['Insurance question', 'Depends on your policy, deductible, state, and final service needed'],
+  ['Small chip', 'Often worth reviewing before you call insurance or schedule replacement.'],
+  ['Long crack or edge damage', 'Needs a closer look because safety, spreading, and location matter.'],
+  ['Camera or sensor area', 'May require special handling, calibration, or replacement depending on the vehicle.'],
+  ['Insurance decision', 'Depends on policy, deductible, state, claim history, and the final service needed.'],
 ];
 
 type SubmitState = 'idle' | 'submitting' | 'success';
@@ -128,13 +128,6 @@ export default function ConsumerStartPage() {
   }, []);
 
   const isSubmitting = submitState === 'submitting';
-
-  const sourceLabel = useMemo(() => {
-    if (tracking.gclid) return 'Google Ads';
-    if (tracking.utm_source) return tracking.utm_source;
-    if (tracking.referrer) return 'Referral';
-    return 'Direct';
-  }, [tracking]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -190,16 +183,17 @@ export default function ConsumerStartPage() {
 
             <div className="inline-flex items-center gap-2 rounded-full border border-brand-300/30 bg-brand-300/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-brand-100">
               <ShieldCheck className="h-4 w-4" />
-              Windshield chip and crack help
+              Independent windshield damage review
             </div>
 
             <h1 className="mt-6 text-4xl font-semibold leading-[1.04] lg:text-6xl">
-              Windshield damage? Know your best option first.
+              Do not turn a repairable chip into a $1,300 replacement.
             </h1>
 
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-200">
-              Start with a photo review from an independent, repair-first glass network before
-              you file a claim or approve a replacement.
+              Upload photos first. We will help you understand whether repair, replacement,
+              cash pay, or insurance is the smarter next step before you start a claim or book
+              the work.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
@@ -207,13 +201,13 @@ export default function ConsumerStartPage() {
                 href="#damage-review"
                 className="rounded-xl bg-brand-300 px-5 py-3 text-sm font-semibold text-slate-950 shadow-soft hover:bg-brand-200"
               >
-                Start Photo Review
+                Check My Windshield
               </a>
               <a
                 href="#what-to-know"
                 className="rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15"
               >
-                See Repair Guide
+                Why This Matters
               </a>
             </div>
 
@@ -235,7 +229,6 @@ export default function ConsumerStartPage() {
             setSubmitState={setSubmitState}
             isSubmitting={isSubmitting}
             error={error}
-            sourceLabel={sourceLabel}
             submit={submit}
           />
         </div>
@@ -256,15 +249,16 @@ export default function ConsumerStartPage() {
         <div className="grid gap-8 lg:grid-cols-[0.78fr_1.22fr] lg:items-start">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-brand-700">
-              Quick answer first
+              The pain we solve
             </div>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
-              Repair when possible. Replace when necessary.
+              Most drivers are forced to decide before they understand the stakes.
             </h2>
             <p className="mt-5 text-base leading-7 text-slate-600">
-              A replacement can average $1,300 or more. A repair can be a fraction of that.
-              That difference creates incentives. This network is built to protect the repair
-              option first, then route replacement only when replacement is the right answer.
+              You are usually asked one of two questions: do you want to file a claim, or do you
+              want to schedule service? The missing question is the one that matters most:
+              can this be safely repaired before it becomes a larger insurance or replacement
+              event?
             </p>
           </div>
 
@@ -297,15 +291,15 @@ export default function ConsumerStartPage() {
             <div className="p-6">
               <div className="inline-flex items-center gap-2 rounded-full bg-brand-300/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-brand-100">
                 <FileQuestion className="h-4 w-4" />
-                Cash or claim?
+                Cash, claim, or wait?
               </div>
               <h2 className="mt-4 text-3xl font-semibold">
-                Pay cash or use insurance?
+                The best answer depends on the damage, not the sales script.
               </h2>
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                Glass coverage can be useful, but a claim is still a claim history event.
-                If the damage can be repaired affordably, cash pay may be the cleaner path.
-                If replacement is needed, insurance may be worth considering.
+                Insurance can be useful when replacement is truly needed. But if a chip can be
+                repaired affordably, using insurance first may create more paperwork and claim
+                history than the damage deserves.
               </p>
             </div>
           </div>
@@ -313,7 +307,7 @@ export default function ConsumerStartPage() {
           <div className="rounded-2xl border border-slate-200 bg-[#f6fbfc] p-5 shadow-soft">
             <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-brand-800">
               <Sparkles className="h-5 w-5" />
-              A better first step
+              What we look at first
             </div>
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <table className="text-sm">
@@ -347,7 +341,7 @@ export default function ConsumerStartPage() {
             How it works
           </div>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
-            Get moving in minutes.
+            Start with the truth, then choose the path.
           </h2>
         </div>
 
@@ -367,9 +361,9 @@ export default function ConsumerStartPage() {
           <div className="flex items-start gap-3">
             <MapPin className="mt-0.5 h-5 w-5 flex-shrink-0 text-brand-700" />
             <div>
-              Repairable claims and jobs route first to repair-only companies. There is no
-              replacement upside for them, which removes the incentive to convert a repairable
-              chip into a replacement job.
+              If your damage looks repairable, it routes first to repair-only providers. They do
+              not make more money by turning a repairable chip into a replacement job, which is
+              exactly the point.
             </div>
           </div>
         </div>
@@ -383,14 +377,12 @@ function DamageReviewForm({
   setSubmitState,
   isSubmitting,
   error,
-  sourceLabel,
   submit,
 }: {
   submitState: SubmitState;
   setSubmitState: (state: SubmitState) => void;
   isSubmitting: boolean;
   error: string;
-  sourceLabel: string;
   submit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   return (
@@ -419,13 +411,14 @@ function DamageReviewForm({
         <form onSubmit={submit} className="space-y-5">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">
-              Intake source: {sourceLabel}
+              Free repairability check
             </div>
             <h2 className="mt-2 text-2xl font-semibold text-slate-950">
-              Start Your Review
+              Check My Windshield
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Tell us where the damage is and upload photos. We will use that to route the next step.
+              Send the basics now. We will help you figure out the smartest next step before you
+              file a claim or approve replacement.
             </p>
           </div>
 
@@ -466,7 +459,7 @@ function DamageReviewForm({
 
           <div className="grid gap-3 md:grid-cols-3">
             <select name="payment_path" defaultValue="unknown">
-              <option value="unknown">Cash or insurance?</option>
+              <option value="unknown">Cash, insurance, or unsure?</option>
               <option value="cash">Prefer cash if sensible</option>
               <option value="insurance">May use insurance</option>
             </select>
@@ -482,10 +475,10 @@ function DamageReviewForm({
               </div>
               <div>
                 <div className="text-sm font-semibold text-slate-900">
-                  Damage photos
+                  Upload damage photos
                 </div>
                 <div className="mt-1 text-xs text-slate-500">
-                  Up to five photos.
+                  A close-up and one wider photo of the windshield help most.
                 </div>
               </div>
             </div>
@@ -510,7 +503,7 @@ function DamageReviewForm({
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-soft hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Upload className="h-4 w-4" />
-            {isSubmitting ? 'Submitting...' : 'Submit For Review'}
+            {isSubmitting ? 'Submitting...' : 'Check Repairability'}
           </button>
         </form>
       )}
