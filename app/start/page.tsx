@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Sparkles,
   Upload,
+  Wrench,
 } from 'lucide-react';
 
 const DAMAGE_LOCATIONS = [
@@ -50,22 +51,39 @@ const trustPoints = [
 
 const storyCards = [
   {
-    title: 'The wrong first call can cost you',
+    title: 'The first call usually has an agenda',
     body:
-      'A small chip can turn into a claim, a replacement recommendation, and a much larger bill before anyone clearly explains your options.',
+      'Most glass funnels push you toward either an insurance claim or an appointment. Neither starts with the question that protects you: can this be repaired?',
     icon: AlertTriangle,
   },
   {
-    title: 'Insurance is not always the smartest first move',
+    title: 'Insurance is not always step one',
     body:
-      'Glass coverage can help, but a claim may still become part of your history. If repair is affordable, cash pay may be cleaner.',
+      'Coverage can be useful, especially for replacement. But if repair is affordable, cash pay may avoid paperwork and unnecessary claim history.',
     icon: FileQuestion,
   },
   {
-    title: 'Replacement incentives are real',
+    title: 'Repair and replacement should not be mixed',
     body:
-      'Repair can be a small invoice. Replacement can be $1,300 or more. Repairable damage goes to repair-only companies first.',
+      'Repairable damage should route to repair-only companies first. If replacement is unavoidable, then it moves to full-service glass providers.',
     icon: CircleDollarSign,
+  },
+];
+
+const networkCards = [
+  {
+    title: 'Repairable damage',
+    label: 'Repair-only first',
+    body:
+      'Repairable chips route into the world\'s largest independent network of repair-only windshield businesses, where there is no replacement upside.',
+    icon: Wrench,
+  },
+  {
+    title: 'Replacement required',
+    label: 'Full-service backup',
+    body:
+      'If the glass truly must be replaced, the job can route into the world\'s largest network of full-service auto glass companies.',
+    icon: ShieldCheck,
   },
 ];
 
@@ -188,7 +206,7 @@ export default function ConsumerStartPage() {
             </div>
 
             <h1 className="mt-6 text-4xl font-semibold leading-[1.04] lg:text-6xl">
-              Do not turn a repairable chip into a $1,300 replacement.
+              Don&apos;t let a repairable chip become a $1,300 replacement.
             </h1>
 
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-200">
@@ -268,7 +286,7 @@ export default function ConsumerStartPage() {
               The pain we solve
             </div>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
-              Most drivers are forced to decide before they understand the stakes.
+              You need a decision, not a sales funnel.
             </h2>
             <p className="mt-5 text-base leading-7 text-slate-600">
               You are usually asked one of two questions: do you want to file a claim, or do you
@@ -276,6 +294,12 @@ export default function ConsumerStartPage() {
               can this be safely repaired before it becomes a larger insurance or replacement
               event?
             </p>
+            <a
+              href="#damage-review"
+              className="mt-6 inline-flex rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-soft hover:bg-brand-700"
+            >
+              Start Free Review
+            </a>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
@@ -289,6 +313,45 @@ export default function ConsumerStartPage() {
                   </div>
                   <h3 className="mt-4 text-lg font-semibold text-slate-950">{card.title}</h3>
                   <p className="mt-3 text-sm leading-6 text-slate-600">{card.body}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-slate-950 py-14 text-white">
+        <div className="mx-auto grid max-w-[1380px] gap-8 px-6 lg:grid-cols-[0.75fr_1.25fr] lg:items-center lg:px-10">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-brand-100">
+              Two networks, one unbiased first step
+            </div>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight lg:text-5xl">
+              The right provider depends on the damage.
+            </h2>
+            <p className="mt-5 text-base leading-7 text-slate-300">
+              That is the whole point. A repairable chip should not start inside a
+              replacement-driven path. A windshield that truly needs replacement should not be
+              forced through a repair-only shop. The review decides the lane first.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            {networkCards.map((card) => {
+              const Icon = card.icon;
+
+              return (
+                <div key={card.title} className="rounded-2xl border border-white/10 bg-white/10 p-6 shadow-[0_22px_80px_rgba(0,0,0,0.25)] backdrop-blur">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="rounded-xl bg-brand-300/15 p-3 text-brand-100">
+                      <Icon className="h-6 w-6" />
+                    </div>
+                    <div className="rounded-full border border-brand-200/20 bg-brand-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-brand-100">
+                      {card.label}
+                    </div>
+                  </div>
+                  <h3 className="mt-5 text-xl font-semibold">{card.title}</h3>
+                  <p className="mt-3 text-sm leading-6 text-slate-300">{card.body}</p>
                 </div>
               );
             })}
