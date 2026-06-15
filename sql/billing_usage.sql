@@ -10,7 +10,6 @@ $$ language plpgsql;
 
 alter table public.accounts
   add column if not exists billing_enabled boolean not null default true,
-  add column if not exists completed_job_fee_cents integer not null default 150,
   add column if not exists edi_submission_fee_cents integer not null default 0,
   add column if not exists monthly_billing_enabled boolean not null default true,
   add column if not exists billing_cycle_day integer not null default 1,
@@ -33,6 +32,9 @@ set
   billing_cycle_day = 1,
   autopay_enabled = true;
 
+alter table public.accounts
+  drop column if exists completed_job_fee_cents;
+
 create table if not exists public.billing_events (
   id uuid primary key default gen_random_uuid(),
   billing_key text not null unique,
@@ -54,9 +56,10 @@ create table if not exists public.billing_events (
   updated_at timestamptz not null default now(),
   constraint billing_events_event_type_check check (
     event_type in (
-      'completed_job',
       'edi_submission',
       'payment_transaction',
+      'platform_revenue_share',
+      'processor_revenue_share',
       'adjustment'
     )
   ),

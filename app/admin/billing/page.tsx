@@ -26,7 +26,6 @@ type AccountBilling = {
   id: string;
   account_name: string | null;
   billing_enabled: boolean | null;
-  completed_job_fee_cents: number | null;
   edi_submission_fee_cents: number | null;
   monthly_billing_enabled: boolean | null;
   billing_cycle_day: number | null;
@@ -133,7 +132,7 @@ export default function AdminBillingPage() {
       supabase
         .from('accounts')
         .select(
-          'id, account_name, billing_enabled, completed_job_fee_cents, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled'
+          'id, account_name, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled'
         )
         .order('account_name'),
       supabase
@@ -288,7 +287,7 @@ export default function AdminBillingPage() {
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Usage Events</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Consumer and agent jobs use percentage revenue share. Older internal jobs can still use legacy flat fees.
+              Completed jobs use percentage revenue share based on repair or replacement invoice totals.
             </p>
           </div>
 
@@ -454,7 +453,6 @@ export default function AdminBillingPage() {
                 <th className="px-4 py-3">Default Method</th>
                 <th className="px-4 py-3">Repair Share</th>
                 <th className="px-4 py-3">Replacement Share</th>
-                <th className="px-4 py-3">Legacy Job Fee</th>
                 <th className="px-4 py-3">EDI Fee</th>
                 <th className="px-4 py-3">Processor Share</th>
               </tr>
@@ -498,7 +496,6 @@ export default function AdminBillingPage() {
                         {account.consumer_replacement_enabled ? 'enabled' : 'paused'}
                       </div>
                     </td>
-                    <td className="px-4 py-3">{moneyFromCents(account.completed_job_fee_cents)}</td>
                     <td className="px-4 py-3">{moneyFromCents(account.edi_submission_fee_cents)}</td>
                     <td className="px-4 py-3">{percentFromBps(account.processor_rev_share_bps)}</td>
                   </tr>

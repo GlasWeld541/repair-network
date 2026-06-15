@@ -20,7 +20,6 @@ type AccountRow = {
   claim_capacity_daily: number | null;
   claim_capacity_weekly: number | null;
   billing_enabled: boolean | null;
-  completed_job_fee_cents: number | null;
   edi_submission_fee_cents: number | null;
   monthly_billing_enabled: boolean | null;
   billing_cycle_day: number | null;
@@ -280,7 +279,7 @@ export default function AccountDetailPage() {
     const { data: accountData, error: accountError } = await supabase
       .from('accounts')
       .select(
-        'id, account_name, street, city, state, postal_code, company_phone, company_email, claim_routing_enabled, claim_routing_paused_reason, claim_capacity_daily, claim_capacity_weekly, billing_enabled, completed_job_fee_cents, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes, consumer_repair_enabled, consumer_replacement_enabled, agent_referral_enabled, consumer_routing_notes, repair_platform_fee_bps, replacement_platform_fee_bps'
+        'id, account_name, street, city, state, postal_code, company_phone, company_email, claim_routing_enabled, claim_routing_paused_reason, claim_capacity_daily, claim_capacity_weekly, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes, consumer_repair_enabled, consumer_replacement_enabled, agent_referral_enabled, consumer_routing_notes, repair_platform_fee_bps, replacement_platform_fee_bps'
       )
       .eq('id', id)
       .single();
@@ -1198,28 +1197,6 @@ export default function AccountDetailPage() {
 
             <label className="grid gap-1">
               <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Completed Job Fee
-              </span>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-500">$</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={cents(account.completed_job_fee_cents)}
-                  onChange={(e) =>
-                    void updateBillingSetting(
-                      'completed_job_fee_cents',
-                      Math.round(Number(e.target.value || 0) * 100)
-                    )
-                  }
-                  className="w-full"
-                />
-              </div>
-            </label>
-
-            <label className="grid gap-1">
-              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Future EDI Fee
               </span>
               <div className="flex items-center gap-2">
@@ -1350,7 +1327,7 @@ export default function AccountDetailPage() {
           </div>
 
           <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-            Current terms: {account.billing_enabled === false ? 'billing disabled' : `$${cents(account.completed_job_fee_cents)} per completed job`}
+            Current terms: {account.billing_enabled === false ? 'billing disabled' : `${basisPoints(account.repair_platform_fee_bps ?? 300)}% repair / ${basisPoints(account.replacement_platform_fee_bps ?? 700)}% replacement`}
             {' '}with {gatewayLabel(account.payment_gateway_provider)} ({gatewayStatusLabel(account.payment_gateway_status)}).
             Monthly invoices are created on the 1st for previous-month charges and auto charged on the 5th.
           </div>

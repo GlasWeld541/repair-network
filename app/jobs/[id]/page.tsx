@@ -222,7 +222,7 @@ export default function JobDetailPage() {
 
     const { data: accountBilling } = await supabase
       .from('accounts')
-      .select('billing_enabled, completed_job_fee_cents, repair_platform_fee_bps, replacement_platform_fee_bps')
+      .select('billing_enabled, repair_platform_fee_bps, replacement_platform_fee_bps')
       .eq('id', completedJob.assigned_account_id)
       .maybeSingle();
 
@@ -232,10 +232,6 @@ export default function JobDetailPage() {
       invoice?.invoice_amount ?? completedJob.invoice_amount ?? 0
     );
 
-    const shouldUsePercentage =
-      completedJob.intake_origin === 'consumer' ||
-      completedJob.intake_origin === 'agent' ||
-      Number(completedJob.platform_fee_bps || 0) > 0;
     const serviceType = completedJob.service_type || 'repair';
     const percentageBps = Number(
       completedJob.platform_fee_bps ||
@@ -247,21 +243,15 @@ export default function JobDetailPage() {
     const percentageFeeCents = Math.round(
       (invoiceAmount * 100 * percentageBps) / 10000
     );
-    const fallbackFeeCents = Number(accountBilling?.completed_job_fee_cents ?? 150);
-    const platformFeeCents = shouldUsePercentage
-      ? percentageFeeCents
-      : fallbackFeeCents;
-    const eventType = shouldUsePercentage
-      ? 'platform_revenue_share'
-      : 'completed_job';
+    const eventType = 'platform_revenue_share';
 
-    if (platformFeeCents <= 0) return;
+    if (percentageFeeCents <= 0) return;
 
     await supabase
       .from('jobs')
       .update({
-        platform_fee_bps: shouldUsePercentage ? percentageBps : Number(completedJob.platform_fee_bps || 0),
-        platform_fee_cents: platformFeeCents,
+        platform_fee_bps: percentageBps,
+        platform_fee_cents: percentageFeeCents,
         platform_fee_status: 'pending',
       })
       .eq('id', completedJob.id);
@@ -273,10 +263,8 @@ export default function JobDetailPage() {
         job_id: completedJob.id,
         invoice_id: invoice?.id ?? null,
         event_type: eventType,
-        description: shouldUsePercentage
-          ? `${serviceType === 'replacement' ? 'Replacement' : 'Repair'} platform revenue share`
-          : 'Completed job usage fee',
-        amount_cents: platformFeeCents,
+        description: `${serviceType === 'replacement' ? 'Replacement' : 'Repair'} platform revenue share`,
+        amount_cents: percentageFeeCents,
         status: 'pending',
         created_by_email: userEmail,
         metadata: {
@@ -286,7 +274,7 @@ export default function JobDetailPage() {
           intake_origin: completedJob.intake_origin || 'admin',
           service_type: serviceType,
           payment_path: completedJob.payment_path || 'unknown',
-          platform_fee_bps: shouldUsePercentage ? percentageBps : null,
+          platform_fee_bps: percentageBps,
         },
       },
       { onConflict: 'billing_key' }

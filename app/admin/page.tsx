@@ -95,7 +95,7 @@ export default function AdminDashboardPage() {
     {
       title: 'Billing & Gateways',
       description:
-        'Review usage fees, collection status, and account payment gateway settings.',
+        'Review platform revenue share, collection status, and account payment gateway settings.',
       href: '/admin/billing',
     },
   ];

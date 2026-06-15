@@ -20,6 +20,9 @@ alter table public.accounts
   add column if not exists repair_platform_fee_bps integer not null default 300,
   add column if not exists replacement_platform_fee_bps integer not null default 700;
 
+alter table public.accounts
+  drop column if exists completed_job_fee_cents;
+
 create table if not exists public.consumer_intakes (
   id uuid primary key default gen_random_uuid(),
   lead_type text not null default 'consumer',
@@ -162,7 +165,6 @@ alter table public.billing_events
   drop constraint if exists billing_events_event_type_check,
   add constraint billing_events_event_type_check check (
     event_type in (
-      'completed_job',
       'edi_submission',
       'payment_transaction',
       'platform_revenue_share',
