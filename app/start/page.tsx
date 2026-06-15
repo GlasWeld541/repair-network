@@ -31,19 +31,19 @@ const DAMAGE_SIZES = [
 
 const trustPoints = [
   {
-    label: 'Photo review',
-    value: 'Free',
-    body: 'Send a few pictures so the damage can be reviewed before you schedule.',
+    label: 'Network',
+    value: 'Independent',
+    body: 'A repair-first network built outside the usual replacement-driven claims funnel.',
   },
   {
     label: 'Repair-first',
-    value: 'Smart',
-    body: 'Small chips may be repairable. Replacement should not be the first assumption.',
+    value: 'Always',
+    body: 'If the original glass can be safely repaired, that is the first path reviewed.',
   },
   {
-    label: 'Right partner',
-    value: 'Local',
-    body: 'Repairable damage and replacement work route to different qualified partners.',
+    label: 'Original seal',
+    value: 'Preserve',
+    body: 'When safe repair is possible, keeping the factory-installed seal has real value.',
   },
 ];
 
@@ -51,19 +51,19 @@ const storyCards = [
   {
     title: 'Can it be repaired?',
     body:
-      'Many chips can be repaired when they are small, away from sensors, and not spreading across the windshield.',
+      'Repairable damage routes first to repair-only companies, so there is no incentive to turn a repair into a replacement.',
     icon: CircleDollarSign,
   },
   {
     title: 'Should you use insurance?',
     body:
-      'If repair is simple and affordable, cash pay may be easier. If replacement is needed, insurance may make more sense.',
+      'Even covered glass claims can become part of your claim history. A low-cost repair may be cleaner as cash pay.',
     icon: AlertTriangle,
   },
   {
     title: 'Who should do the work?',
     body:
-      'Repair and replacement are different jobs. The review helps route your glass to the right kind of partner.',
+      'Auto glass companies often make far more on replacement than repair. The network separates repair and replacement partners.',
     icon: Camera,
   },
 ];
@@ -81,6 +81,13 @@ const processSteps = [
     title: 'Route correctly',
     body: 'Repairable damage goes to repair partners. Replacement work goes to replacement partners.',
   },
+];
+
+const proofPoints = [
+  'No obligation photo review',
+  'Repair-only routing when repairable',
+  'Cash and insurance paths considered',
+  'No random sale of your information',
 ];
 
 const comparisonRows = [
@@ -178,12 +185,12 @@ export default function ConsumerStartPage() {
             </div>
 
             <h1 className="mt-6 text-4xl font-semibold leading-[1.04] lg:text-6xl">
-              Windshield damage? Start with a photo review.
+              Windshield damage? Know your best option first.
             </h1>
 
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-200">
-              Find out whether your glass may be repairable, whether replacement is likely,
-              and which path makes the most sense before you book service.
+              Start with a photo review from an independent, repair-first glass network before
+              you file a claim or approve a replacement.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
@@ -225,6 +232,17 @@ export default function ConsumerStartPage() {
         </div>
       </section>
 
+      <section className="border-y border-slate-200 bg-white">
+        <div className="mx-auto grid max-w-[1380px] gap-3 px-6 py-5 sm:grid-cols-2 lg:grid-cols-4 lg:px-10">
+          {proofPoints.map((point) => (
+            <div key={point} className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <CheckCircle2 className="h-5 w-5 text-brand-700" />
+              {point}
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section id="what-to-know" className="mx-auto max-w-[1380px] px-6 py-14 lg:px-10">
         <div className="grid gap-8 lg:grid-cols-[0.78fr_1.22fr] lg:items-start">
           <div>
@@ -235,8 +253,9 @@ export default function ConsumerStartPage() {
               Repair when possible. Replace when necessary.
             </h2>
             <p className="mt-5 text-base leading-7 text-slate-600">
-              A chip, crack, or edge impact can mean very different things. The review is built
-              to give you a practical next step without making you decode glass terminology.
+              A replacement can average $1,300 or more. A repair can be a fraction of that.
+              That difference creates incentives. This network is built to protect the repair
+              option first, then route replacement only when replacement is the right answer.
             </p>
           </div>
 
@@ -272,12 +291,12 @@ export default function ConsumerStartPage() {
                 Cash or claim?
               </div>
               <h2 className="mt-4 text-3xl font-semibold">
-              Pay cash or use insurance?
+                Pay cash or use insurance?
               </h2>
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                If the damage can be repaired affordably, cash pay may be the cleanest path.
-                If replacement is needed, insurance may be worth considering. The review helps
-                you ask the right question before you schedule.
+                Glass coverage can be useful, but a claim is still a claim history event.
+                If the damage can be repaired affordably, cash pay may be the cleaner path.
+                If replacement is needed, insurance may be worth considering.
               </p>
             </div>
           </div>
@@ -290,7 +309,7 @@ export default function ConsumerStartPage() {
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <table className="text-sm">
                 <thead className="bg-slate-50 text-left text-slate-600">
-              <tr>
+                  <tr>
                     <th className="px-4 py-3">Damage type</th>
                     <th className="px-4 py-3">What it may mean</th>
                   </tr>
@@ -318,7 +337,7 @@ export default function ConsumerStartPage() {
           <div className="text-xs font-semibold uppercase tracking-[0.22em] text-brand-700">
             How it works
           </div>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
             Get moving in minutes.
           </h2>
         </div>
@@ -339,8 +358,9 @@ export default function ConsumerStartPage() {
           <div className="flex items-start gap-3">
             <MapPin className="mt-0.5 h-5 w-5 flex-shrink-0 text-brand-700" />
             <div>
-              Repair partners and replacement partners are segmented on purpose. The right work
-              should go to the right shop.
+              Repairable claims and jobs route first to repair-only companies. There is no
+              replacement upside for them, which removes the incentive to convert a repairable
+              chip into a replacement job.
             </div>
           </div>
         </div>
