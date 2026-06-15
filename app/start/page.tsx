@@ -284,8 +284,8 @@ export default function ConsumerStartPage() {
         <div className="mx-auto grid max-w-[1380px] gap-8 px-6 lg:grid-cols-[1fr_1fr] lg:px-10">
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 text-white shadow-[0_25px_70px_rgba(15,23,42,0.25)]">
             <img
-              src="/windshield-chip-hero.png"
-              alt=""
+              src="/windshield-repair-technician.png"
+              alt="Windshield repair technician repairing a chip outside an independent glass shop"
               className="h-72 w-full object-cover object-center opacity-95"
             />
             <div className="p-6">
