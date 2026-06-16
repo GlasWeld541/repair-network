@@ -53,7 +53,7 @@ const storyCards = [
   {
     title: 'The first call usually has an agenda',
     body:
-      'Most glass funnels push you toward either an insurance claim or an appointment. Neither starts with the question that protects you: can this be repaired?',
+      'The company that makes far more money replacing your windshield should not be the one deciding whether repair is possible.',
     icon: AlertTriangle,
   },
   {
@@ -65,7 +65,7 @@ const storyCards = [
   {
     title: 'Repair and replacement should not be mixed',
     body:
-      'Repairable damage should route to repair-only companies first. If replacement is unavoidable, then it moves to full-service glass providers.',
+      'Repairability should be reviewed before replacement is sold. Repairable damage goes to repair-only companies first.',
     icon: CircleDollarSign,
   },
 ];
@@ -294,6 +294,11 @@ export default function ConsumerStartPage() {
               can this be safely repaired before it becomes a larger insurance or replacement
               event?
             </p>
+            <p className="mt-4 text-base leading-7 text-slate-600">
+              Nobody financially incentivized to replace your windshield should be the only one
+              deciding whether repair is possible. That conflict is exactly why the review starts
+              outside the replacement path.
+            </p>
             <a
               href="#damage-review"
               className="mt-6 inline-flex rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-soft hover:bg-brand-700"
@@ -332,7 +337,8 @@ export default function ConsumerStartPage() {
             <p className="mt-5 text-base leading-7 text-slate-300">
               That is the whole point. A repairable chip should not start inside a
               replacement-driven path. A windshield that truly needs replacement should not be
-              forced through a repair-only shop. The review decides the lane first.
+              forced through a repair-only shop. The review decides the lane first, before anyone
+              with replacement revenue on the line is driving the decision.
             </p>
           </div>
 
