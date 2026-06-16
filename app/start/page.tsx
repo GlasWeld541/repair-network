@@ -178,7 +178,7 @@ export default function ConsumerStartPage() {
   }
 
   return (
-    <div className="-mx-6 -my-8 bg-[#f7fbfc] text-slate-950">
+    <div className="relative left-1/2 -my-8 w-screen -translate-x-1/2 overflow-x-hidden bg-[#f7fbfc] text-slate-950">
       <section className="relative overflow-hidden bg-slate-950 text-white">
         <div className="absolute inset-0">
           <img
@@ -286,7 +286,7 @@ export default function ConsumerStartPage() {
               The pain we solve
             </div>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
-              You need a decision, not a sales funnel.
+              Before you file a claim or schedule replacement, check repair first.
             </h2>
             <p className="mt-5 text-base leading-7 text-slate-600">
               You are usually asked one of two questions: do you want to file a claim, or do you
@@ -348,7 +348,7 @@ export default function ConsumerStartPage() {
 
               return (
                 <div key={card.title} className="rounded-2xl border border-white/10 bg-white/10 p-6 shadow-[0_22px_80px_rgba(0,0,0,0.25)] backdrop-blur">
-                  <div className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="rounded-xl bg-brand-300/15 p-3 text-brand-100">
                       <Icon className="h-6 w-6" />
                     </div>
@@ -474,7 +474,7 @@ function DamageReviewForm({
   submit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <div id="damage-review" className="rounded-2xl border border-white/10 bg-white p-5 text-slate-900 shadow-[0_30px_100px_rgba(0,0,0,0.45)] lg:p-6">
+    <div id="damage-review" className="w-full min-w-0 rounded-2xl border border-white/10 bg-white p-5 text-slate-900 shadow-[0_30px_100px_rgba(0,0,0,0.45)] lg:p-6">
       {submitState === 'success' ? (
         <div className="flex min-h-[560px] flex-col items-center justify-center text-center">
           <div className="rounded-full bg-brand-50 p-4 text-brand-700">
