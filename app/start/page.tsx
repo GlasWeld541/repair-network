@@ -190,13 +190,13 @@ export default function ConsumerStartPage() {
           <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#f7fbfc] to-transparent" />
         </div>
 
-        <div className="relative mx-auto grid min-h-screen max-w-[1380px] gap-10 px-6 py-8 lg:grid-cols-[0.96fr_1.04fr] lg:items-center lg:px-10">
+        <div className="relative mx-auto grid min-h-[100svh] max-w-[1380px] gap-8 px-5 py-7 sm:px-6 lg:grid-cols-[0.96fr_1.04fr] lg:items-center lg:gap-10 lg:px-10">
           <div className="max-w-3xl">
-            <div className="mb-8 inline-flex rounded-2xl bg-white/90 px-5 py-3 shadow-[0_0_42px_rgba(255,255,255,0.7)] ring-1 ring-white/80 backdrop-blur">
+            <div className="mb-7 inline-flex rounded-2xl bg-white/90 px-4 py-3 shadow-[0_0_42px_rgba(255,255,255,0.7)] ring-1 ring-white/80 backdrop-blur sm:mb-8 sm:px-5">
               <img
                 src="/glasweld-logo.png"
                 alt="GlasWeld"
-                className="h-16 w-auto object-contain drop-shadow-[0_2px_8px_rgba(255,255,255,0.85)]"
+                className="h-12 w-auto object-contain drop-shadow-[0_2px_8px_rgba(255,255,255,0.85)] sm:h-16"
               />
             </div>
 
@@ -205,7 +205,7 @@ export default function ConsumerStartPage() {
               Independent windshield damage review
             </div>
 
-            <h1 className="mt-6 text-4xl font-semibold leading-[1.04] lg:text-6xl">
+            <h1 className="mt-6 text-4xl font-semibold leading-[1.05] sm:text-5xl lg:text-6xl">
               Don&apos;t let a repairable chip become a $1,300 replacement.
             </h1>
 
@@ -221,16 +221,16 @@ export default function ConsumerStartPage() {
               the world&apos;s largest full-service auto glass network.
             </p>
 
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-8 grid gap-3 sm:flex sm:flex-wrap">
               <a
                 href="#damage-review"
-                className="rounded-xl bg-brand-300 px-5 py-3 text-sm font-semibold text-slate-950 shadow-soft hover:bg-brand-200"
+                className="rounded-xl bg-brand-300 px-5 py-3 text-center text-sm font-semibold text-slate-950 shadow-soft hover:bg-brand-200"
               >
                 Check My Windshield
               </a>
               <a
                 href="#what-to-know"
-                className="rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15"
+                className="rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-center text-sm font-semibold text-white hover:bg-white/15"
               >
                 Why This Matters
               </a>
@@ -251,9 +251,9 @@ export default function ConsumerStartPage() {
             <a
               href="#what-to-know"
               className="mt-8 inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-100 shadow-[0_18px_60px_rgba(0,0,0,0.22)] backdrop-blur transition hover:bg-white/15"
-              aria-label="Scroll to learn why this matters"
+              aria-label="Scroll to see what to check first"
             >
-              <span>Scroll for the catch</span>
+              <span>See what to check first</span>
               <ChevronDown className="h-4 w-4 animate-bounce text-brand-100" />
             </a>
           </div>
@@ -390,8 +390,8 @@ export default function ConsumerStartPage() {
               <Sparkles className="h-5 w-5" />
               What we look at first
             </div>
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <table className="text-sm">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+              <table className="min-w-[520px] text-sm">
                 <thead className="bg-slate-50 text-left text-slate-600">
                   <tr>
                     <th className="px-4 py-3">Damage type</th>
