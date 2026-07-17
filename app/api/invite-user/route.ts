@@ -13,7 +13,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      db: { schema: 'network' },
+    });
 
     const { email } = await req.json();
     const redirectTo = 'https://repair-network.vercel.app/set-password';
