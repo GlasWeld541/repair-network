@@ -13,6 +13,7 @@ export async function POST(request: Request) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
+        db: { schema: 'network' },
         cookies: {
           get(name) {
             return cookieStore.get(name)?.value;
