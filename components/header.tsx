@@ -119,7 +119,11 @@ export default function Header() {
     return null;
   }
 
-  const baseNavItems = role
+  // `external` items leave this Next app (e.g. the Rex SPA mounted at /rex via a rewrite)
+  // so they render as a plain <a> — a real navigation, not client-side routing.
+  type NavItem = { href: string; label: string; external?: boolean };
+
+  const baseNavItems: NavItem[] = role
     ? [
         { href: '/', label: 'Dashboard' },
         { href: '/accounts', label: 'Accounts' },
@@ -127,7 +131,7 @@ export default function Header() {
       ]
     : [{ href: '/start', label: 'Start' }];
 
-  const navItems =
+  const navItems: NavItem[] =
     role === 'carrier'
       ? [
           { href: '/', label: 'Dashboard' },
@@ -136,7 +140,12 @@ export default function Header() {
       : role === 'shop'
         ? baseNavItems
         : role === 'admin' || role === 'demo'
-          ? [...baseNavItems, { href: '/admin', label: 'Admin' }]
+          ? [
+              ...baseNavItems,
+              { href: '/admin', label: 'Admin' },
+              // Same login, same domain — jump straight to Rex (Pro Coach).
+              { href: '/rex/', label: 'Rex', external: true },
+            ]
           : baseNavItems;
 
   return (
@@ -192,20 +201,23 @@ export default function Header() {
           <nav className="flex items-center rounded-2xl border border-white/10 bg-white/5 p-1 text-sm text-slate-300">
             {navItems.map((item) => {
               const isActive =
-                item.href === '/'
+                !item.external &&
+                (item.href === '/'
                   ? pathname === '/'
-                  : pathname === item.href || pathname.startsWith(`${item.href}/`);
+                  : pathname === item.href || pathname.startsWith(`${item.href}/`));
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`rounded-xl px-4 py-2 ${
-                    isActive
-                      ? 'bg-white text-slate-950'
-                      : 'hover:bg-white/10 hover:text-white'
-                  }`}
-                >
+              const className = `rounded-xl px-4 py-2 ${
+                isActive
+                  ? 'bg-white text-slate-950'
+                  : 'hover:bg-white/10 hover:text-white'
+              }`;
+
+              return item.external ? (
+                <a key={item.href} href={item.href} className={className}>
+                  {item.label}
+                </a>
+              ) : (
+                <Link key={item.href} href={item.href} className={className}>
                   {item.label}
                 </Link>
               );
