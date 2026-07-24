@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import ProviderPicker from '@/components/provider-picker';
 
 type Intake = {
   id: string;
@@ -25,6 +26,8 @@ type Intake = {
   vehicle_make: string | null;
   vehicle_model: string | null;
   vehicle_vin: string | null;
+  latitude: number | null;
+  longitude: number | null;
   damage_location: string | null;
   damage_size: string | null;
   damage_notes: string | null;
@@ -46,6 +49,14 @@ type Account = {
   city: string | null;
   state: string | null;
   postal_code: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  company_phone: string | null;
+  company_email: string | null;
+  glasweld_certified: string | null;
+  uses_onyx: string | null;
+  uses_zoom_injector: string | null;
+  repair_only: string | null;
   repair_platform_fee_bps: number | null;
   replacement_platform_fee_bps: number | null;
   consumer_repair_enabled: boolean | null;
@@ -91,6 +102,12 @@ export default function AdminConsumerIntakePage() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [selection, setSelection] = useState<Record<string, Record<string, string>>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [activeCounts, setActiveCounts] = useState<Record<string, number>>({});
+  const [openPickerId, setOpenPickerId] = useState<string | null>(null);
+  const [origins, setOrigins] = useState<
+    Record<string, { latitude: number; longitude: number } | null>
+  >({});
+  const [geocodingId, setGeocodingId] = useState<string | null>(null);
 
   const isDemo = role === 'demo';
 
@@ -127,7 +144,7 @@ export default function AdminConsumerIntakePage() {
 
     setRole(roleData.role);
 
-    const [{ data: intakeRows }, { data: accountRows }, { data: photoRows }] =
+    const [{ data: intakeRows }, { data: accountRows }, { data: photoRows }, { data: jobRows }] =
       await Promise.all([
         supabase
           .from('consumer_intakes')
@@ -135,17 +152,34 @@ export default function AdminConsumerIntakePage() {
           .order('created_at', { ascending: false }),
         supabase
           .from('accounts')
-          .select('id, account_name, city, state, postal_code, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled')
+          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled')
           .order('account_name'),
         supabase
           .from('consumer_intake_photos')
           .select('*')
           .order('created_at', { ascending: true }),
+        supabase
+          .from('jobs')
+          .select('assigned_account_id, job_status')
+          .not('assigned_account_id', 'is', null),
       ]);
+
+    // Count providers currently busy on a job (anything not finished/canceled) so the
+    // picker can exclude them by default.
+    const counts: Record<string, number> = {};
+    ((jobRows as { assigned_account_id: string | null; job_status: string | null }[]) || []).forEach(
+      (job) => {
+        if (!job.assigned_account_id) return;
+        const status = job.job_status || 'New';
+        if (status === 'Completed' || status === 'Canceled') return;
+        counts[job.assigned_account_id] = (counts[job.assigned_account_id] || 0) + 1;
+      }
+    );
 
     setIntakes((intakeRows as Intake[]) || []);
     setAccounts((accountRows as Account[]) || []);
     setPhotos((photoRows as Photo[]) || []);
+    setActiveCounts(counts);
     setLoading(false);
   }
 
@@ -167,6 +201,48 @@ export default function AdminConsumerIntakePage() {
 
   function photosForIntake(intakeId: string) {
     return photos.filter((photo) => photo.consumer_intake_id === intakeId);
+  }
+
+  // Resolve the customer's coordinates once per intake (cached in state) so the picker can
+  // rank providers by real distance. Uses stored lat/lng when present, else geocodes the
+  // city/state/ZIP via the server route. Fails soft to null → picker falls back to ranking.
+  async function ensureOrigin(intake: Intake) {
+    if (intake.id in origins) return;
+
+    if (intake.latitude != null && intake.longitude != null) {
+      setOrigins((o) => ({
+        ...o,
+        [intake.id]: { latitude: intake.latitude!, longitude: intake.longitude! },
+      }));
+      return;
+    }
+
+    const query = [intake.city, intake.state, intake.postal_code].filter(Boolean).join(', ');
+    if (!query) {
+      setOrigins((o) => ({ ...o, [intake.id]: null }));
+      return;
+    }
+
+    setGeocodingId(intake.id);
+    try {
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      const coords =
+        data?.latitude != null && data?.longitude != null
+          ? { latitude: Number(data.latitude), longitude: Number(data.longitude) }
+          : null;
+      setOrigins((o) => ({ ...o, [intake.id]: coords }));
+    } catch {
+      setOrigins((o) => ({ ...o, [intake.id]: null }));
+    } finally {
+      setGeocodingId((cur) => (cur === intake.id ? null : cur));
+    }
+  }
+
+  function togglePicker(intake: Intake) {
+    const next = openPickerId === intake.id ? null : intake.id;
+    setOpenPickerId(next);
+    if (next) void ensureOrigin(intake);
   }
 
   function accountOptions(triageResult: string) {
@@ -444,6 +520,8 @@ export default function AdminConsumerIntakePage() {
             const options = rankedAccountOptions(intake, triageResult);
             const recommendedAccount = suggestedAccount(intake, triageResult);
             const selectedPartnerId = getSelected(intake, 'assigned_account_id');
+            const selectedPartner =
+              accounts.find((account) => account.id === selectedPartnerId) || null;
 
             return (
               <div key={intake.id} className="grid gap-5 p-5 xl:grid-cols-[1.1fr_1.4fr]">
@@ -520,36 +598,52 @@ export default function AdminConsumerIntakePage() {
                       </select>
                     </label>
 
-                    <label className="grid gap-1 md:col-span-2">
+                    <div className="grid gap-1 md:col-span-2">
                       <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                         {triageResult === 'replacement' ? 'Replacement Partner' : triageResult === 'repair' ? 'Repair Partner' : 'Assigned Partner'}
                       </span>
-                      <select
-                        value={selectedPartnerId}
-                        disabled={isDemo}
-                        onChange={(e) => updateSelection(intake.id, 'assigned_account_id', e.target.value)}
-                      >
-                        <option value="">
-                          {triageResult === 'replacement'
-                            ? 'Select replacement partner'
-                            : triageResult === 'repair'
-                              ? 'Select repair partner'
-                              : 'Select partner'}
-                        </option>
-                        {options.map((account) => (
-                          <option key={account.id} value={account.id}>
-                            {account.account_name || 'Unnamed Account'}
-                            {recommendedAccount?.id === account.id ? ' (Suggested)' : ''}
-                          </option>
-                        ))}
-                      </select>
-                      {!selectedPartnerId && recommendedAccount ? (
-                        <span className="text-xs leading-5 text-slate-500">
-                          Suggested: {recommendedAccount.account_name || 'Unnamed Account'}.
-                          Create Job will use this partner unless you choose another.
-                        </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                          {selectedPartner ? (
+                            <span className="font-medium text-slate-900">
+                              {selectedPartner.account_name || 'Unnamed provider'}
+                              <span className="font-normal text-slate-500">
+                                {[selectedPartner.city, selectedPartner.state].filter(Boolean).length
+                                  ? ` — ${[selectedPartner.city, selectedPartner.state].filter(Boolean).join(', ')}`
+                                  : ''}
+                              </span>
+                            </span>
+                          ) : recommendedAccount ? (
+                            <span className="text-slate-500">
+                              Suggested: {recommendedAccount.account_name || 'Unnamed provider'} — Create Job uses this unless you choose another.
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">No provider selected.</span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={isDemo}
+                          onClick={() => togglePicker(intake)}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {openPickerId === intake.id ? 'Close' : 'Choose provider'}
+                        </button>
+                      </div>
+
+                      {openPickerId === intake.id ? (
+                        <div className="mt-1">
+                          <ProviderPicker
+                            accounts={options}
+                            activeCounts={activeCounts}
+                            origin={origins[intake.id] ?? null}
+                            geocoding={geocodingId === intake.id}
+                            selectedId={selectedPartnerId}
+                            onSelect={(id) => updateSelection(intake.id, 'assigned_account_id', id)}
+                          />
+                        </div>
                       ) : null}
-                    </label>
+                    </div>
                   </div>
 
                   <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600 md:grid-cols-3">
