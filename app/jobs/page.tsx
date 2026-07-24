@@ -51,7 +51,23 @@ type JobWithInvoice = Job & {
 };
 
 type Role = 'admin' | 'shop' | 'carrier' | 'demo' | null;
-type ViewMode = 'open' | 'current' | 'submitted' | 'over30' | 'over60' | 'paid' | 'custom';
+type ViewMode =
+  | 'open'
+  | 'current'
+  | 'submitted'
+  | 'over30'
+  | 'over60'
+  | 'paid'
+  | 'ongoing'
+  | 'completed'
+  | 'custom';
+
+// Work-status buckets (job_status), distinct from the receivables views above.
+const ONGOING_STATUSES = ['New', 'In Progress', 'Submitted'];
+
+function jobStatusOf(j: { job_status: string | null }) {
+  return j.job_status || 'New';
+}
 
 function money(v: number | null | undefined) {
   return Number(v || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -260,6 +276,11 @@ export default function JobsPage() {
     return jobs.filter((j) => {
       const balance = outstandingAmount(j);
       const days = daysOutstanding(j);
+      const status = jobStatusOf(j);
+
+      // Work-status views: ongoing = assigned/active (not finished or canceled).
+      if (viewMode === 'ongoing') return ONGOING_STATUSES.includes(status);
+      if (viewMode === 'completed') return status === 'Completed';
 
       if (viewMode === 'open') return balance > 0;
       if (viewMode === 'submitted') return j.invoice?.submission_status === 'Submitted' && balance > 0;
@@ -429,6 +450,8 @@ export default function JobsPage() {
 
           {/* BUTTON GROUP */}
           <div className="flex flex-wrap gap-2">
+            <Filter active={viewMode === 'ongoing'} onClick={() => setViewMode('ongoing')}>Ongoing</Filter>
+            <Filter active={viewMode === 'completed'} onClick={() => setViewMode('completed')}>Completed</Filter>
             <Filter active={viewMode === 'open'} onClick={() => setViewMode('open')}>Open</Filter>
             <Filter active={viewMode === 'current'} onClick={() => setViewMode('current')}>Month</Filter>
             <Filter active={viewMode === 'submitted'} onClick={() => setViewMode('submitted')}>Submitted</Filter>
@@ -489,6 +512,7 @@ export default function JobsPage() {
             <tr>
               <th className="px-4 py-3">Date</th>
               <th className="px-4 py-3">Customer</th>
+              <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Origin</th>
               <th className="px-4 py-3">Service</th>
               <th className="px-4 py-3">Carrier</th>
@@ -509,6 +533,7 @@ export default function JobsPage() {
               >
                 <td className="px-4 py-3">{jobDate(j)}</td>
                 <td className="px-4 py-3">{j.customer_name}</td>
+                <td className="px-4 py-3"><StatusBadge status={j.job_status} /></td>
                 <td className="px-4 py-3">
                   <div>{j.intake_origin || 'admin'}</div>
                   <div className="text-xs text-slate-500">{j.marketing_source || '-'}</div>
@@ -530,6 +555,26 @@ export default function JobsPage() {
       </div>
 
     </div>
+  );
+}
+
+const STATUS_STYLES: Record<string, string> = {
+  New: 'bg-slate-100 text-slate-700 ring-slate-200',
+  'In Progress': 'bg-blue-50 text-blue-700 ring-blue-200',
+  Submitted: 'bg-amber-50 text-amber-700 ring-amber-200',
+  Completed: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  Canceled: 'bg-rose-50 text-rose-700 ring-rose-200',
+};
+
+function StatusBadge({ status }: { status: string | null }) {
+  const s = status || 'New';
+  const cls = STATUS_STYLES[s] || STATUS_STYLES.New;
+  return (
+    <span
+      className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${cls}`}
+    >
+      {s}
+    </span>
   );
 }
 

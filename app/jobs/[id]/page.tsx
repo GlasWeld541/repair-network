@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { ArrowLeft, Check, Pencil } from 'lucide-react';
 import heic2any from 'heic2any';
 import { supabase } from '@/lib/supabase';
+import BeforeAfterSlider from '@/components/before-after-slider';
 
 const JOB_STATUSES = ['New', 'In Progress', 'Submitted', 'Completed', 'Canceled'];
 const DAMAGE_TYPES = ['Combo Break', 'Bullseye', 'Star Break', 'Crack', 'Pit', 'Other'];
@@ -54,6 +55,7 @@ export default function JobDetailPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
+  const [scoring, setScoring] = useState(false);
   const [chargeAmount, setChargeAmount] = useState<number>(0);
   const [savedMessage, setSavedMessage] = useState('');
 
@@ -339,10 +341,59 @@ export default function JobDetailPage() {
       await loadPage();
       setWorking(false);
       flashSaved('Photo uploaded');
+
+      // When the after photo lands and a before already exists, auto-score with Rex
+      // (silent: a missing config / before is not surfaced on upload).
+      if (type === 'after') {
+        const { data: befores } = await supabase
+          .from('job_photos')
+          .select('id')
+          .eq('job_id', id)
+          .eq('type', 'before')
+          .limit(1);
+        if (befores && befores.length) void scoreRepair(true);
+      }
     } catch (err: any) {
       window.alert(`Upload error: ${err?.message || String(err)}`);
       setWorking(false);
     }
+  }
+
+  async function scoreRepair(silent = false) {
+    if (isReadOnly) return;
+
+    try {
+      setScoring(true);
+      const res = await fetch(`/api/jobs/${id}/score-repair`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (!silent) window.alert(data?.error || 'Could not score this repair.');
+        return;
+      }
+      await loadPage();
+      if (!silent) flashSaved('Rex scored the repair');
+    } catch (err: any) {
+      if (!silent) window.alert(`Scoring error: ${err?.message || String(err)}`);
+    } finally {
+      setScoring(false);
+    }
+  }
+
+  async function reviewScore(action: 'approve' | 'reject') {
+    if (isReadOnly) return;
+
+    const { error } = await supabase
+      .from('jobs')
+      .update({ repair_score_status: action === 'approve' ? 'approved' : 'rejected' })
+      .eq('id', id);
+
+    if (error) {
+      window.alert(`Could not update the review: ${error.message}`);
+      return;
+    }
+
+    await loadPage();
+    flashSaved(action === 'approve' ? 'Score approved' : 'Score rejected');
   }
 
   async function generateInvoice() {
@@ -963,11 +1014,141 @@ export default function JobDetailPage() {
           />
         </div>
 
+        {beforePhotos.length && afterPhotos.length ? (
+          <div className="mt-6">
+            <div className="mb-2 text-sm font-semibold text-slate-900">
+              Before / after comparison
+            </div>
+            <div className="max-w-xl">
+              <BeforeAfterSlider
+                beforeUrl={beforePhotos[beforePhotos.length - 1].url}
+                afterUrl={afterPhotos[afterPhotos.length - 1].url}
+              />
+            </div>
+          </div>
+        ) : null}
+
         {working ? (
           <div className="mt-4 text-sm text-slate-500">Working...</div>
         ) : null}
       </Section>
+
+      <Section title="Rex repair score">
+        {job.repair_score != null ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="text-3xl font-semibold text-slate-900">
+                {job.repair_score}
+                <span className="text-lg font-normal text-slate-400"> / 10</span>
+              </div>
+              <span className="text-xs text-slate-500">pass line 6</span>
+              <ScoreStatusBadge status={job.repair_score_status} />
+            </div>
+
+            {job.repair_score_why ? (
+              <p className="text-sm text-slate-600">{job.repair_score_why}</p>
+            ) : null}
+
+            {Array.isArray(job.repair_score_detail?.issues) &&
+            job.repair_score_detail.issues.length ? (
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Issues
+                </div>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-slate-600">
+                  {job.repair_score_detail.issues.map((item: string, i: number) => (
+                    <li key={i}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {Array.isArray(job.repair_score_detail?.strengths) &&
+            job.repair_score_detail.strengths.length ? (
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Strengths
+                </div>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-slate-600">
+                  {job.repair_score_detail.strengths.map((item: string, i: number) => (
+                    <li key={i}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {!isReadOnly ? (
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => void scoreRepair()}
+                  disabled={scoring}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {scoring ? 'Scoring…' : 'Re-run'}
+                </button>
+                {role === 'admin' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void reviewScore('approve')}
+                      disabled={job.repair_score_status === 'approved'}
+                      className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void reviewScore('reject')}
+                      disabled={job.repair_score_status === 'rejected'}
+                      className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                    >
+                      Reject
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-500">
+              {beforePhotos.length && afterPhotos.length
+                ? 'Not scored yet. Run Rex to grade this repair from the before/after photos.'
+                : 'Upload a before and an after photo to score this repair with Rex.'}
+            </p>
+            {!isReadOnly ? (
+              <button
+                type="button"
+                onClick={() => void scoreRepair()}
+                disabled={scoring || !(beforePhotos.length && afterPhotos.length)}
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                {scoring ? 'Scoring…' : 'Run Rex score'}
+              </button>
+            ) : null}
+          </div>
+        )}
+      </Section>
     </div>
+  );
+}
+
+function ScoreStatusBadge({ status }: { status: string | null | undefined }) {
+  const s = status || 'pending';
+  const styles: Record<string, string> = {
+    pending: 'bg-amber-50 text-amber-700 ring-amber-200',
+    approved: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+    rejected: 'bg-rose-50 text-rose-700 ring-rose-200',
+  };
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ring-1 ring-inset ${
+        styles[s] || styles.pending
+      }`}
+    >
+      {s}
+    </span>
   );
 }
 
