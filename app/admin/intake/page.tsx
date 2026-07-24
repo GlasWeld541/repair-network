@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import ProviderPicker from '@/components/provider-picker';
+import ProviderPickerModal from '@/components/provider-picker';
 
 type Intake = {
   id: string;
@@ -472,6 +472,11 @@ export default function AdminConsumerIntakePage() {
     [intakes]
   );
 
+  const openIntake = openPickerId ? intakes.find((i) => i.id === openPickerId) || null : null;
+  const openTriage = openIntake
+    ? getSelected(openIntake, 'triage_result') || 'needs_review'
+    : 'needs_review';
+
   if (loading) {
     return <div className="p-6 text-sm text-slate-500">Loading consumer intake...</div>;
   }
@@ -627,22 +632,9 @@ export default function AdminConsumerIntakePage() {
                           onClick={() => togglePicker(intake)}
                           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {openPickerId === intake.id ? 'Close' : 'Choose provider'}
+                          {selectedPartner ? 'Change provider' : 'Choose provider'}
                         </button>
                       </div>
-
-                      {openPickerId === intake.id ? (
-                        <div className="mt-1">
-                          <ProviderPicker
-                            accounts={options}
-                            activeCounts={activeCounts}
-                            origin={origins[intake.id] ?? null}
-                            geocoding={geocodingId === intake.id}
-                            selectedId={selectedPartnerId}
-                            onSelect={(id) => updateSelection(intake.id, 'assigned_account_id', id)}
-                          />
-                        </div>
-                      ) : null}
                     </div>
                   </div>
 
@@ -703,6 +695,22 @@ export default function AdminConsumerIntakePage() {
           ) : null}
         </div>
       </section>
+
+      {openIntake ? (
+        <ProviderPickerModal
+          open
+          onClose={() => setOpenPickerId(null)}
+          customerLocation={
+            [openIntake.city, openIntake.state, openIntake.postal_code].filter(Boolean).join(', ') || undefined
+          }
+          accounts={rankedAccountOptions(openIntake, openTriage)}
+          activeCounts={activeCounts}
+          origin={origins[openIntake.id] ?? null}
+          geocoding={geocodingId === openIntake.id}
+          selectedId={getSelected(openIntake, 'assigned_account_id')}
+          onSelect={(id) => updateSelection(openIntake.id, 'assigned_account_id', id)}
+        />
+      ) : null}
     </div>
   );
 }
