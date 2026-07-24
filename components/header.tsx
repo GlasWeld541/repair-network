@@ -45,7 +45,10 @@ export default function Header() {
       const { data: userData } = await supabase.auth.getUser();
       const email = userData.user?.email?.toLowerCase();
 
-      if (!email) return;
+      if (!email) {
+        setRole(null);
+        return;
+      }
 
       const { data } = await supabase
         .from('user_roles')
@@ -68,6 +71,11 @@ export default function Header() {
     }
 
     void loadRole();
+    // Re-run on login/logout so the nav reflects auth state without a manual refresh.
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      void loadRole();
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
