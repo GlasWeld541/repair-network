@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useToast } from '@/components/ui/notifications';
 
 export default function RequestAccessPage() {
+  const toast = useToast();
   const [saving, setSaving] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
@@ -20,7 +22,7 @@ export default function RequestAccessPage() {
 
   async function submitRequest() {
     if (!form.email.trim()) {
-      window.alert('Email is required.');
+      toast.error('Email is required.');
       return;
     }
 
@@ -35,7 +37,7 @@ export default function RequestAccessPage() {
     setSaving(false);
 
     if (error) {
-      window.alert(`Could not submit request: ${error.message}`);
+      toast.error(`Could not submit request: ${error.message}`);
       return;
     }
 

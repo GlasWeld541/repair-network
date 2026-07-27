@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { Menu, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 type StateOption = {
@@ -39,6 +40,12 @@ export default function Header() {
   ]);
 
   const [role, setRole] = useState<UserRole>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Close the mobile menu whenever the route changes.
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     async function loadRole() {
@@ -156,98 +163,165 @@ export default function Header() {
             ]
           : baseNavItems;
 
+  const renderNavLinks = (linkClass: (active: boolean) => string) =>
+    navItems.map((item) => {
+      const isActive =
+        !item.external &&
+        (item.href === '/'
+          ? pathname === '/'
+          : pathname === item.href || pathname.startsWith(`${item.href}/`));
+
+      return item.external ? (
+        <a
+          key={item.href}
+          href={item.href}
+          className={linkClass(isActive)}
+          onClick={() => setMenuOpen(false)}
+        >
+          {item.label}
+        </a>
+      ) : (
+        <Link
+          key={item.href}
+          href={item.href}
+          className={linkClass(isActive)}
+          onClick={() => setMenuOpen(false)}
+        >
+          {item.label}
+        </Link>
+      );
+    });
+
+  const searchForm = (className: string) => (
+    <form onSubmit={handleSubmit} className={className}>
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search business or contact"
+        className="h-11 rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white placeholder:text-slate-400 xl:w-[290px]"
+      />
+
+      <select
+        value={state}
+        onChange={(e) => setState(e.target.value)}
+        className="h-11 rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white xl:w-[175px]"
+      >
+        {stateOptions.map((option) => (
+          <option key={option.value || 'all'} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+
+      <button className="h-11 rounded-xl bg-brand-300 px-5 text-sm font-semibold text-slate-950">
+        Search
+      </button>
+    </form>
+  );
+
   return (
     <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.28)]">
-      <div className="mx-auto flex max-w-[1380px] items-center justify-between px-10 py-4">
-        <Link href="/" className="group flex items-center gap-5">
-          <div className="relative h-24 w-24 flex-shrink-0">
-            <Image
-              src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
-              alt="GlasWeld"
-              fill
-              className="object-contain object-left transition-transform duration-200 group-hover:scale-105"
-              priority
-            />
+      <div className="mx-auto max-w-[1380px] px-4 py-3 sm:px-6 lg:px-10 lg:py-4">
+        <div className="flex items-center justify-between gap-3">
+          <Link
+            href="/"
+            className="group flex min-w-0 items-center gap-3 sm:gap-5"
+            onClick={() => setMenuOpen(false)}
+          >
+            <div className="relative h-12 w-12 flex-shrink-0 sm:h-16 sm:w-16 lg:h-24 lg:w-24">
+              <Image
+                src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
+                alt="GlasWeld"
+                fill
+                className="object-contain object-left transition-transform duration-200 group-hover:scale-105"
+                priority
+              />
+            </div>
+
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-white sm:text-[17px]">
+                GlasWeld Repair Network™
+              </div>
+              <div className="mt-1 hidden text-[10px] uppercase tracking-[0.32em] text-brand-200/80 sm:block">
+                Claims Control Platform
+              </div>
+            </div>
+          </Link>
+
+          {/* Desktop cluster */}
+          <div className="hidden items-center gap-5 lg:flex">
+            {searchForm('hidden items-center gap-3 xl:flex')}
+
+            <nav className="flex items-center rounded-2xl border border-white/10 bg-white/5 p-1 text-sm text-slate-300">
+              {renderNavLinks(
+                (active) =>
+                  `rounded-xl px-4 py-2 ${
+                    active ? 'bg-white text-slate-950' : 'hover:bg-white/10 hover:text-white'
+                  }`,
+              )}
+            </nav>
+
+            {role ? (
+              <button
+                onClick={handleLogout}
+                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200"
+              >
+                Logout
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200 hover:bg-white/10 hover:text-white"
+              >
+                Login
+              </Link>
+            )}
           </div>
 
-          <div>
-            <div className="text-[17px] font-semibold text-white">
-              GlasWeld Repair Network™
-            </div>
-            <div className="mt-1 text-[10px] uppercase tracking-[0.32em] text-brand-200/80">
-              Claims Control Platform
-            </div>
-          </div>
-        </Link>
-
-        <div className="flex items-center gap-5">
-          <form onSubmit={handleSubmit} className="hidden xl:flex items-center gap-3">
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search business or contact"
-              className="h-11 w-[290px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white"
-            />
-
-            <select
-              value={state}
-              onChange={(e) => setState(e.target.value)}
-              className="h-11 w-[175px] rounded-xl border border-white/10 bg-white/10 px-4 text-sm text-white"
-            >
-              {stateOptions.map((option) => (
-                <option key={option.value || 'all'} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-
-            <button className="h-11 rounded-xl bg-brand-300 px-5 text-sm font-semibold text-slate-950">
-              Search
-            </button>
-          </form>
-
-          <nav className="flex items-center rounded-2xl border border-white/10 bg-white/5 p-1 text-sm text-slate-300">
-            {navItems.map((item) => {
-              const isActive =
-                !item.external &&
-                (item.href === '/'
-                  ? pathname === '/'
-                  : pathname === item.href || pathname.startsWith(`${item.href}/`));
-
-              const className = `rounded-xl px-4 py-2 ${
-                isActive
-                  ? 'bg-white text-slate-950'
-                  : 'hover:bg-white/10 hover:text-white'
-              }`;
-
-              return item.external ? (
-                <a key={item.href} href={item.href} className={className}>
-                  {item.label}
-                </a>
-              ) : (
-                <Link key={item.href} href={item.href} className={className}>
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {role ? (
-            <button
-              onClick={handleLogout}
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200"
-            >
-              Logout
-            </button>
-          ) : (
-            <Link
-              href="/login"
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200 hover:bg-white/10 hover:text-white"
-            >
-              Login
-            </Link>
-          )}
+          {/* Mobile menu toggle */}
+          <button
+            type="button"
+            onClick={() => setMenuOpen((open) => !open)}
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={menuOpen}
+            className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 lg:hidden"
+          >
+            {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
+
+        {/* Mobile menu panel */}
+        {menuOpen ? (
+          <div className="mt-4 space-y-4 lg:hidden">
+            <nav className="grid gap-1 text-sm">
+              {renderNavLinks(
+                (active) =>
+                  `rounded-xl px-4 py-3 font-medium ${
+                    active ? 'bg-white text-slate-950' : 'text-slate-200 hover:bg-white/10'
+                  }`,
+              )}
+            </nav>
+
+            {searchForm('grid gap-2')}
+
+            {role ? (
+              <button
+                onClick={handleLogout}
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-slate-200 hover:bg-white/10"
+              >
+                Logout
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                onClick={() => setMenuOpen(false)}
+                className="block rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-center text-sm font-medium text-slate-200 hover:bg-white/10"
+              >
+                Login
+              </Link>
+            )}
+          </div>
+        ) : null}
       </div>
     </header>
   );

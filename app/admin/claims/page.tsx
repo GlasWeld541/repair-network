@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useToast } from '@/components/ui/notifications';
 
 type ClaimIntake = {
   id: string;
@@ -82,6 +83,7 @@ function statusClass(status: string) {
 }
 
 export default function AdminClaimsPage() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [currentRole, setCurrentRole] = useState<string | null>(null);
   const [claims, setClaims] = useState<ClaimIntake[]>([]);
@@ -203,7 +205,7 @@ export default function AdminClaimsPage() {
     const account = accounts.find((row) => row.id === accountId);
 
     if (!account) {
-      window.alert('Select a repair account first.');
+      toast.error('Select a repair account first.');
       return;
     }
 
@@ -243,7 +245,7 @@ export default function AdminClaimsPage() {
 
       if (jobError || !job?.id) {
         setBusyId(null);
-        window.alert(`Could not create job: ${jobError?.message || 'Unknown error'}`);
+        toast.error(`Could not create job: ${jobError?.message || 'Unknown error'}`);
         return;
       }
 
@@ -302,7 +304,7 @@ export default function AdminClaimsPage() {
     setBusyId(null);
 
     if (error) {
-      window.alert(`Could not update claim: ${error.message}`);
+      toast.error(`Could not update claim: ${error.message}`);
       return;
     }
 
@@ -321,7 +323,7 @@ export default function AdminClaimsPage() {
       .eq('id', claim.id);
 
     if (error) {
-      window.alert(`Could not update status: ${error.message}`);
+      toast.error(`Could not update status: ${error.message}`);
       return;
     }
 
@@ -353,7 +355,7 @@ export default function AdminClaimsPage() {
   if (loading) return <div className="p-6 text-sm text-slate-500">Loading claims...</div>;
 
   return (
-    <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
+    <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold text-slate-900">Claims Intake</h1>

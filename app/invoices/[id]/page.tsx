@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Download, ExternalLink, Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useToast } from '@/components/ui/notifications';
 
 function money(value: number | null | undefined) {
   return Number(value || 0).toLocaleString('en-US', {
@@ -22,6 +23,7 @@ function statusColor(balance: number) {
 }
 
 export default function InvoicePage() {
+  const toast = useToast();
   const params = useParams();
   const id = params.id as string;
 
@@ -90,7 +92,7 @@ export default function InvoicePage() {
     const response = await fetch(`/api/invoices/${id}/pdf`);
 
     if (!response.ok) {
-      window.alert('Could not generate PDF.');
+      toast.error('Could not generate PDF.');
       setDownloading(false);
       return;
     }

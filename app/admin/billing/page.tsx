@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useToast } from '@/components/ui/notifications';
 
 type BillingEvent = {
   id: string;
@@ -84,6 +85,7 @@ function gatewayLabel(value: string | null | undefined) {
 }
 
 export default function AdminBillingPage() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
   const [events, setEvents] = useState<BillingEvent[]>([]);
@@ -236,7 +238,7 @@ export default function AdminBillingPage() {
     setBusyId(null);
 
     if (error) {
-      window.alert(`Could not update billing event: ${error.message}`);
+      toast.error(`Could not update billing event: ${error.message}`);
       return;
     }
 
@@ -248,7 +250,7 @@ export default function AdminBillingPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
+    <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">
       <div className="flex items-start justify-between">
         <div>
           <Link href="/admin" className="text-sm text-brand-700">

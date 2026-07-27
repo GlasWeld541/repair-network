@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useToast } from '@/components/ui/notifications';
 
 type AccessRequest = {
   id: string;
@@ -61,6 +62,7 @@ function statusBadge(status: string) {
 }
 
 export default function AdminUsersPage() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<AccessRequest[]>([]);
   const [users, setUsers] = useState<UserRole[]>([]);
@@ -149,7 +151,7 @@ export default function AdminUsersPage() {
   function blockDemoAction() {
     if (!isDemo) return false;
 
-    window.alert('Demo access is view-only. Changes are disabled.');
+    toast.error('Demo access is view-only. Changes are disabled.');
     return true;
   }
 
@@ -211,7 +213,7 @@ export default function AdminUsersPage() {
       .single();
 
     if (error || !created?.id) {
-      window.alert(`Could not create carrier/TPA: ${error?.message || 'Unknown error'}`);
+      toast.error(`Could not create carrier/TPA: ${error?.message || 'Unknown error'}`);
       return null;
     }
 
@@ -229,22 +231,22 @@ export default function AdminUsersPage() {
     const email = args.email.trim().toLowerCase();
 
     if (!email) {
-      window.alert('Email is required.');
+      toast.error('Email is required.');
       return false;
     }
 
     if (args.role === 'shop' && !args.account_id) {
-      window.alert('Shop users must be assigned to an account.');
+      toast.error('Shop users must be assigned to an account.');
       return false;
     }
 
     if (args.role === 'carrier' && !args.carrier_id) {
-      window.alert('Carrier / TPA users must be assigned to a carrier.');
+      toast.error('Carrier / TPA users must be assigned to a carrier.');
       return false;
     }
 
     if (email === currentEmail && args.role !== 'admin') {
-      window.alert('You cannot remove your own admin role from this screen.');
+      toast.error('You cannot remove your own admin role from this screen.');
       return false;
     }
 
@@ -261,7 +263,7 @@ export default function AdminUsersPage() {
     );
 
     if (error) {
-      window.alert(`Could not save user: ${error.message}`);
+      toast.error(`Could not save user: ${error.message}`);
       return false;
     }
 
@@ -328,12 +330,29 @@ export default function AdminUsersPage() {
 
   async function copyText(value: string) {
     if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(value);
-      return true;
+      try {
+        await navigator.clipboard.writeText(value);
+        return true;
+      } catch {
+        // fall through to the legacy path below
+      }
     }
 
-    window.prompt('Copy this setup link:', value);
-    return false;
+    // Legacy fallback for insecure contexts / older browsers.
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = value;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return ok;
+    } catch {
+      return false;
+    }
   }
 
   async function createAdminAndSendInvite() {
@@ -342,7 +361,7 @@ export default function AdminUsersPage() {
     const email = newAdminEmail.trim().toLowerCase();
 
     if (!email) {
-      window.alert('Enter the admin email address.');
+      toast.error('Enter the admin email address.');
       return;
     }
 
@@ -365,7 +384,7 @@ export default function AdminUsersPage() {
     setBusyId(null);
 
     if (!invite.ok) {
-      window.alert(
+      toast.error(
         `Admin access was created, but the invite email could not be sent. ${inviteErrorMessage(
           invite.error
         )}`
@@ -375,7 +394,7 @@ export default function AdminUsersPage() {
       return;
     }
 
-    window.alert(`Admin access created. ${inviteSuccessMessage(invite.mode)}`);
+    toast.success(`Admin access created. ${inviteSuccessMessage(invite.mode)}`);
     setNewAdminEmail('');
     await load();
   }
@@ -409,13 +428,13 @@ export default function AdminUsersPage() {
       const invite = await sendInvite(request.email);
 
       if (!invite.ok) {
-        window.alert(
+        toast.error(
           `Access was approved, but the invite email could not be sent. ${inviteErrorMessage(
             invite.error
           )}`
         );
       } else {
-        window.alert(`Access approved. ${inviteSuccessMessage(invite.mode)}`);
+        toast.success(`Access approved. ${inviteSuccessMessage(invite.mode)}`);
       }
 
       await load();
@@ -453,13 +472,13 @@ export default function AdminUsersPage() {
       const invite = await sendInvite(request.email);
 
       if (!invite.ok) {
-        window.alert(
+        toast.error(
           `User access was repaired, but the invite email could not be sent. ${inviteErrorMessage(
             invite.error
           )}`
         );
       } else {
-        window.alert(`User access repaired. ${inviteSuccessMessage(invite.mode)}`);
+        toast.success(`User access repaired. ${inviteSuccessMessage(invite.mode)}`);
       }
 
       await load();
@@ -539,9 +558,9 @@ export default function AdminUsersPage() {
     const invite = await sendInvite(user.user_email);
 
     if (!invite.ok) {
-      window.alert(inviteErrorMessage(invite.error));
+      toast.error(inviteErrorMessage(invite.error));
     } else {
-      window.alert(inviteSuccessMessage(invite.mode));
+      toast.success(inviteSuccessMessage(invite.mode));
     }
 
     setBusyId(null);
@@ -563,14 +582,16 @@ export default function AdminUsersPage() {
     setBusyId(null);
 
     if (!response.ok || !result.setupLink) {
-      window.alert(result.error || 'Could not generate setup link.');
+      toast.error(result.error || 'Could not generate setup link.');
       return;
     }
 
     const copied = await copyText(result.setupLink);
 
     if (copied) {
-      window.alert('Setup link copied. Send it directly to the user.');
+      toast.success('Setup link copied. Send it directly to the user.');
+    } else {
+      toast.error(`Could not copy automatically. Setup link: ${result.setupLink}`);
     }
   }
 
@@ -578,7 +599,7 @@ export default function AdminUsersPage() {
     if (blockDemoAction()) return;
 
     if (user.user_email.toLowerCase() === currentEmail && status !== 'Active') {
-      window.alert('You cannot suspend or revoke your own admin access.');
+      toast.error('You cannot suspend or revoke your own admin access.');
       return;
     }
 
@@ -631,7 +652,7 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
+    <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-semibold text-ink">User Access</h1>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useToast } from '@/components/ui/notifications';
 
 type ClaimIntake = {
   id: string;
@@ -77,6 +78,7 @@ function statusClass(status: string) {
 }
 
 export default function CarrierClaimsPage() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [claims, setClaims] = useState<ClaimIntake[]>([]);
@@ -155,7 +157,7 @@ export default function CarrierClaimsPage() {
 
   async function submitClaim() {
     if (!form.customer_name.trim()) {
-      window.alert('Customer name is required.');
+      toast.error('Customer name is required.');
       return;
     }
 
@@ -172,7 +174,7 @@ export default function CarrierClaimsPage() {
     setSubmitting(false);
 
     if (!response.ok) {
-      window.alert(result.error || 'Claim could not be submitted.');
+      toast.error(result.error || 'Claim could not be submitted.');
       return;
     }
 
@@ -197,7 +199,7 @@ export default function CarrierClaimsPage() {
   if (loading) return <div className="p-6 text-sm text-slate-500">Loading claims...</div>;
 
   return (
-    <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
+    <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">
       <div>
         <h1 className="text-3xl font-semibold text-slate-900">Claims</h1>
         <p className="mt-1 text-sm text-slate-500">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useToast, useConfirm } from '@/components/ui/notifications';
 
 type Carrier = {
   id: string;
@@ -25,6 +26,8 @@ type RoutingRule = {
 };
 
 export default function AdminRoutingPage() {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [currentRole, setCurrentRole] = useState<string | null>(null);
   const [carriers, setCarriers] = useState<Carrier[]>([]);
@@ -108,7 +111,7 @@ export default function AdminRoutingPage() {
     if (isDemo) return;
 
     if (!newRule.carrier_id || !newRule.account_id) {
-      window.alert('Select a carrier and account.');
+      toast.error('Select a carrier and account.');
       return;
     }
 
@@ -123,7 +126,7 @@ export default function AdminRoutingPage() {
     });
 
     if (error) {
-      window.alert(`Could not add rule: ${error.message}`);
+      toast.error(`Could not add rule: ${error.message}`);
       return;
     }
 
@@ -152,7 +155,12 @@ export default function AdminRoutingPage() {
   async function deleteRule(ruleId: string) {
     if (isDemo) return;
 
-    const confirmed = window.confirm('Delete this routing rule?');
+    const confirmed = await confirm({
+      title: 'Delete this routing rule?',
+      message: 'This removes the fallback override. Claims will fall back to nearest-shop routing.',
+      confirmLabel: 'Delete rule',
+      destructive: true,
+    });
     if (!confirmed) return;
 
     await supabase.from('carrier_claim_routing_rules').delete().eq('id', ruleId);
@@ -162,7 +170,7 @@ export default function AdminRoutingPage() {
   if (loading) return <div className="p-6 text-sm text-slate-500">Loading routing...</div>;
 
   return (
-    <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
+    <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">
       <div>
         <h1 className="text-3xl font-semibold text-slate-900">Routing Settings</h1>
         <p className="mt-1 text-sm text-slate-500">
