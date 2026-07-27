@@ -86,7 +86,7 @@ export default function HomePage() {
 
   return (
     <div className="space-y-10">
-      <section className="overflow-hidden rounded-[30px] bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 px-10 py-12 text-white shadow-[0_25px_60px_rgba(15,23,42,0.45)] lg:px-14 lg:py-14">
+      <section className="overflow-hidden rounded-[30px] bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white shadow-[0_25px_60px_rgba(15,23,42,0.45)] sm:px-10 sm:py-12 lg:px-14 lg:py-14">
         <div className="grid gap-10 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
           <div>
             <div className="text-sm font-semibold uppercase tracking-[0.32em] text-teal-300">

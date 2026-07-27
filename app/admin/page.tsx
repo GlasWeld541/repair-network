@@ -101,7 +101,7 @@ export default function AdminDashboardPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-[1380px] space-y-8 px-6 py-6">
+    <div className="mx-auto max-w-[1380px] space-y-8 px-4 py-6 sm:px-6">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-semibold text-ink">Admin</h1>

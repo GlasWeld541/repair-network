@@ -7,6 +7,7 @@ import { ArrowLeft, Check, Pencil } from 'lucide-react';
 import heic2any from 'heic2any';
 import { supabase } from '@/lib/supabase';
 import BeforeAfterSlider from '@/components/before-after-slider';
+import { useToast } from '@/components/ui/notifications';
 
 const JOB_STATUSES = ['New', 'In Progress', 'Submitted', 'Completed', 'Canceled'];
 const DAMAGE_TYPES = ['Combo Break', 'Bullseye', 'Star Break', 'Crack', 'Pit', 'Other'];
@@ -47,6 +48,7 @@ function carrierStatusFromJobStatus(status: string | number | null) {
 export default function JobDetailPage() {
   const params = useParams();
   const id = params.id as string;
+  const toast = useToast();
 
   const [role, setRole] = useState<string | null>(null);
   const [job, setJob] = useState<any>(null);
@@ -178,7 +180,7 @@ export default function JobDetailPage() {
       .eq('id', job.id);
 
     if (error) {
-      window.alert(`Could not update job: ${error.message}`);
+      toast.error(`Could not update job: ${error.message}`);
       return;
     }
 
@@ -319,7 +321,7 @@ export default function JobDetailPage() {
         });
 
       if (uploadError) {
-        window.alert(`Upload failed: ${uploadError.message}`);
+        toast.error(`Upload failed: ${uploadError.message}`);
         setWorking(false);
         return;
       }
@@ -333,7 +335,7 @@ export default function JobDetailPage() {
       });
 
       if (insertError) {
-        window.alert(`Photo saved to storage, but could not attach to job: ${insertError.message}`);
+        toast.error(`Photo saved to storage, but could not attach to job: ${insertError.message}`);
         setWorking(false);
         return;
       }
@@ -354,7 +356,7 @@ export default function JobDetailPage() {
         if (befores && befores.length) void scoreRepair(true);
       }
     } catch (err: any) {
-      window.alert(`Upload error: ${err?.message || String(err)}`);
+      toast.error(`Upload error: ${err?.message || String(err)}`);
       setWorking(false);
     }
   }
@@ -367,13 +369,13 @@ export default function JobDetailPage() {
       const res = await fetch(`/api/jobs/${id}/score-repair`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (!silent) window.alert(data?.error || 'Could not score this repair.');
+        if (!silent) toast.error(data?.error || 'Could not score this repair.');
         return;
       }
       await loadPage();
       if (!silent) flashSaved('Rex scored the repair');
     } catch (err: any) {
-      if (!silent) window.alert(`Scoring error: ${err?.message || String(err)}`);
+      if (!silent) toast.error(`Scoring error: ${err?.message || String(err)}`);
     } finally {
       setScoring(false);
     }
@@ -388,7 +390,7 @@ export default function JobDetailPage() {
       .eq('id', id);
 
     if (error) {
-      window.alert(`Could not update the review: ${error.message}`);
+      toast.error(`Could not update the review: ${error.message}`);
       return;
     }
 
@@ -435,7 +437,7 @@ export default function JobDetailPage() {
       .single();
 
     if (error) {
-      window.alert('Could not generate invoice.');
+      toast.error('Could not generate invoice.');
       setWorking(false);
       return;
     }
@@ -498,7 +500,7 @@ export default function JobDetailPage() {
     const amountToCharge = Number(amountOverride ?? chargeAmount ?? 0);
 
     if (amountToCharge <= 0) {
-      window.alert('Enter a charge amount greater than $0.00.');
+      toast.error('Enter a charge amount greater than $0.00.');
       return;
     }
 
@@ -569,7 +571,7 @@ export default function JobDetailPage() {
   const latestEvent = events[0];
 
   return (
-    <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
+    <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">
       <div className="flex items-center justify-between">
         <Link href="/jobs" className="inline-flex items-center gap-2 text-sm text-brand-700">
           <ArrowLeft className="h-4 w-4" />

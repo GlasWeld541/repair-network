@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import ProviderPickerModal from '@/components/provider-picker';
+import { useToast } from '@/components/ui/notifications';
 
 type Intake = {
   id: string;
@@ -95,6 +96,7 @@ function statusClass(status: string) {
 }
 
 export default function AdminConsumerIntakePage() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
   const [intakes, setIntakes] = useState<Intake[]>([]);
@@ -326,7 +328,7 @@ export default function AdminConsumerIntakePage() {
     setBusyId(null);
 
     if (error) {
-      window.alert(`Could not save triage: ${error.message}`);
+      toast.error(`Could not save triage: ${error.message}`);
       return;
     }
 
@@ -343,12 +345,12 @@ export default function AdminConsumerIntakePage() {
       suggestedAccount(intake, triageResult);
 
     if (!account) {
-      window.alert('Select an account before creating the job.');
+      toast.error('Select an account before creating the job.');
       return;
     }
 
     if (triageResult !== 'repair' && triageResult !== 'replacement') {
-      window.alert('Select repair or replacement before creating the job.');
+      toast.error('Select repair or replacement before creating the job.');
       return;
     }
 
@@ -402,7 +404,7 @@ export default function AdminConsumerIntakePage() {
 
     if (jobError || !job?.id) {
       setBusyId(null);
-      window.alert(`Could not create job: ${jobError?.message || 'Unknown error'}`);
+      toast.error(`Could not create job: ${jobError?.message || 'Unknown error'}`);
       return;
     }
 
@@ -482,7 +484,7 @@ export default function AdminConsumerIntakePage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1380px] space-y-6 px-6 py-6">
+    <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <Link href="/admin" className="text-sm text-brand-700">

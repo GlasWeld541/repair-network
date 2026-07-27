@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { useToast } from '@/components/ui/notifications';
 
 type Account = {
   id: string;
@@ -106,6 +107,7 @@ function daysOutstanding(j: JobWithInvoice) {
 
 export default function JobsPage() {
   const router = useRouter();
+  const toast = useToast();
 
   const [jobs, setJobs] = useState<JobWithInvoice[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -215,12 +217,12 @@ export default function JobsPage() {
     const selectedAccount = accounts.find((account) => account.id === newAccountId);
 
     if (!newCustomer.trim()) {
-      window.alert('Customer name is required.');
+      toast.error('Customer name is required.');
       return;
     }
 
     if (!selectedAccount) {
-      window.alert('Select an account before creating the job.');
+      toast.error('Select an account before creating the job.');
       return;
     }
 
@@ -252,7 +254,7 @@ export default function JobsPage() {
     setCreating(false);
 
     if (error) {
-      window.alert(`Could not create job: ${error.message}`);
+      toast.error(`Could not create job: ${error.message}`);
       return;
     }
 
@@ -312,7 +314,7 @@ export default function JobsPage() {
     <div className="space-y-6">
 
       {/* HEADER */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-semibold text-ink">Jobs Ledger</h1>
           <p className="text-sm text-slate-500">Receivables + job tracking</p>
@@ -499,7 +501,7 @@ export default function JobsPage() {
       </div>
 
       {/* STATS */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Stat label="Sales" value={money(totals.sales)} />
         <Stat label="Paid" value={money(totals.paid)} green />
         <Stat label="Outstanding" value={money(totals.outstanding)} red />

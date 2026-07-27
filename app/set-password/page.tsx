@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useToast } from '@/components/ui/notifications';
 
 export default function SetPasswordPage() {
+  const toast = useToast();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -64,12 +66,12 @@ export default function SetPasswordPage() {
     e.preventDefault();
 
     if (password.length < 8) {
-      alert('Password must be at least 8 characters.');
+      toast.error('Password must be at least 8 characters.');
       return;
     }
 
     if (password !== confirmPassword) {
-      alert('Passwords do not match.');
+      toast.error('Passwords do not match.');
       return;
     }
 
@@ -94,7 +96,7 @@ export default function SetPasswordPage() {
       return;
     }
 
-    alert('Password set successfully. You can now log in.');
+    toast.success('Password set successfully. You can now log in.');
     window.location.href = '/login';
   }
 

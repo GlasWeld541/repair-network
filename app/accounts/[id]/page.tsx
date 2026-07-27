@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Check, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useToast, useConfirm } from '@/components/ui/notifications';
 
 type AccountRow = {
   id: string;
@@ -184,6 +185,8 @@ function accessBadgeClass(status: string) {
 export default function AccountDetailPage() {
   const params = useParams();
   const id = params.id as string;
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const [account, setAccount] = useState<AccountRow | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<AccountPaymentMethod[]>([]);
@@ -374,7 +377,7 @@ export default function AccountDetailPage() {
       .eq('id', id);
 
     if (error) {
-      window.alert(`Could not update billing setting: ${error.message}`);
+      toast.error(`Could not update billing setting: ${error.message}`);
       return;
     }
 
@@ -386,17 +389,17 @@ export default function AccountDetailPage() {
     if (isReadOnly || currentRole !== 'admin') return;
 
     if (!newPaymentMethodLast4.trim() || newPaymentMethodLast4.trim().length !== 4) {
-      window.alert('Enter the last 4 digits for the payment method.');
+      toast.error('Enter the last 4 digits for the payment method.');
       return;
     }
 
     if (newPaymentMethodType === 'card' && !newPaymentMethodBrand.trim()) {
-      window.alert('Enter the card brand.');
+      toast.error('Enter the card brand.');
       return;
     }
 
     if (newPaymentMethodType === 'ach' && !newPaymentMethodBankName.trim()) {
-      window.alert('Enter the bank name.');
+      toast.error('Enter the bank name.');
       return;
     }
 
@@ -436,7 +439,7 @@ export default function AccountDetailPage() {
     setAddingPaymentMethod(false);
 
     if (error) {
-      window.alert(`Could not add payment method: ${error.message}`);
+      toast.error(`Could not add payment method: ${error.message}`);
       return;
     }
 
@@ -472,7 +475,7 @@ export default function AccountDetailPage() {
       .eq('id', paymentMethodId);
 
     if (error) {
-      window.alert(`Could not update payment method: ${error.message}`);
+      toast.error(`Could not update payment method: ${error.message}`);
       return;
     }
 
@@ -483,7 +486,12 @@ export default function AccountDetailPage() {
   async function deletePaymentMethod(paymentMethodId: string) {
     if (isReadOnly || currentRole !== 'admin') return;
 
-    const confirmed = window.confirm('Remove this payment method from the account?');
+    const confirmed = await confirm({
+      title: 'Remove this payment method?',
+      message: 'This removes the payment method from the account.',
+      confirmLabel: 'Remove',
+      destructive: true,
+    });
     if (!confirmed) return;
 
     const { error } = await supabase
@@ -492,7 +500,7 @@ export default function AccountDetailPage() {
       .eq('id', paymentMethodId);
 
     if (error) {
-      window.alert(`Could not remove payment method: ${error.message}`);
+      toast.error(`Could not remove payment method: ${error.message}`);
       return;
     }
 
@@ -517,7 +525,7 @@ export default function AccountDetailPage() {
     if (isReadOnly) return;
 
     if (!newContactName.trim() && !newContactEmail.trim() && !newContactPhone.trim()) {
-      window.alert('Enter at least one contact field before adding.');
+      toast.error('Enter at least one contact field before adding.');
       return;
     }
 
@@ -529,7 +537,7 @@ export default function AccountDetailPage() {
     });
 
     if (error) {
-      window.alert(`Could not add contact: ${error.message}`);
+      toast.error(`Could not add contact: ${error.message}`);
       return;
     }
 
@@ -545,7 +553,7 @@ export default function AccountDetailPage() {
     if (!account) return;
 
     if (!newJobCustomer.trim()) {
-      window.alert('Customer name is required.');
+      toast.error('Customer name is required.');
       return;
     }
 
@@ -568,7 +576,7 @@ export default function AccountDetailPage() {
     setCreatingJob(false);
 
     if (error) {
-      window.alert(`Could not create job: ${error.message}`);
+      toast.error(`Could not create job: ${error.message}`);
       return;
     }
 
@@ -586,14 +594,14 @@ export default function AccountDetailPage() {
     if (isReadOnly) return;
 
     if (!canManageAccess()) {
-      window.alert('Only admins can grant login access.');
+      toast.error('Only admins can grant login access.');
       return;
     }
 
     const contactEmail = normalizeEmail(contact.email);
 
     if (!contactEmail) {
-      window.alert('Contact must have an email before access can be granted.');
+      toast.error('Contact must have an email before access can be granted.');
       return;
     }
 
@@ -613,7 +621,7 @@ export default function AccountDetailPage() {
 
     if (accessError) {
       setBusyContactId(null);
-      window.alert(`Could not grant access: ${accessError.message}`);
+      toast.error(`Could not grant access: ${accessError.message}`);
       return;
     }
 
@@ -634,7 +642,7 @@ export default function AccountDetailPage() {
     setBusyContactId(null);
 
     if (!res.ok) {
-      window.alert(
+      toast.error(
         result.error ||
           'Access was created, but the invite email could not be sent.'
       );
@@ -650,7 +658,7 @@ export default function AccountDetailPage() {
     if (isReadOnly) return;
 
     if (!canManageAccess()) {
-      window.alert('Only admins can suspend login access.');
+      toast.error('Only admins can suspend login access.');
       return;
     }
 
@@ -671,7 +679,7 @@ export default function AccountDetailPage() {
     setBusyContactId(null);
 
     if (error) {
-      window.alert(`Could not suspend access: ${error.message}`);
+      toast.error(`Could not suspend access: ${error.message}`);
       return;
     }
 
