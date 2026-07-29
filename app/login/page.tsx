@@ -2,12 +2,9 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 export default function LoginPage() {
-  const router = useRouter();
-
   const [mode, setMode] = useState<'login' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,70 +20,75 @@ export default function LoginPage() {
     setMessage('');
     setIsLoading(true);
 
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email: cleanEmail,
-      password,
-    });
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
 
-    if (authError) {
+      if (authError) {
+        setIsLoading(false);
+        setError(authError.message || 'Invalid email or password');
+        return;
+      }
+
+      const { data: roleData, error: roleError } = await supabase
+        .from('user_roles')
+        .select('role, approved, access_status, account_id')
+        .eq('user_email', cleanEmail)
+        .maybeSingle();
+
+      if (roleError) {
+        setIsLoading(false);
+        setError(`Login succeeded, but access check failed: ${roleError.message}`);
+        return;
+      }
+
+      if (!roleData) {
+        await supabase.auth.signOut();
+        setIsLoading(false);
+        setError('Login succeeded, but no platform access profile was found.');
+        return;
+      }
+
+      if (roleData.approved !== true) {
+        await supabase.auth.signOut();
+        setIsLoading(false);
+        setError('Your access has not been approved yet.');
+        return;
+      }
+
+      if ((roleData.access_status || 'Active') !== 'Active') {
+        await supabase.auth.signOut();
+        setIsLoading(false);
+        setError(`Your access is ${roleData.access_status || 'not active'}.`);
+        return;
+      }
+
+      const target =
+        roleData.role === 'admin'
+          ? '/admin'
+          : roleData.role === 'shop'
+            ? roleData.account_id
+              ? `/accounts/${roleData.account_id}`
+              : '/accounts'
+            : roleData.role === 'carrier'
+              ? '/claims'
+              : '/';
+
+      // Hard navigation (not router.replace) so Safari sends the freshly-set
+      // Supabase auth cookie to the middleware on the next request. A soft
+      // client navigation drops the just-written cookie in Safari, so the
+      // middleware sees no session and bounces back to /login ("nothing happens").
+      window.location.assign(target);
+    } catch (err) {
       setIsLoading(false);
-      setError(authError.message || 'Invalid email or password');
-      return;
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Something went wrong during login. Please try again.',
+      );
     }
-
-    const { data: roleData, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role, approved, access_status, account_id')
-      .eq('user_email', cleanEmail)
-      .maybeSingle();
-
-    if (roleError) {
-      setIsLoading(false);
-      setError(`Login succeeded, but access check failed: ${roleError.message}`);
-      return;
-    }
-
-    if (!roleData) {
-      await supabase.auth.signOut();
-      setIsLoading(false);
-      setError('Login succeeded, but no platform access profile was found.');
-      return;
-    }
-
-    if (roleData.approved !== true) {
-      await supabase.auth.signOut();
-      setIsLoading(false);
-      setError('Your access has not been approved yet.');
-      return;
-    }
-
-    if ((roleData.access_status || 'Active') !== 'Active') {
-      await supabase.auth.signOut();
-      setIsLoading(false);
-      setError(`Your access is ${roleData.access_status || 'not active'}.`);
-      return;
-    }
-
-    if (roleData.role === 'admin') {
-      router.replace('/admin');
-      router.refresh();
-      return;
-    }
-
-    if (roleData.role === 'shop') {
-      router.replace(roleData.account_id ? `/accounts/${roleData.account_id}` : '/accounts');
-      router.refresh();
-      return;
-    }
-
-    if (roleData.role === 'carrier') {
-      router.replace('/claims');
-      router.refresh();
-      return;
-    }
-
-    router.replace('/');
-    router.refresh();
   }
 
   async function sendPasswordReset() {
