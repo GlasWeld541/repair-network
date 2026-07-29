@@ -62,6 +62,7 @@ type Account = {
   replacement_platform_fee_bps: number | null;
   consumer_repair_enabled: boolean | null;
   consumer_replacement_enabled: boolean | null;
+  active: boolean | null;
 };
 
 type Photo = {
@@ -167,7 +168,7 @@ export default function AdminConsumerIntakePage() {
           .order('created_at', { ascending: false }),
         supabase
           .from('accounts')
-          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled')
+          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled, active')
           .order('account_name'),
         supabase
           .from('consumer_intake_photos')
@@ -262,6 +263,8 @@ export default function AdminConsumerIntakePage() {
 
   function accountOptions(triageResult: string) {
     return accounts.filter((account) => {
+      // Disabled shops are out of the network — never route/assign to them.
+      if (account.active === false) return false;
       if (triageResult === 'replacement') return account.consumer_replacement_enabled === true;
       if (triageResult === 'repair') return account.consumer_repair_enabled !== false;
       return true;
