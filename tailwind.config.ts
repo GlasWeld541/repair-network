@@ -4,6 +4,21 @@ export default {
   content: ['./app/**/*.{js,ts,jsx,tsx}', './components/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
+      fontFamily: {
+        // Inter (loaded via next/font as --font-sans) with an identical fallback to Rex,
+        // so both apps render the same type on every device.
+        sans: [
+          'var(--font-sans)',
+          'ui-sans-serif',
+          'system-ui',
+          '-apple-system',
+          '"Segoe UI"',
+          'Roboto',
+          '"Helvetica Neue"',
+          'Arial',
+          'sans-serif',
+        ],
+      },
       colors: {
         brand: {
           50: '#effcfd',

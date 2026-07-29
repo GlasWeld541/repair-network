@@ -229,6 +229,12 @@ export default function LoginPage() {
               >
                 Request it here
               </Link>
+              <div className="mt-2 text-xs text-slate-400">
+                This is the Repair Network. For Rex Pro Coach,{' '}
+                <a href="/rex/" className="font-semibold text-brand-700 hover:underline">
+                  sign in here →
+                </a>
+              </div>
             </div>
           </div>
         </div>
