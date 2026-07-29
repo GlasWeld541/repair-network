@@ -28,6 +28,7 @@ type AccountRow = {
   outreach_status: string | null;
   latitude: number | null;
   longitude: number | null;
+  active: boolean | null;
 };
 
 type AccountWithDistance = AccountRow & { distance: number | null };
@@ -44,6 +45,7 @@ function AccountsPageContent() {
   const [query, setQuery] = useState('');
   const [stateFilter, setStateFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'disabled' | 'all'>('active');
 
   // Proximity ("near ZIP/city within N miles") — geocode the entered origin once, then
   // rank/filter accounts by Haversine distance. Reuses /api/geocode + lib/geo, the same
@@ -125,7 +127,7 @@ function AccountsPageContent() {
       const { data } = await supabase
         .from('accounts')
         .select(
-          'id, account_name, city, state, glasweld_certified, insurance, uses_onyx, uses_zoom_injector, repair_only, outreach_status, latitude, longitude'
+          'id, account_name, city, state, glasweld_certified, insurance, uses_onyx, uses_zoom_injector, repair_only, outreach_status, latitude, longitude, active'
         )
         .order('account_name');
 
@@ -173,6 +175,16 @@ function AccountsPageContent() {
     );
   }
 
+  async function setAccountActive(id: string, active: boolean) {
+    if (isReadOnly) return;
+
+    await supabase.from('accounts').update({ active }).eq('id', id);
+
+    setAccounts((current) =>
+      current.map((account) => (account.id === id ? { ...account, active } : account))
+    );
+  }
+
   const filteredAccounts = useMemo<AccountWithDistance[]>(() => {
     const q = query.trim().toLowerCase();
     const city = cityFilter.trim().toLowerCase();
@@ -190,8 +202,13 @@ function AccountsPageContent() {
       const matchesState =
         !stateFilter || (account.state || '').toUpperCase() === stateFilter;
       const matchesCity = !city || (account.city || '').toLowerCase().includes(city);
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'active'
+          ? account.active !== false
+          : account.active === false);
 
-      return matchesSearch && matchesState && matchesCity;
+      return matchesSearch && matchesState && matchesCity && matchesStatus;
     });
 
     // No proximity origin set → return as-is, no distance.
@@ -215,7 +232,7 @@ function AccountsPageContent() {
       }))
       .filter((account) => account.distance != null && account.distance <= radius)
       .sort((a, b) => (a.distance as number) - (b.distance as number));
-  }, [accounts, query, cityFilter, stateFilter, origin, radius]);
+  }, [accounts, query, cityFilter, stateFilter, statusFilter, origin, radius]);
 
   const showDistance = origin != null;
   const unmappedCount = useMemo(
@@ -274,6 +291,19 @@ function AccountsPageContent() {
             maxLength={2}
             className="h-10 w-20 rounded-xl border border-slate-300 px-3 text-sm uppercase"
           />
+        </label>
+
+        <label className="grid gap-1">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</span>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as 'active' | 'disabled' | 'all')}
+            className="h-10 rounded-xl border border-slate-300 px-2 text-sm"
+          >
+            <option value="active">Active</option>
+            <option value="disabled">Disabled</option>
+            <option value="all">All</option>
+          </select>
         </label>
 
         <div className="grid gap-1">
@@ -349,12 +379,18 @@ function AccountsPageContent() {
               <th className="px-4 py-3">Zoom</th>
               <th className="px-4 py-3">Repair Only</th>
               <th className="px-4 py-3">Outreach</th>
+              <th className="px-4 py-3">Status</th>
             </tr>
           </thead>
 
           <tbody>
             {filteredAccounts.map((account) => (
-              <tr key={account.id} className="border-t hover:bg-slate-50">
+              <tr
+                key={account.id}
+                className={`border-t hover:bg-slate-50 ${
+                  account.active === false ? 'opacity-60' : ''
+                }`}
+              >
                 <td className="px-4 py-3 font-medium">
                   <Link
                     href={`/accounts/${account.id}`}
@@ -438,13 +474,38 @@ function AccountsPageContent() {
                     }
                   />
                 </td>
+
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                        account.active === false
+                          ? 'border-slate-200 bg-slate-100 text-slate-500'
+                          : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      }`}
+                    >
+                      {account.active === false ? 'Disabled' : 'Active'}
+                    </span>
+                    {!isReadOnly ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void setAccountActive(account.id, account.active === false)
+                        }
+                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                      >
+                        {account.active === false ? 'Enable' : 'Disable'}
+                      </button>
+                    ) : null}
+                  </div>
+                </td>
               </tr>
             ))}
 
             {!filteredAccounts.length && (
               <tr>
                 <td
-                  colSpan={showDistance ? 10 : 9}
+                  colSpan={showDistance ? 11 : 10}
                   className="py-10 text-center text-slate-500"
                 >
                   {showDistance

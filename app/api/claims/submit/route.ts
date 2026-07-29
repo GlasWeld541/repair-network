@@ -47,6 +47,7 @@ type AccountRow = {
   claim_routing_enabled?: boolean | null;
   claim_capacity_daily?: number | null;
   claim_capacity_weekly?: number | null;
+  active?: boolean | null;
 };
 
 type CapacityCounts = {
@@ -210,6 +211,7 @@ function isGreenlitAccount(account: AccountRow) {
   }
 
   return (
+    account.active !== false &&
     account.claim_routing_enabled !== false &&
     account.glasweld_certified === 'Yes' &&
     account.uses_onyx === 'Yes' &&
@@ -291,7 +293,7 @@ async function nearestGreenlitAccount(
   const { data } = await admin
     .from('accounts')
     .select(
-      'id, account_name, latitude, longitude, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, network_fit, claim_routing_enabled, claim_capacity_daily, claim_capacity_weekly'
+      'id, account_name, latitude, longitude, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, network_fit, claim_routing_enabled, claim_capacity_daily, claim_capacity_weekly, active'
     )
     .not('latitude', 'is', null)
     .not('longitude', 'is', null);
