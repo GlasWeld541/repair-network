@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { Eye } from 'lucide-react';
+import { Eye, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import ProviderPickerModal from '@/components/provider-picker';
 import { useToast } from '@/components/ui/notifications';
@@ -95,6 +95,8 @@ function statusClass(status: string) {
   return 'border-amber-200 bg-amber-50 text-amber-700';
 }
 
+const PAGE_SIZE = 8;
+
 export default function AdminConsumerIntakePage() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
@@ -110,8 +112,19 @@ export default function AdminConsumerIntakePage() {
     Record<string, { latitude: number; longitude: number } | null>
   >({});
   const [geocodingId, setGeocodingId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const isDemo = role === 'demo';
+
+  function toggleExpanded(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   useEffect(() => {
     void load();
@@ -483,6 +496,10 @@ export default function AdminConsumerIntakePage() {
     return <div className="p-6 text-sm text-slate-500">Loading consumer intake...</div>;
   }
 
+  const totalPages = Math.max(1, Math.ceil(intakes.length / PAGE_SIZE));
+  const pageSafe = Math.min(page, totalPages - 1);
+  const pagedIntakes = intakes.slice(pageSafe * PAGE_SIZE, (pageSafe + 1) * PAGE_SIZE);
+
   return (
     <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">
       <div className="flex items-start justify-between gap-4">
@@ -516,12 +533,13 @@ export default function AdminConsumerIntakePage() {
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
-        <div className="border-b border-slate-200 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <h2 className="text-lg font-semibold text-slate-900">Triage Queue</h2>
+          <span className="text-sm text-slate-500">{intakes.length} total</span>
         </div>
 
         <div className="divide-y divide-slate-100">
-          {intakes.map((intake) => {
+          {pagedIntakes.map((intake) => {
             const triageResult = getSelected(intake, 'triage_result') || 'needs_review';
             const intakePhotos = photosForIntake(intake.id);
             const options = rankedAccountOptions(intake, triageResult);
@@ -530,24 +548,58 @@ export default function AdminConsumerIntakePage() {
             const selectedPartner =
               accounts.find((account) => account.id === selectedPartnerId) || null;
 
+            const isOpen = expanded.has(intake.id);
             return (
-              <div key={intake.id} className="grid gap-5 p-5 xl:grid-cols-[1.1fr_1.4fr]">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="font-semibold text-slate-900">{intake.customer_name}</div>
-                    <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusClass(intake.intake_status)}`}>
-                      {intake.intake_status}
-                    </span>
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-                      {intake.lead_type}
-                    </span>
+              <div key={intake.id}>
+                <button
+                  type="button"
+                  onClick={() => toggleExpanded(intake.id)}
+                  aria-expanded={isOpen}
+                  className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-slate-50"
+                >
+                  <ChevronRight
+                    className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${
+                      isOpen ? 'rotate-90' : ''
+                    }`}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-slate-900">
+                        {intake.customer_name || 'Unnamed'}
+                      </span>
+                      <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusClass(intake.intake_status)}`}>
+                        {intake.intake_status}
+                      </span>
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                        {intake.lead_type}
+                      </span>
+                      {intake.assigned_job_id ? (
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                          job created
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-1 truncate text-xs text-slate-500">
+                      {[
+                        [intake.city, intake.state].filter(Boolean).join(', '),
+                        [intake.vehicle_year, intake.vehicle_make, intake.vehicle_model]
+                          .filter(Boolean)
+                          .join(' '),
+                      ]
+                        .filter(Boolean)
+                        .join('  ·  ') || 'No location / vehicle'}
+                    </div>
                   </div>
+                </button>
 
-                  <div className="mt-2 text-sm text-slate-600">
-                    <div>{intake.customer_phone || '-'} {intake.customer_email ? `· ${intake.customer_email}` : ''}</div>
-                    <div>{[intake.city, intake.state, intake.postal_code].filter(Boolean).join(', ') || '-'}</div>
-                    <div>{[intake.vehicle_year, intake.vehicle_make, intake.vehicle_model].filter(Boolean).join(' ') || '-'}</div>
-                  </div>
+                {isOpen ? (
+                  <div className="grid gap-5 px-5 pb-5 xl:grid-cols-[1.1fr_1.4fr]">
+                    <div>
+                      <div className="text-sm text-slate-600">
+                        <div>{intake.customer_phone || '-'} {intake.customer_email ? `· ${intake.customer_email}` : ''}</div>
+                        <div>{[intake.city, intake.state, intake.postal_code].filter(Boolean).join(', ') || '-'}</div>
+                        <div>{[intake.vehicle_year, intake.vehicle_make, intake.vehicle_model].filter(Boolean).join(' ') || '-'}</div>
+                      </div>
 
                   <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
                     <div><b>Damage:</b> {[intake.damage_location, intake.damage_size].filter(Boolean).join(' · ') || '-'}</div>
@@ -687,6 +739,8 @@ export default function AdminConsumerIntakePage() {
                   </div>
                 </div>
               </div>
+                ) : null}
+              </div>
             );
           })}
 
@@ -696,6 +750,32 @@ export default function AdminConsumerIntakePage() {
             </div>
           ) : null}
         </div>
+
+        {totalPages > 1 ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-3 text-sm">
+            <span className="text-slate-500">
+              Page {pageSafe + 1} of {totalPages} · showing {pagedIntakes.length} of {intakes.length}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={pageSafe === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Prev
+              </button>
+              <button
+                type="button"
+                disabled={pageSafe >= totalPages - 1}
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {openIntake ? (
