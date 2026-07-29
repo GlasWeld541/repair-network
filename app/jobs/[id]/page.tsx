@@ -64,7 +64,10 @@ export default function JobDetailPage() {
   const [editing, setEditing] = useState<EditableTarget>(null);
   const [draftValue, setDraftValue] = useState('');
 
-  const isReadOnly = role === 'demo';
+  // Only admins edit a job (status, fields, invoice, payments). A shop viewing a
+  // routed job — and the demo role — get a read-only view. RLS is the real backstop:
+  // shops have no write policy on network.jobs, so any write would fail server-side too.
+  const isReadOnly = role !== 'admin';
 
   useEffect(() => {
     void loadPage();
@@ -107,11 +110,13 @@ export default function JobDetailPage() {
 
     setRole(roleData.role);
 
+    // maybeSingle (not single) so an RLS miss — a shop opening a job that isn't
+    // theirs — returns null cleanly (→ "Job not found") instead of throwing.
     const { data: jobData } = await supabase
       .from('jobs')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     const { data: invoiceData } = await supabase
       .from('invoices')
@@ -585,9 +590,9 @@ export default function JobDetailPage() {
           </div>
         ) : null}
 
-        {isReadOnly ? (
+        {role === 'demo' || role === 'shop' ? (
           <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-            Demo View Only
+            {role === 'shop' ? 'Provider view' : 'Demo View Only'}
           </div>
         ) : null}
       </div>
@@ -1035,6 +1040,8 @@ export default function JobDetailPage() {
         ) : null}
       </Section>
 
+      {/* Rex score stays admin-gated until trusted — not shown to the shop yet. */}
+      {role !== 'shop' ? (
       <Section title="Rex repair score">
         {job.repair_score != null ? (
           <div className="space-y-3">
@@ -1132,6 +1139,7 @@ export default function JobDetailPage() {
           </div>
         )}
       </Section>
+      ) : null}
     </div>
   );
 }

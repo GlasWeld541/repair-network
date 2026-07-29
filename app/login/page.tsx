@@ -69,9 +69,7 @@ export default function LoginPage() {
         roleData.role === 'admin'
           ? '/admin'
           : roleData.role === 'shop'
-            ? roleData.account_id
-              ? `/accounts/${roleData.account_id}`
-              : '/accounts'
+            ? '/jobs' // shops land on their own (RLS-scoped) jobs ledger
             : roleData.role === 'carrier'
               ? '/claims'
               : '/';
