@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { distanceMiles } from '@/lib/geo';
 
 const YES_NO_UNKNOWN = ['Unknown', 'Yes', 'No'] as const;
 const OUTREACH_OPTIONS = [
@@ -25,9 +26,15 @@ type AccountRow = {
   uses_zoom_injector: string | null;
   repair_only: string | null;
   outreach_status: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
+type AccountWithDistance = AccountRow & { distance: number | null };
+
 type Role = 'admin' | 'shop' | 'carrier' | 'demo' | null;
+
+const RADIUS_OPTIONS = [10, 25, 50, 100, 250] as const;
 
 function AccountsPageContent() {
   const searchParams = useSearchParams();
@@ -36,8 +43,52 @@ function AccountsPageContent() {
   const [role, setRole] = useState<Role>(null);
   const [query, setQuery] = useState('');
   const [stateFilter, setStateFilter] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
+
+  // Proximity ("near ZIP/city within N miles") — geocode the entered origin once, then
+  // rank/filter accounts by Haversine distance. Reuses /api/geocode + lib/geo, the same
+  // machinery the claim auto-router uses.
+  const [nearQuery, setNearQuery] = useState('');
+  const [radius, setRadius] = useState<number>(50);
+  const [origin, setOrigin] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [geocoding, setGeocoding] = useState(false);
+  const [nearError, setNearError] = useState('');
 
   const isReadOnly = role === 'demo';
+
+  async function runProximity() {
+    const q = nearQuery.trim();
+    setNearError('');
+    if (!q) {
+      setOrigin(null);
+      return;
+    }
+    setGeocoding(true);
+    try {
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+      const data = (await res.json()) as {
+        latitude: number | null;
+        longitude: number | null;
+      };
+      if (data.latitude == null || data.longitude == null) {
+        setOrigin(null);
+        setNearError(`Couldn't locate "${q}". Try a ZIP code or "City, ST".`);
+        return;
+      }
+      setOrigin({ latitude: data.latitude, longitude: data.longitude });
+    } catch {
+      setOrigin(null);
+      setNearError('Location lookup failed. Please try again.');
+    } finally {
+      setGeocoding(false);
+    }
+  }
+
+  function clearProximity() {
+    setNearQuery('');
+    setOrigin(null);
+    setNearError('');
+  }
 
   useEffect(() => {
     void loadAccounts();
@@ -74,7 +125,7 @@ function AccountsPageContent() {
       const { data } = await supabase
         .from('accounts')
         .select(
-          'id, account_name, city, state, glasweld_certified, insurance, uses_onyx, uses_zoom_injector, repair_only, outreach_status'
+          'id, account_name, city, state, glasweld_certified, insurance, uses_onyx, uses_zoom_injector, repair_only, outreach_status, latitude, longitude'
         )
         .order('account_name');
 
@@ -122,8 +173,11 @@ function AccountsPageContent() {
     );
   }
 
-  const filteredAccounts = useMemo(() => {
-    return accounts.filter((account) => {
+  const filteredAccounts = useMemo<AccountWithDistance[]>(() => {
+    const q = query.trim().toLowerCase();
+    const city = cityFilter.trim().toLowerCase();
+
+    const base = accounts.filter((account) => {
       const haystack = [
         account.account_name ?? '',
         account.city ?? '',
@@ -132,15 +186,42 @@ function AccountsPageContent() {
         .join(' ')
         .toLowerCase();
 
-      const matchesSearch =
-        !query.trim() || haystack.includes(query.toLowerCase());
-
+      const matchesSearch = !q || haystack.includes(q);
       const matchesState =
         !stateFilter || (account.state || '').toUpperCase() === stateFilter;
+      const matchesCity = !city || (account.city || '').toLowerCase().includes(city);
 
-      return matchesSearch && matchesState;
+      return matchesSearch && matchesState && matchesCity;
     });
-  }, [accounts, query, stateFilter]);
+
+    // No proximity origin set → return as-is, no distance.
+    if (!origin) {
+      return base.map((account) => ({ ...account, distance: null }));
+    }
+
+    // Proximity active → keep only mapped accounts within the radius, nearest first.
+    return base
+      .map((account) => ({
+        ...account,
+        distance:
+          account.latitude != null && account.longitude != null
+            ? distanceMiles(
+                origin.latitude,
+                origin.longitude,
+                Number(account.latitude),
+                Number(account.longitude)
+              )
+            : null,
+      }))
+      .filter((account) => account.distance != null && account.distance <= radius)
+      .sort((a, b) => (a.distance as number) - (b.distance as number));
+  }, [accounts, query, cityFilter, stateFilter, origin, radius]);
+
+  const showDistance = origin != null;
+  const unmappedCount = useMemo(
+    () => accounts.filter((a) => a.latitude == null || a.longitude == null).length,
+    [accounts]
+  );
 
   return (
     <div className="space-y-6">
@@ -163,6 +244,97 @@ function AccountsPageContent() {
         ) : null}
       </div>
 
+      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
+        <label className="grid gap-1">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Search</span>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Name, city, or state"
+            className="h-10 w-56 rounded-xl border border-slate-300 px-3 text-sm"
+          />
+        </label>
+
+        <label className="grid gap-1">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">City</span>
+          <input
+            value={cityFilter}
+            onChange={(e) => setCityFilter(e.target.value)}
+            placeholder="e.g. Beaverton"
+            className="h-10 w-40 rounded-xl border border-slate-300 px-3 text-sm"
+          />
+        </label>
+
+        <label className="grid gap-1">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">State</span>
+          <input
+            value={stateFilter}
+            onChange={(e) => setStateFilter(e.target.value.toUpperCase())}
+            placeholder="OR"
+            maxLength={2}
+            className="h-10 w-20 rounded-xl border border-slate-300 px-3 text-sm uppercase"
+          />
+        </label>
+
+        <div className="grid gap-1">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Near (ZIP or city)
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={nearQuery}
+              onChange={(e) => setNearQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void runProximity();
+              }}
+              placeholder="97005 or Beaverton, OR"
+              className="h-10 w-48 rounded-xl border border-slate-300 px-3 text-sm"
+            />
+            <select
+              value={radius}
+              onChange={(e) => setRadius(Number(e.target.value))}
+              aria-label="Radius in miles"
+              className="h-10 rounded-xl border border-slate-300 px-2 text-sm"
+            >
+              {RADIUS_OPTIONS.map((r) => (
+                <option key={r} value={r}>
+                  {r} mi
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => void runProximity()}
+              disabled={geocoding}
+              className="h-10 rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+            >
+              {geocoding ? 'Locating…' : 'Search nearby'}
+            </button>
+            {origin ? (
+              <button
+                type="button"
+                onClick={clearProximity}
+                className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      {nearError ? <p className="text-sm text-rose-600">{nearError}</p> : null}
+
+      <p className="text-sm text-slate-500">
+        {showDistance
+          ? `${filteredAccounts.length} shop${filteredAccounts.length === 1 ? '' : 's'} within ${radius} mi of "${nearQuery.trim()}"${
+              unmappedCount
+                ? ` · ${unmappedCount} unmapped shop${unmappedCount === 1 ? '' : 's'} hidden`
+                : ''
+            }`
+          : `${filteredAccounts.length} account${filteredAccounts.length === 1 ? '' : 's'}`}
+      </p>
+
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-soft">
         <table className="min-w-[1180px] text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
@@ -170,6 +342,7 @@ function AccountsPageContent() {
               <th className="px-4 py-3">Account</th>
               <th className="px-4 py-3">City</th>
               <th className="px-4 py-3">State</th>
+              {showDistance ? <th className="px-4 py-3">Distance</th> : null}
               <th className="px-4 py-3">Certified</th>
               <th className="px-4 py-3">Insurance</th>
               <th className="px-4 py-3">Onyx</th>
@@ -193,6 +366,12 @@ function AccountsPageContent() {
 
                 <td className="px-4 py-3">{account.city || '—'}</td>
                 <td className="px-4 py-3">{account.state || '—'}</td>
+
+                {showDistance ? (
+                  <td className="px-4 py-3 font-medium text-slate-700">
+                    {account.distance != null ? `${account.distance.toFixed(1)} mi` : '—'}
+                  </td>
+                ) : null}
 
                 <td className="px-4 py-3">
                   <EditableCell
@@ -264,8 +443,13 @@ function AccountsPageContent() {
 
             {!filteredAccounts.length && (
               <tr>
-                <td colSpan={9} className="py-10 text-center text-slate-500">
-                  No accounts available.
+                <td
+                  colSpan={showDistance ? 10 : 9}
+                  className="py-10 text-center text-slate-500"
+                >
+                  {showDistance
+                    ? `No mapped shops within ${radius} mi. Widen the radius or clear the proximity search.`
+                    : 'No accounts match your filters.'}
                 </td>
               </tr>
             )}
