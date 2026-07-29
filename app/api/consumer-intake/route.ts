@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { sendEmail } from '@/lib/email';
 import { createAdminClient } from '@/lib/supabase';
 
 type IntakePayload = Record<string, string>;
@@ -209,6 +210,60 @@ export async function POST(request: Request) {
         },
       },
     ]);
+
+    // Best-effort admin alert email. Gated on RESEND_API_KEY + INTAKE_NOTIFY_EMAIL, so it
+    // is inert until configured and NEVER blocks or fails the intake — the lead is saved.
+    try {
+      const notifyTo = process.env.INTAKE_NOTIFY_EMAIL || '';
+      if (notifyTo) {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://repair-network.vercel.app';
+        const esc = (value: string) =>
+          value.replace(
+            /[&<>"]/g,
+            (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string
+          );
+        const row = (label: string, value?: string | null) =>
+          value
+            ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b">${label}</td><td style="padding:4px 0;color:#0f172a">${esc(value)}</td></tr>`
+            : '';
+        const location = [payload.city, payload.state, payload.postal_code]
+          .filter(Boolean)
+          .join(', ');
+        const vehicle = [payload.vehicle_year, payload.vehicle_make, payload.vehicle_model]
+          .filter(Boolean)
+          .join(' ');
+        const damage = [payload.damage_location, payload.damage_size, payload.damage_notes]
+          .filter(Boolean)
+          .join(' · ');
+        const html = `
+          <div style="font-family:system-ui,Arial,sans-serif;max-width:560px">
+            <h2 style="color:#0f172a;margin:0 0 4px">New ${leadType} glass intake</h2>
+            <p style="color:#64748b;margin:0 0 16px">A new lead needs triage in the Repair Network.</p>
+            <table style="border-collapse:collapse;font-size:14px">
+              ${row('Customer', customerName)}
+              ${row('Phone', customerPhone)}
+              ${row('Email', customerEmail)}
+              ${row('Location', location)}
+              ${row('Vehicle', vehicle)}
+              ${row('Damage', damage)}
+              ${row('Insurance', payload.insurance_carrier)}
+              ${row('Source', source)}
+              ${leadType === 'agent' ? row('Agent', [payload.agent_name, payload.agent_email].filter(Boolean).join(' · ')) : ''}
+            </table>
+            <p style="margin:20px 0 0">
+              <a href="${appUrl}/admin/intake" style="background:#0b90a5;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:600;font-size:14px">Open the intake queue</a>
+            </p>
+          </div>`;
+        await sendEmail({
+          to: notifyTo,
+          subject: `New ${leadType} glass intake: ${customerName}`,
+          replyTo: customerEmail || undefined,
+          html,
+        });
+      }
+    } catch {
+      // A notification failure must never affect the intake response.
+    }
 
     return NextResponse.json({
       success: true,
