@@ -173,10 +173,11 @@ export async function GET(_request: Request, context: RouteContext) {
       color: line,
     });
 
-    text('Windshield rock chip repair', descX, rowY + 52, 10, true);
-    text(`Vehicle: ${clean(invoice.vehicle)}`, descX, rowY + 35, 9);
-    text(`VIN: ${clean(invoice.vin)}`, descX, rowY + 21, 9);
-    text(`Damage: ${clean(invoice.damage_type)}`, descX, rowY + 7, 9);
+    text('Windshield rock chip repair', descX, rowY + 56, 10, true);
+    text(`Vehicle: ${clean(invoice.vehicle)}`, descX, rowY + 43, 9);
+    text(`Technician: ${clean(invoice.tech_name)}`, descX, rowY + 30, 9);
+    text(`VIN: ${clean(invoice.vin)}`, descX, rowY + 17, 9);
+    text(`Damage: ${clean(invoice.damage_type)}`, descX, rowY + 4, 9);
 
     text('1', qtyX + 6, rowY + 35, 10);
     text(money(total), amountX - 8, rowY + 35, 10, true);

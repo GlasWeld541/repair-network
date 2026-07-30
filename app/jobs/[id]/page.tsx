@@ -174,10 +174,32 @@ export default function JobDetailPage() {
     );
   }
 
+  // Keep an already-generated invoice's technician in sync with the job's.
+  async function syncInvoiceTechName(techName: string | null | undefined) {
+    if (!invoice?.id) return;
+    await supabase
+      .from('invoices')
+      .update({ tech_name: String(techName || '').trim() || null })
+      .eq('id', invoice.id);
+  }
+
   async function updateJobField(field: string, value: string | number | null) {
     if (!job || isReadOnly) return;
 
     const previousStatus = job.job_status;
+
+    // A job can't be completed without naming the technician who did the repair — it
+    // flows onto the invoice. Gate BEFORE the write so the status change is blocked.
+    // Covers the Mark Complete button and both status dropdowns (all route through here).
+    if (
+      field === 'job_status' &&
+      value === 'Completed' &&
+      previousStatus !== 'Completed' &&
+      !String(job.tech_name || '').trim()
+    ) {
+      toast.error('Enter the technician name before marking this job complete.');
+      return;
+    }
 
     const { error } = await supabase
       .from('jobs')
@@ -193,12 +215,18 @@ export default function JobDetailPage() {
 
     setJob(nextJob);
 
+    // Editing the technician on a job that already has an invoice → keep the invoice current.
+    if (field === 'tech_name') {
+      await syncInvoiceTechName(nextJob.tech_name);
+    }
+
     if (
       field === 'job_status' &&
       value === 'Completed' &&
       previousStatus !== 'Completed'
     ) {
       await recordCompletedJobBillingEvent(nextJob);
+      await syncInvoiceTechName(nextJob.tech_name);
     }
 
     if (field === 'job_status' && nextJob.claim_intake_id) {
@@ -424,6 +452,7 @@ export default function JobDetailPage() {
         customer_phone: job.customer_phone,
         vehicle,
         vin: job.vehicle_vin,
+        tech_name: job.tech_name,
         damage_type: job.damage_type,
         damage_notes: job.damage_notes,
         invoice_amount: job.invoice_amount || 0,
@@ -516,6 +545,9 @@ export default function JobDetailPage() {
     const newPaid = Number((currentPaid + amountToCharge).toFixed(2));
     const newOutstanding = Number(Math.max(invoiceTotal - newPaid, 0).toFixed(2));
     const paymentStatus = newOutstanding <= 0 ? 'Paid' : 'Partial Payment';
+    // Never block collecting money — but auto-complete only when the technician is named
+    // (completion requires it). A paid-in-full job without a tech waits for Mark Complete.
+    const canComplete = newOutstanding <= 0 && !!String(job.tech_name || '').trim();
 
     await supabase
       .from('invoices')
@@ -531,17 +563,18 @@ export default function JobDetailPage() {
       .update({
         amount_paid: newPaid,
         payment_status: paymentStatus,
-        job_status: newOutstanding <= 0 ? 'Completed' : job.job_status,
+        job_status: canComplete ? 'Completed' : job.job_status,
       })
       .eq('id', job.id);
 
-    if (newOutstanding <= 0 && job.job_status !== 'Completed') {
+    if (canComplete && job.job_status !== 'Completed') {
       await recordCompletedJobBillingEvent({
         ...job,
         amount_paid: newPaid,
         payment_status: paymentStatus,
         job_status: 'Completed',
       });
+      await syncInvoiceTechName(job.tech_name);
     }
 
     await supabase.from('invoice_events').insert({
@@ -549,6 +582,12 @@ export default function JobDetailPage() {
       event_type: 'Payment Recorded',
       note: `Payment recorded for ${money(amountToCharge)}. Gateway integration will be added later.`,
     });
+
+    if (newOutstanding <= 0 && !canComplete) {
+      toast.info(
+        'Payment collected. Enter the technician name, then Mark Complete to finish the job.',
+      );
+    }
 
     setWorking(false);
     await loadPage();
@@ -713,6 +752,18 @@ export default function JobDetailPage() {
                 draftValue={draftValue}
                 setDraftValue={setDraftValue}
                 field="invoice_date"
+                startEdit={startEdit}
+                saveDraftField={saveDraftField}
+                cancel={() => setEditing(null)}
+                readOnly={isReadOnly}
+              />
+              <EditableField
+                label="Technician (required to complete)"
+                value={job.tech_name}
+                field="tech_name"
+                editing={editing}
+                draftValue={draftValue}
+                setDraftValue={setDraftValue}
                 startEdit={startEdit}
                 saveDraftField={saveDraftField}
                 cancel={() => setEditing(null)}
