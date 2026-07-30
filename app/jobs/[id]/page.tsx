@@ -1091,6 +1091,23 @@ export default function JobDetailPage() {
         ) : null}
       </Section>
 
+      {/* Shop's Jobs-Ledger view: show that the Rex repair is done + where it stands,
+          WITHOUT the numeric score (kept admin-only, matching Rex's tech redaction). */}
+      {role === 'shop' && (job.repair_scored_at || job.job_status === 'Completed') ? (
+        <Section title="Repair status">
+          {job.job_status === 'Completed' ? (
+            <p className="text-sm font-medium text-emerald-700">
+              Completed — this repair is closed out. Thanks!
+            </p>
+          ) : (
+            <p className="text-sm text-slate-600">
+              Repair completed and submitted for GlasWeld review. It'll be marked complete
+              once reviewed.
+            </p>
+          )}
+        </Section>
+      ) : null}
+
       {/* Rex score stays admin-gated until trusted — not shown to the shop yet. */}
       {role !== 'shop' ? (
       <Section title="Rex repair score">
@@ -1166,6 +1183,24 @@ export default function JobDetailPage() {
                       Reject
                     </button>
                   </>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* The Rex repair is in — completing the job here records the platform fee
+                (tech name is pre-filled by Rex, so the completion gate passes). */}
+            {job.job_status !== 'Completed' ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                <span>Repair is in. Marking the job complete records the platform fee.</span>
+                {!isReadOnly ? (
+                  <button
+                    type="button"
+                    onClick={() => void markComplete()}
+                    disabled={working}
+                    className="rounded-md bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    Mark complete
+                  </button>
                 ) : null}
               </div>
             ) : null}
