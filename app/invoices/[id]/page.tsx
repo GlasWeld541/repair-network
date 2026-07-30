@@ -276,6 +276,15 @@ export default function InvoicePage() {
 
                 <div>
                   <span className="font-semibold text-slate-900">
+                    Technician:
+                  </span>{' '}
+                  <span className="text-slate-600">
+                    {invoice.tech_name || '—'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="font-semibold text-slate-900">
                     VIN:
                   </span>{' '}
                   <span className="text-slate-600">
