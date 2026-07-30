@@ -215,6 +215,22 @@ export default function AdminConsumerIntakePage() {
     }));
   }
 
+  // Changing the disposition can invalidate an already-chosen provider: a repair-only shop
+  // is not a valid Replacement partner (and vice-versa), and needs_review/not_serviceable
+  // route to no one. Clear a now-invalid provider so a stale repair shop isn't saved onto the
+  // intake or turned into the assignee of a replacement job by createJob().
+  function handleTriageChange(intake: Intake, value: string) {
+    updateSelection(intake.id, 'triage_result', value);
+
+    const current = selectedAccount(intake);
+    if (!current) return;
+    const routes = value === 'repair' || value === 'replacement';
+    const stillValid = routes && accountOptions(value).some((account) => account.id === current.id);
+    if (!stillValid) {
+      updateSelection(intake.id, 'assigned_account_id', '');
+    }
+  }
+
   function photosForIntake(intakeId: string) {
     return photos.filter((photo) => photo.consumer_intake_id === intakeId);
   }
@@ -637,7 +653,7 @@ export default function AdminConsumerIntakePage() {
                       <select
                         value={triageResult}
                         disabled={isDemo}
-                        onChange={(e) => updateSelection(intake.id, 'triage_result', e.target.value)}
+                        onChange={(e) => handleTriageChange(intake, e.target.value)}
                       >
                         {TRIAGE_OPTIONS.map((option) => (
                           <option key={option.value} value={option.value}>{option.label}</option>
