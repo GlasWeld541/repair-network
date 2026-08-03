@@ -63,6 +63,7 @@ type Account = {
   consumer_repair_enabled: boolean | null;
   consumer_replacement_enabled: boolean | null;
   active: boolean | null;
+  provider_type: string | null;
 };
 
 type Photo = {
@@ -168,7 +169,7 @@ export default function AdminConsumerIntakePage() {
           .order('created_at', { ascending: false }),
         supabase
           .from('accounts')
-          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled, active')
+          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type')
           .order('account_name'),
         supabase
           .from('consumer_intake_photos')

@@ -17,6 +17,7 @@ export type ProviderAccount = {
   uses_onyx: string | null;
   uses_zoom_injector: string | null;
   repair_only: string | null;
+  provider_type: string | null;
 };
 
 type Origin = { latitude: number; longitude: number } | null;
@@ -171,6 +172,11 @@ export default function ProviderPickerModal({
                       <span className="truncate font-semibold text-slate-900">
                         {a.account_name || 'Unnamed provider'}
                       </span>
+                      {a.provider_type === 'independent_tech' ? (
+                        <span className="shrink-0 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700">
+                          Ind. tech
+                        </span>
+                      ) : null}
                       {selected ? (
                         <span className="shrink-0 rounded-full bg-brand-600 px-2 py-0.5 text-[11px] font-medium text-white">
                           Selected
