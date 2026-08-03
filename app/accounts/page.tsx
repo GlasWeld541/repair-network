@@ -29,6 +29,7 @@ type AccountRow = {
   latitude: number | null;
   longitude: number | null;
   active: boolean | null;
+  provider_type: string | null;
 };
 
 type AccountWithDistance = AccountRow & { distance: number | null };
@@ -56,7 +57,50 @@ function AccountsPageContent() {
   const [geocoding, setGeocoding] = useState(false);
   const [nearError, setNearError] = useState('');
 
+  // "Add independent tech" enrollment — creates a network.accounts row of type
+  // independent_tech, cross-linked to a Rex field tech by email. The Rex login is created
+  // separately in Rex; whoever logs into Rex with this email sees the account's jobs.
+  const [showEnroll, setShowEnroll] = useState(false);
+  const [enrollName, setEnrollName] = useState('');
+  const [enrollEmail, setEnrollEmail] = useState('');
+  const [enrolling, setEnrolling] = useState(false);
+  const [enrollError, setEnrollError] = useState('');
+
   const isReadOnly = role === 'demo';
+
+  async function enrollIndependentTech() {
+    const name = enrollName.trim();
+    const email = enrollEmail.trim().toLowerCase();
+    setEnrollError('');
+    if (!name || !email) {
+      setEnrollError('Enter the tech’s name and their Rex login email.');
+      return;
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      setEnrollError('Enter a valid email.');
+      return;
+    }
+    setEnrolling(true);
+    // Independent techs are fee-exempt for now (bps 0); the email is the cross-link to
+    // their Rex field-tech login. RLS (accounts_admin_all / is_glasweld_user) backstops this.
+    const { error } = await supabase.from('accounts').insert({
+      account_name: name,
+      company_email: email,
+      provider_type: 'independent_tech',
+      active: true,
+      repair_platform_fee_bps: 0,
+      replacement_platform_fee_bps: 0,
+    });
+    setEnrolling(false);
+    if (error) {
+      setEnrollError(`Could not enroll: ${error.message}`);
+      return;
+    }
+    setShowEnroll(false);
+    setEnrollName('');
+    setEnrollEmail('');
+    await loadAccounts();
+  }
 
   async function runProximity() {
     const q = nearQuery.trim();
@@ -127,7 +171,7 @@ function AccountsPageContent() {
       const { data } = await supabase
         .from('accounts')
         .select(
-          'id, account_name, city, state, glasweld_certified, insurance, uses_onyx, uses_zoom_injector, repair_only, outreach_status, latitude, longitude, active'
+          'id, account_name, city, state, glasweld_certified, insurance, uses_onyx, uses_zoom_injector, repair_only, outreach_status, latitude, longitude, active, provider_type'
         )
         .order('account_name');
 
@@ -258,6 +302,17 @@ function AccountsPageContent() {
           <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
             View Only
           </div>
+        ) : role === 'admin' ? (
+          <button
+            type="button"
+            onClick={() => {
+              setEnrollError('');
+              setShowEnroll(true);
+            }}
+            className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            Add independent tech
+          </button>
         ) : null}
       </div>
 
@@ -392,12 +447,19 @@ function AccountsPageContent() {
                 }`}
               >
                 <td className="px-4 py-3 font-medium">
-                  <Link
-                    href={`/accounts/${account.id}`}
-                    className="text-brand-700 hover:underline"
-                  >
-                    {account.account_name || 'Unnamed Account'}
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/accounts/${account.id}`}
+                      className="text-brand-700 hover:underline"
+                    >
+                      {account.account_name || 'Unnamed Account'}
+                    </Link>
+                    {account.provider_type === 'independent_tech' ? (
+                      <span className="shrink-0 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700">
+                        Ind. tech
+                      </span>
+                    ) : null}
+                  </div>
                 </td>
 
                 <td className="px-4 py-3">{account.city || '—'}</td>
@@ -517,6 +579,76 @@ function AccountsPageContent() {
           </tbody>
         </table>
       </div>
+
+      {showEnroll ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+          onClick={() => setShowEnroll(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-slate-900">Add independent tech</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Enrolls a solo Rex field tech as an assignable provider. Create their login in
+              Rex first — enter that same email here so their assigned jobs show up when they
+              log into Rex. Independent techs are fee-exempt for now.
+            </p>
+
+            <div className="mt-4 grid gap-3">
+              <label className="grid gap-1">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Name
+                </span>
+                <input
+                  value={enrollName}
+                  onChange={(e) => setEnrollName(e.target.value)}
+                  placeholder="e.g. Jordan Michaels"
+                  className="h-11 rounded-xl border border-slate-300 px-3 text-sm"
+                />
+              </label>
+
+              <label className="grid gap-1">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Rex login email
+                </span>
+                <input
+                  value={enrollEmail}
+                  onChange={(e) => setEnrollEmail(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void enrollIndependentTech();
+                  }}
+                  placeholder="tech@example.com"
+                  className="h-11 rounded-xl border border-slate-300 px-3 text-sm"
+                />
+              </label>
+            </div>
+
+            {enrollError ? (
+              <p className="mt-3 text-sm text-rose-600">{enrollError}</p>
+            ) : null}
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowEnroll(false)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void enrollIndependentTech()}
+                disabled={enrolling}
+                className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+              >
+                {enrolling ? 'Enrolling…' : 'Enroll tech'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

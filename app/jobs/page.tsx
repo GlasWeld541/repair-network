@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/notifications';
 type Account = {
   id: string;
   account_name: string | null;
+  provider_type: string | null;
 };
 
 type RoleRow = {
@@ -181,14 +182,14 @@ export default function JobsPage() {
     if (roleData.role === 'admin') {
       const { data: accountData } = await supabase
         .from('accounts')
-        .select('id, account_name')
+        .select('id, account_name, provider_type')
         .order('account_name');
 
       setAccounts((accountData as Account[]) || []);
     } else if (roleData.role === 'shop' && roleData.account_id) {
       const { data: accountData } = await supabase
         .from('accounts')
-        .select('id, account_name')
+        .select('id, account_name, provider_type')
         .eq('id', roleData.account_id)
         .maybeSingle();
 
@@ -371,10 +372,11 @@ export default function JobsPage() {
               onChange={(e) => setNewAccountId(e.target.value)}
               className="h-11"
             >
-              <option value="">Select account</option>
+              <option value="">Select provider</option>
               {accounts.map((account) => (
                 <option key={account.id} value={account.id}>
                   {account.account_name || 'Unnamed Account'}
+                  {account.provider_type === 'independent_tech' ? ' — Independent tech' : ''}
                 </option>
               ))}
             </select>
