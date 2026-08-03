@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import { createAdminClient } from '@/lib/supabase';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -35,29 +37,60 @@ function orBlank(value: unknown, blank = '______________________________') {
 export async function GET(_request: Request, context: RouteContext) {
   try {
     const { id } = await context.params;
+    const cookieStore = await cookies();
 
-    // Service-role (server-only): the `anon` role has no grant on network.jobs, so the
-    // anon-key pattern used elsewhere would fail here. This route reads a single job by
-    // id and renders a paper assignment sheet — no user-supplied filtering.
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!serviceRoleKey) {
-      return new NextResponse('Server not configured', { status: 500 });
-    }
-
-    const supabase = createClient(
+    // Identify the caller from their app session. Middleware guarantees SOME authenticated
+    // user reaches this route, but not which one or their role — and this route reads via
+    // the service-role key (below), which bypasses RLS. So authorize the job explicitly.
+    const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      serviceRoleKey,
-      { db: { schema: 'network' }, auth: { persistSession: false } }
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        db: { schema: 'network' },
+        cookies: {
+          get(name) {
+            return cookieStore.get(name)?.value;
+          },
+        },
+      }
     );
 
-    const { data: job, error } = await supabase
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user?.email) {
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
+
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role, approved, access_status, account_id')
+      .eq('user_email', user.email.toLowerCase())
+      .maybeSingle();
+
+    const active = roleData?.approved === true && roleData.access_status === 'Active';
+    if (!active || (roleData?.role !== 'admin' && roleData?.role !== 'shop')) {
+      return new NextResponse('Forbidden', { status: 403 });
+    }
+
+    // Service-role read (the `anon` role has no grant on network.jobs).
+    const admin = createAdminClient();
+
+    const { data: job, error } = await admin
       .from('jobs')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (error || !job) {
       return new NextResponse('Job not found', { status: 404 });
+    }
+
+    // A shop may print only its OWN assigned job (the RLS the job page relies on doesn't
+    // apply to a service-role read, so enforce the same scoping here). Admins print any.
+    if (roleData?.role === 'shop' && job.assigned_account_id !== roleData.account_id) {
+      return new NextResponse('Forbidden', { status: 403 });
     }
 
     const pdfDoc = await PDFDocument.create();
@@ -143,9 +176,8 @@ export async function GET(_request: Request, context: RouteContext) {
       ? new Date(job.created_at).toLocaleDateString()
       : '—';
     const vehicle =
-      [job.vehicle_year, job.vehicle_make, job.vehicle_model]
-        .filter(Boolean)
-        .join(' ') || '—';
+      safe([job.vehicle_year, job.vehicle_make, job.vehicle_model].filter(Boolean).join(' ')) ||
+      '—';
 
     // Header
     text('GlasWeld Repair Network', 48, 740, 18, true);
