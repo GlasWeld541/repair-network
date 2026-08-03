@@ -655,6 +655,18 @@ export default function JobDetailPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          {/* Printable job assignment sheet — available to every viewer (a shop prints
+              their assigned job to work it on paper), not just admins. Opens inline so
+              the browser's PDF viewer can print it directly. */}
+          <a
+            href={`/api/jobs/${job.id}/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Print Job
+          </a>
+
           {!invoice && !isReadOnly ? (
             <button
               onClick={() => void generateInvoice()}
