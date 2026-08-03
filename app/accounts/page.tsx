@@ -81,15 +81,14 @@ function AccountsPageContent() {
       return;
     }
     setEnrolling(true);
-    // Independent techs are fee-exempt for now (bps 0); the email is the cross-link to
-    // their Rex field-tech login. RLS (accounts_admin_all / is_glasweld_user) backstops this.
+    // The email is the cross-link to their Rex field-tech login. Fees inherit the standard
+    // shop defaults (300/700 bps) -- independent techs are billed like shops. RLS
+    // (accounts_admin_all / is_glasweld_user) backstops this.
     const { error } = await supabase.from('accounts').insert({
       account_name: name,
       company_email: email,
       provider_type: 'independent_tech',
       active: true,
-      repair_platform_fee_bps: 0,
-      replacement_platform_fee_bps: 0,
     });
     setEnrolling(false);
     if (error) {
@@ -593,7 +592,7 @@ function AccountsPageContent() {
             <p className="mt-1 text-sm text-slate-500">
               Enrolls a solo Rex field tech as an assignable provider. Create their login in
               Rex first — enter that same email here so their assigned jobs show up when they
-              log into Rex. Independent techs are fee-exempt for now.
+              log into Rex. They're billed the same as shops.
             </p>
 
             <div className="mt-4 grid gap-3">
