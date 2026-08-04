@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import { createAdminClient } from '@/lib/supabase';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -20,21 +22,60 @@ function clean(value: unknown) {
 export async function GET(_request: Request, context: RouteContext) {
   try {
     const { id } = await context.params;
+    const cookieStore = await cookies();
 
-    const supabase = createClient(
+    // Identify the caller from their app session. Middleware guarantees SOME authenticated
+    // user reaches this route, but not which one or their role — and this route reads via
+    // the service-role key (below), which bypasses RLS. So authorize the invoice explicitly.
+    // (The old anon-key read had no grant on network.invoices, so it always 404'd here.)
+    const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { db: { schema: 'network' } }
+      {
+        db: { schema: 'network' },
+        cookies: {
+          get(name) {
+            return cookieStore.get(name)?.value;
+          },
+        },
+      }
     );
 
-    const { data: invoice, error } = await supabase
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user?.email) {
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
+
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role, approved, access_status, account_id')
+      .eq('user_email', user.email.toLowerCase())
+      .maybeSingle();
+
+    const active = roleData?.approved === true && roleData.access_status === 'Active';
+    if (!active || (roleData?.role !== 'admin' && roleData?.role !== 'shop')) {
+      return new NextResponse('Forbidden', { status: 403 });
+    }
+
+    // Service-role read (the `anon` role has no grant on network.invoices).
+    const admin = createAdminClient();
+
+    const { data: invoice, error } = await admin
       .from('invoices')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (error || !invoice) {
       return new NextResponse('Invoice not found', { status: 404 });
+    }
+
+    // A shop may open only its OWN invoice (service-role bypasses RLS); admins any.
+    if (roleData?.role === 'shop' && invoice.account_id !== roleData.account_id) {
+      return new NextResponse('Forbidden', { status: 403 });
     }
 
     const pdfDoc = await PDFDocument.create();
