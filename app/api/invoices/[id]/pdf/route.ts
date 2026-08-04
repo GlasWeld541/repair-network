@@ -223,23 +223,43 @@ export async function GET(_request: Request, context: RouteContext) {
     text('1', qtyX + 6, rowY + 35, 10);
     text(money(total), amountX - 8, rowY + 35, 10, true);
 
-    // Notes
-    filledBox(48, 245, 300, 54);
-    text('NOTES', 60, 280, 9, true, muted);
-    text(clean(invoice.damage_notes).slice(0, 90), 60, 262, 9);
+    // Notes + Totals, side by side BELOW the services table (which ends at y=318) so
+    // neither box overlaps it. Equal height, aligned tops.
+    const sectionTop = 298;
+    const sectionBottom = 206;
+    const sectionH = sectionTop - sectionBottom;
 
-    // Totals
-    box(375, 232, 189, 92);
-    text('Subtotal', 390, 294, 10);
-    text(money(total), 490, 294, 10);
+    // Notes (left) — wrap the damage note to the box width so it can't bleed into totals.
+    filledBox(48, sectionBottom, 300, sectionH);
+    text('NOTES', 60, sectionTop - 18, 9, true, muted);
+    const noteText = clean(invoice.damage_notes);
+    const noteLines: string[] = [];
+    let noteLine = '';
+    for (const word of noteText.split(' ')) {
+      const trial = noteLine ? `${noteLine} ${word}` : word;
+      if (noteLine && font.widthOfTextAtSize(trial, 9) > 276) {
+        noteLines.push(noteLine);
+        noteLine = word;
+        if (noteLines.length === 3) break;
+      } else {
+        noteLine = trial;
+      }
+    }
+    if (noteLine && noteLines.length < 3) noteLines.push(noteLine);
+    if (noteLines.length === 3 && noteLines.join(' ').length < noteText.length) {
+      noteLines[2] = `${noteLines[2].slice(0, 42)}...`;
+    }
+    noteLines.forEach((ln, i) => text(ln, 60, sectionTop - 36 - i * 13, 9));
 
-    text('Paid', 390, 272, 10);
-    text(money(paid), 490, 272, 10);
-
-    horizontal(258, 390, 545);
-
-    text('Balance Due', 390, 240, 12, true);
-    text(money(outstanding), 480, 240, 12, true);
+    // Totals (right)
+    box(375, sectionBottom, 189, sectionH);
+    text('Subtotal', 390, sectionTop - 22, 10);
+    text(money(total), 490, sectionTop - 22, 10);
+    text('Paid', 390, sectionTop - 42, 10);
+    text(money(paid), 490, sectionTop - 42, 10);
+    horizontal(sectionTop - 52, 390, 545);
+    text('Balance Due', 390, sectionTop - 72, 12, true);
+    text(money(outstanding), 480, sectionTop - 72, 12, true);
 
     // Footer
     horizontal(90);

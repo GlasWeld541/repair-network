@@ -262,56 +262,56 @@ function AccountsPageContent() {
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
-        <label className="grid gap-1">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Search</span>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Name, city, or state"
-            className="h-10 w-56 rounded-xl border border-slate-300 px-3 text-sm"
-          />
-        </label>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="grid gap-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Search</span>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Name, city, or state"
+              className="h-10 w-56 rounded-xl border border-slate-300 px-3 text-sm"
+            />
+          </label>
 
-        <label className="grid gap-1">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">City</span>
-          <input
-            value={cityFilter}
-            onChange={(e) => setCityFilter(e.target.value)}
-            placeholder="e.g. Beaverton"
-            className="h-10 w-40 rounded-xl border border-slate-300 px-3 text-sm"
-          />
-        </label>
+          <label className="grid gap-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">City</span>
+            <input
+              value={cityFilter}
+              onChange={(e) => setCityFilter(e.target.value)}
+              placeholder="e.g. Beaverton"
+              className="h-10 w-40 rounded-xl border border-slate-300 px-3 text-sm"
+            />
+          </label>
 
-        <label className="grid gap-1">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">State</span>
-          <input
-            value={stateFilter}
-            onChange={(e) => setStateFilter(e.target.value.toUpperCase())}
-            placeholder="OR"
-            maxLength={2}
-            className="h-10 w-20 rounded-xl border border-slate-300 px-3 text-sm uppercase"
-          />
-        </label>
+          <label className="grid gap-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">State</span>
+            <input
+              value={stateFilter}
+              onChange={(e) => setStateFilter(e.target.value.toUpperCase())}
+              placeholder="OR"
+              maxLength={2}
+              className="h-10 w-20 rounded-xl border border-slate-300 px-3 text-sm uppercase"
+            />
+          </label>
 
-        <label className="grid gap-1">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</span>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as 'active' | 'disabled' | 'all')}
-            className="h-10 rounded-xl border border-slate-300 px-2 text-sm"
-          >
-            <option value="active">Active</option>
-            <option value="disabled">Disabled</option>
-            <option value="all">All</option>
-          </select>
-        </label>
+          <label className="grid gap-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as 'active' | 'disabled' | 'all')}
+              className="h-10 w-32 rounded-xl border border-slate-300 bg-white px-3 text-sm"
+            >
+              <option value="active">Active</option>
+              <option value="disabled">Disabled</option>
+              <option value="all">All</option>
+            </select>
+          </label>
 
-        <div className="grid gap-1">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Near (ZIP or city)
-          </span>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="hidden w-px self-stretch bg-slate-200 sm:block" aria-hidden />
+
+          <label className="grid gap-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Near (ZIP or city)</span>
             <input
               value={nearQuery}
               onChange={(e) => setNearQuery(e.target.value)}
@@ -319,13 +319,17 @@ function AccountsPageContent() {
                 if (e.key === 'Enter') void runProximity();
               }}
               placeholder="97005 or Beaverton, OR"
-              className="h-10 w-48 rounded-xl border border-slate-300 px-3 text-sm"
+              className="h-10 w-52 rounded-xl border border-slate-300 px-3 text-sm"
             />
+          </label>
+
+          <label className="grid gap-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Radius</span>
             <select
               value={radius}
               onChange={(e) => setRadius(Number(e.target.value))}
               aria-label="Radius in miles"
-              className="h-10 rounded-xl border border-slate-300 px-2 text-sm"
+              className="h-10 w-24 rounded-xl border border-slate-300 bg-white px-3 text-sm"
             >
               {RADIUS_OPTIONS.map((r) => (
                 <option key={r} value={r}>
@@ -333,24 +337,25 @@ function AccountsPageContent() {
                 </option>
               ))}
             </select>
+          </label>
+
+          <button
+            type="button"
+            onClick={() => void runProximity()}
+            disabled={geocoding}
+            className="h-10 rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+          >
+            {geocoding ? 'Locating…' : 'Search nearby'}
+          </button>
+          {origin ? (
             <button
               type="button"
-              onClick={() => void runProximity()}
-              disabled={geocoding}
-              className="h-10 rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+              onClick={clearProximity}
+              className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
             >
-              {geocoding ? 'Locating…' : 'Search nearby'}
+              Clear
             </button>
-            {origin ? (
-              <button
-                type="button"
-                onClick={clearProximity}
-                className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
-              >
-                Clear
-              </button>
-            ) : null}
-          </div>
+          ) : null}
         </div>
       </div>
 
