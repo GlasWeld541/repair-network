@@ -3,8 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Check, Pencil } from 'lucide-react';
-import heic2any from 'heic2any';
+import { ArrowLeft, Check, ChevronDown, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import BeforeAfterSlider from '@/components/before-after-slider';
 import { useToast } from '@/components/ui/notifications';
@@ -24,13 +23,6 @@ function money(value: number | null | undefined) {
 
 function invoiceNumber() {
   return `INV-${Date.now()}`;
-}
-
-function cleanFileName(fileName: string) {
-  return fileName
-    .replace(/\s+/g, '-')
-    .replace(/[^a-zA-Z0-9.\-_]/g, '')
-    .toLowerCase();
 }
 
 function valueOrDash(value: string | null | undefined) {
@@ -147,31 +139,6 @@ export default function JobDetailPage() {
     setPhotos(photoData || []);
     setEvents(eventData);
     setLoading(false);
-  }
-
-  async function preparePhotoForUpload(file: File) {
-    const fileName = file.name.toLowerCase();
-    const isHeic =
-      file.type === 'image/heic' ||
-      file.type === 'image/heif' ||
-      fileName.endsWith('.heic') ||
-      fileName.endsWith('.heif');
-
-    if (!isHeic) return file;
-
-    const converted = await heic2any({
-      blob: file,
-      toType: 'image/jpeg',
-      quality: 0.9,
-    });
-
-    const convertedBlob = Array.isArray(converted) ? converted[0] : converted;
-
-    return new File(
-      [convertedBlob],
-      file.name.replace(/\.(heic|heif)$/i, '.jpg'),
-      { type: 'image/jpeg' }
-    );
   }
 
   // Keep an already-generated invoice's technician in sync with the job's.
@@ -334,64 +301,6 @@ export default function JobDetailPage() {
 
     setEditing({ table: 'jobs', field });
     setDraftValue(value || '');
-  }
-
-  async function uploadPhoto(file: File, type: 'before' | 'after') {
-    if (isReadOnly) return;
-
-    try {
-      setWorking(true);
-
-      const uploadFile = await preparePhotoForUpload(file);
-      const cleanName = cleanFileName(uploadFile.name || 'photo.jpg');
-      const path = `${id}/${Date.now()}-${cleanName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('job-photos')
-        .upload(path, uploadFile, {
-          contentType: uploadFile.type || 'image/jpeg',
-          upsert: false,
-        });
-
-      if (uploadError) {
-        toast.error(`Upload failed: ${uploadError.message}`);
-        setWorking(false);
-        return;
-      }
-
-      const { data } = supabase.storage.from('job-photos').getPublicUrl(path);
-
-      const { error: insertError } = await supabase.from('job_photos').insert({
-        job_id: id,
-        type,
-        url: data.publicUrl,
-      });
-
-      if (insertError) {
-        toast.error(`Photo saved to storage, but could not attach to job: ${insertError.message}`);
-        setWorking(false);
-        return;
-      }
-
-      await loadPage();
-      setWorking(false);
-      flashSaved('Photo uploaded');
-
-      // When the after photo lands and a before already exists, auto-score with Rex
-      // (silent: a missing config / before is not surfaced on upload).
-      if (type === 'after') {
-        const { data: befores } = await supabase
-          .from('job_photos')
-          .select('id')
-          .eq('job_id', id)
-          .eq('type', 'before')
-          .limit(1);
-        if (befores && befores.length) void scoreRepair(true);
-      }
-    } catch (err: any) {
-      toast.error(`Upload error: ${err?.message || String(err)}`);
-      setWorking(false);
-    }
   }
 
   async function scoreRepair(silent = false) {
@@ -1067,21 +976,9 @@ export default function JobDetailPage() {
 
       <Section title="Photos">
         <div className="grid gap-6 lg:grid-cols-2">
-          <PhotoColumn
-            title="Before"
-            photos={beforePhotos}
-            working={working}
-            onUpload={(file) => uploadPhoto(file, 'before')}
-            readOnly={isReadOnly}
-          />
+          <PhotoColumn title="Before" photos={beforePhotos} />
 
-          <PhotoColumn
-            title="After"
-            photos={afterPhotos}
-            working={working}
-            onUpload={(file) => uploadPhoto(file, 'after')}
-            readOnly={isReadOnly}
-          />
+          <PhotoColumn title="After" photos={afterPhotos} />
         </div>
 
         {beforePhotos.length && afterPhotos.length ? (
@@ -1448,6 +1345,34 @@ function EditableSelect({
   );
 }
 
+// Color-code each job status so the Status card reads at a glance and the dropdown
+// matches the rest of the metric cards instead of a raw native <select>.
+const STATUS_TONES: Record<
+  string,
+  { dot: string; text: string; bg: string; border: string; ring: string }
+> = {
+  New: {
+    dot: 'bg-slate-400', text: 'text-slate-700', bg: 'bg-slate-50',
+    border: 'border-slate-200', ring: 'focus:ring-slate-300',
+  },
+  'In Progress': {
+    dot: 'bg-amber-500', text: 'text-amber-800', bg: 'bg-amber-50',
+    border: 'border-amber-200', ring: 'focus:ring-amber-300',
+  },
+  Submitted: {
+    dot: 'bg-blue-500', text: 'text-blue-800', bg: 'bg-blue-50',
+    border: 'border-blue-200', ring: 'focus:ring-blue-300',
+  },
+  Completed: {
+    dot: 'bg-emerald-500', text: 'text-emerald-800', bg: 'bg-emerald-50',
+    border: 'border-emerald-200', ring: 'focus:ring-emerald-300',
+  },
+  Canceled: {
+    dot: 'bg-rose-500', text: 'text-rose-800', bg: 'bg-rose-50',
+    border: 'border-rose-200', ring: 'focus:ring-rose-300',
+  },
+};
+
 function StatusStat({
   value,
   onChange,
@@ -1457,6 +1382,7 @@ function StatusStat({
   onChange: (value: string) => void;
   readOnly: boolean;
 }) {
+  const tone = STATUS_TONES[value] ?? STATUS_TONES.New;
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -1464,17 +1390,32 @@ function StatusStat({
       </div>
 
       {readOnly ? (
-        <div className="mt-2 text-2xl font-semibold text-slate-900">{value}</div>
+        <div className="mt-3">
+          <span
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold ${tone.border} ${tone.bg} ${tone.text}`}
+          >
+            <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
+            {value}
+          </span>
+        </div>
       ) : (
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="mt-2 rounded border border-slate-300 px-2 py-1 text-xl font-semibold text-slate-900"
-        >
-          {JOB_STATUSES.map((status) => (
-            <option key={status}>{status}</option>
-          ))}
-        </select>
+        <div className="relative mt-3">
+          <span
+            className={`pointer-events-none absolute left-3 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full ${tone.dot}`}
+          />
+          <select
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className={`w-full cursor-pointer appearance-none rounded-xl border py-2.5 pl-8 pr-9 text-base font-semibold shadow-sm outline-none transition focus:ring-2 ${tone.border} ${tone.bg} ${tone.text} ${tone.ring}`}
+          >
+            {JOB_STATUSES.map((status) => (
+              <option key={status} value={status} className="bg-white font-medium text-slate-900">
+                {status}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        </div>
       )}
     </div>
   );
@@ -1564,43 +1505,13 @@ function Quick({
 function PhotoColumn({
   title,
   photos,
-  working,
-  onUpload,
-  readOnly,
 }: {
   title: string;
   photos: any[];
-  working: boolean;
-  onUpload: (file: File) => Promise<void>;
-  readOnly: boolean;
 }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="font-semibold text-slate-900">{title}</h3>
-
-        {!readOnly ? (
-          <label className="cursor-pointer rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
-            Upload
-            <input
-              type="file"
-              accept="image/*,.heic,.heif"
-              disabled={working}
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files?.[0]) {
-                  void onUpload(e.target.files[0]);
-                  e.currentTarget.value = '';
-                }
-              }}
-            />
-          </label>
-        ) : (
-          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
-            View Only
-          </span>
-        )}
-      </div>
+      <h3 className="font-semibold text-slate-900">{title}</h3>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         {photos.map((photo) => (
