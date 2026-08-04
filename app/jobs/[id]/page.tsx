@@ -681,7 +681,7 @@ export default function JobDetailPage() {
             <>
               <Link
                 href={`/invoices/${invoice.id}`}
-                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Open Invoice
               </Link>
