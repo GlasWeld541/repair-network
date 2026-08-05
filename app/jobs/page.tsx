@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/notifications';
+import { Skeleton, SkeletonRows } from '@/components/ui/skeleton';
 
 type Account = {
   id: string;
@@ -505,9 +506,9 @@ export default function JobsPage() {
 
       {/* STATS */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Stat label="Sales" value={money(totals.sales)} />
-        <Stat label="Paid" value={money(totals.paid)} green />
-        <Stat label="Outstanding" value={money(totals.outstanding)} red />
+        <Stat label="Sales" value={money(totals.sales)} loading={loading} />
+        <Stat label="Paid" value={money(totals.paid)} green loading={loading} />
+        <Stat label="Outstanding" value={money(totals.outstanding)} red loading={loading} />
       </div>
 
       {/* TABLE */}
@@ -530,31 +531,43 @@ export default function JobsPage() {
           </thead>
 
           <tbody>
-            {filtered.map((j) => (
-              <tr
-                key={j.id}
-                onClick={() => router.push(`/jobs/${j.id}`)}
-                className="cursor-pointer border-t hover:bg-slate-50"
-              >
-                <td className="px-4 py-3">{jobDate(j)}</td>
-                <td className="px-4 py-3">{j.customer_name}</td>
-                <td className="px-4 py-3"><StatusBadge status={j.job_status} /></td>
-                <td className="px-4 py-3">
-                  <div>{j.intake_origin || 'admin'}</div>
-                  <div className="text-xs text-slate-500">{j.marketing_source || '-'}</div>
+            {loading ? (
+              <SkeletonRows columns={11} rows={8} />
+            ) : (
+              filtered.map((j) => (
+                <tr
+                  key={j.id}
+                  onClick={() => router.push(`/jobs/${j.id}`)}
+                  className="cursor-pointer border-t hover:bg-slate-50"
+                >
+                  <td className="px-4 py-3">{jobDate(j)}</td>
+                  <td className="px-4 py-3">{j.customer_name}</td>
+                  <td className="px-4 py-3"><StatusBadge status={j.job_status} /></td>
+                  <td className="px-4 py-3">
+                    <div>{j.intake_origin || 'admin'}</div>
+                    <div className="text-xs text-slate-500">{j.marketing_source || '-'}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div>{j.service_type || 'repair'}</div>
+                    <div className="text-xs text-slate-500">{j.payment_path || 'unknown'}</div>
+                  </td>
+                  <td className="px-4 py-3">{j.insurance_carrier}</td>
+                  <td className="px-4 py-3">{j.claim_number}</td>
+                  <td className="px-4 py-3">{money(invoiceAmount(j))}</td>
+                  <td className="px-4 py-3 text-emerald-700">{money(paidAmount(j))}</td>
+                  <td className="px-4 py-3 text-rose-700">{money(outstandingAmount(j))}</td>
+                  <td className="px-4 py-3">{daysOutstanding(j)}d</td>
+                </tr>
+              ))
+            )}
+
+            {!loading && !filtered.length ? (
+              <tr>
+                <td colSpan={11} className="py-10 text-center text-slate-500">
+                  No jobs match this view.
                 </td>
-                <td className="px-4 py-3">
-                  <div>{j.service_type || 'repair'}</div>
-                  <div className="text-xs text-slate-500">{j.payment_path || 'unknown'}</div>
-                </td>
-                <td className="px-4 py-3">{j.insurance_carrier}</td>
-                <td className="px-4 py-3">{j.claim_number}</td>
-                <td className="px-4 py-3">{money(invoiceAmount(j))}</td>
-                <td className="px-4 py-3 text-emerald-700">{money(paidAmount(j))}</td>
-                <td className="px-4 py-3 text-rose-700">{money(outstandingAmount(j))}</td>
-                <td className="px-4 py-3">{daysOutstanding(j)}d</td>
               </tr>
-            ))}
+            ) : null}
           </tbody>
         </table>
       </div>
@@ -598,13 +611,17 @@ function Filter({ active, onClick, children }: any) {
   );
 }
 
-function Stat({ label, value, green, red }: any) {
+function Stat({ label, value, green, red, loading }: any) {
   const color = green ? 'text-emerald-700' : red ? 'text-rose-700' : '';
 
   return (
     <div className="rounded-2xl border bg-white p-4 shadow-soft">
       <div className="text-xs text-slate-500">{label}</div>
-      <div className={`text-lg font-semibold ${color}`}>{value}</div>
+      {loading ? (
+        <Skeleton className="mt-1.5 h-6 w-28" />
+      ) : (
+        <div className={`text-lg font-semibold ${color}`}>{value}</div>
+      )}
     </div>
   );
 }

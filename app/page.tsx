@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import HomeCoverageMap from '@/components/home-coverage-map';
 import { ShieldCheck, BadgeCheck, TrendingDown } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const overviewCards = [
   {
@@ -33,6 +34,7 @@ export default function HomePage() {
   const [totalLocations, setTotalLocations] = useState(0);
   const [statesCovered, setStatesCovered] = useState(0);
   const [repairOnlyCount, setRepairOnlyCount] = useState(0);
+  const [countersLoading, setCountersLoading] = useState(true);
 
   useEffect(() => {
     const run = async () => {
@@ -79,6 +81,8 @@ export default function HomePage() {
           (row) => row.repair_only?.trim().toLowerCase() === 'yes'
         ).length
       );
+
+      setCountersLoading(false);
     }
 
     void loadCounters();
@@ -106,27 +110,39 @@ export default function HomePage() {
 
             <div className="mt-8 grid max-w-2xl gap-4 sm:grid-cols-3">
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div className="text-3xl font-semibold text-white">
-                  {totalLocations}
-                </div>
+                {countersLoading ? (
+                  <Skeleton className="h-9 w-16 rounded-lg bg-white/20" />
+                ) : (
+                  <div className="text-3xl font-semibold text-white">
+                    {totalLocations}
+                  </div>
+                )}
                 <div className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-teal-300">
                   Mapped locations
                 </div>
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div className="text-3xl font-semibold text-white">
-                  {statesCovered}
-                </div>
+                {countersLoading ? (
+                  <Skeleton className="h-9 w-16 rounded-lg bg-white/20" />
+                ) : (
+                  <div className="text-3xl font-semibold text-white">
+                    {statesCovered}
+                  </div>
+                )}
                 <div className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-teal-300">
                   States covered
                 </div>
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div className="text-3xl font-semibold text-white">
-                  {repairOnlyCount}
-                </div>
+                {countersLoading ? (
+                  <Skeleton className="h-9 w-16 rounded-lg bg-white/20" />
+                ) : (
+                  <div className="text-3xl font-semibold text-white">
+                    {repairOnlyCount}
+                  </div>
+                )}
                 <div className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-teal-300">
                   Repair-only shops
                 </div>

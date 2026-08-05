@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type Carrier = {
   id: string;
@@ -113,7 +114,14 @@ export default function CarriersPage() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
         {loading ? (
-          <div className="p-6 text-sm text-slate-500">Loading...</div>
+          Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className={`p-4 ${i === 0 ? '' : 'border-t border-slate-100'}`}
+            >
+              <Skeleton className="h-4 w-48" />
+            </div>
+          ))
         ) : carriers.length ? (
           carriers.map((carrier, index) => (
             <Link

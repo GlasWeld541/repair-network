@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { DetailPageSkeleton } from '@/components/ui/skeleton';
 
 type Carrier = {
   id: string;
@@ -164,7 +165,7 @@ export default function CarrierDetailPage() {
     await load();
   }
 
-  if (loading) return <div className="p-6 text-sm text-slate-500">Loading...</div>;
+  if (loading) return <DetailPageSkeleton cards={3} />;
   if (!carrier) return <div className="p-6">Carrier not found</div>;
 
   const primaryContact = contacts.find((contact) => contact.is_primary);

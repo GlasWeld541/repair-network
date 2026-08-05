@@ -7,6 +7,7 @@ import { ArrowLeft, Check, ChevronDown, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import BeforeAfterSlider from '@/components/before-after-slider';
 import { useToast } from '@/components/ui/notifications';
+import { DetailPageSkeleton } from '@/components/ui/skeleton';
 
 const JOB_STATUSES = ['New', 'In Progress', 'Submitted', 'Completed', 'Canceled'];
 const DAMAGE_TYPES = ['Combo Break', 'Bullseye', 'Star Break', 'Crack', 'Pit', 'Other'];
@@ -503,7 +504,7 @@ export default function JobDetailPage() {
     flashSaved('Payment recorded');
   }
 
-  if (loading) return <div className="p-6 text-sm text-slate-500">Loading...</div>;
+  if (loading) return <DetailPageSkeleton cards={4} />;
   if (!job) return <div className="p-6">Job not found</div>;
 
   const displayInvoiceAmount = invoice?.invoice_amount ?? job.invoice_amount;
@@ -615,7 +616,12 @@ export default function JobDetailPage() {
             </>
           ) : null}
 
-          {!isReadOnly ? (
+          {job.job_status === 'Completed' ? (
+            <span className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700">
+              <Check className="h-4 w-4" />
+              Completed
+            </span>
+          ) : !isReadOnly ? (
             <button
               type="button"
               disabled={working}

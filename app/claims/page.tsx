@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/notifications';
+import { SkeletonPageHeader, SkeletonCard, SkeletonTable } from '@/components/ui/skeleton';
 
 type ClaimIntake = {
   id: string;
@@ -196,7 +197,15 @@ export default function CarrierClaimsPage() {
     return events.filter((event) => event.claim_intake_id === claimId).slice(0, 4);
   }
 
-  if (loading) return <div className="p-6 text-sm text-slate-500">Loading claims...</div>;
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">
+        <SkeletonPageHeader />
+        <SkeletonCard lines={6} />
+        <SkeletonTable columns={8} rows={6} minWidth={1150} />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">
