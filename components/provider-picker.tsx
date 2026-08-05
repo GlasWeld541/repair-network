@@ -3,6 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { distanceMiles } from '@/lib/geo';
 
+// A provider can hold several jobs at once — assignment is not one-at-a-time. "Busy" is a
+// soft caution, not a block: only providers at/over this active-job count are hidden by
+// default (still revealable), so an admin doesn't over-load one shop without meaning to.
+// Below it, the current load shows as an informational count.
+const BUSY_THRESHOLD = 3;
+
 export type ProviderAccount = {
   id: string;
   account_name: string | null;
@@ -35,8 +41,9 @@ function certBadges(a: ProviderAccount) {
  * Location-aware provider (shop account) picker, rendered as a modal so it has room to
  * breathe (the earlier inline version overflowed the cramped triage grid cell). Cards show
  * name, location, distance, certifications, contact, and current job load; sorted by
- * distance when the customer's coordinates are known. Providers busy on an active job are
- * hidden by default (toggle to override). Clicking a card selects it; Done/backdrop closes.
+ * distance when the customer's coordinates are known. A provider can take several jobs at
+ * once; only those at/over the busy threshold (3+ active jobs) are hidden by default (toggle
+ * to override). Clicking a card selects it; Done/backdrop closes.
  */
 export default function ProviderPickerModal({
   open,
@@ -100,11 +107,13 @@ export default function ProviderPickerModal({
       if (!hay.includes(term)) return false;
     }
     if (a.id === selectedId) return true; // always keep the selected one visible
-    if (!showBusy && active > 0) return false;
+    if (!showBusy && active >= BUSY_THRESHOLD) return false;
     return true;
   });
 
-  const hiddenBusy = ranked.filter(({ a, active }) => active > 0 && a.id !== selectedId).length;
+  const hiddenBusy = ranked.filter(
+    ({ a, active }) => active >= BUSY_THRESHOLD && a.id !== selectedId,
+  ).length;
 
   const sortLabel = origin ? 'Nearest first' : geocoding ? 'Locating…' : 'By match';
 
@@ -193,9 +202,13 @@ export default function ProviderPickerModal({
                         {dist < 10 ? dist.toFixed(1) : Math.round(dist)} mi
                       </span>
                     ) : null}
-                    {active > 0 ? (
+                    {active >= BUSY_THRESHOLD ? (
                       <span className="whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-200">
                         Busy · {active}
+                      </span>
+                    ) : active > 0 ? (
+                      <span className="whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
+                        {active} active
                       </span>
                     ) : (
                       <span className="whitespace-nowrap rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">

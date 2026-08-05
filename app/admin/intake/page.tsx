@@ -328,11 +328,11 @@ export default function AdminConsumerIntakePage() {
     const triageResult = getSelected(intake, 'triage_result') || 'repair';
 
     if (triageResult === 'replacement') {
-      return Number(account?.replacement_platform_fee_bps ?? 700);
+      return Number(account?.replacement_platform_fee_bps ?? 500);
     }
 
     if (triageResult === 'repair') {
-      return Number(account?.repair_platform_fee_bps ?? 300);
+      return Number(account?.repair_platform_fee_bps ?? 500);
     }
 
     return 0;

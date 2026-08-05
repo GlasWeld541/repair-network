@@ -488,13 +488,13 @@ export default function AdminBillingPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <div>{percentFromBps(account.repair_platform_fee_bps ?? 300)}</div>
+                      <div>{percentFromBps(account.repair_platform_fee_bps ?? 500)}</div>
                       <div className="text-xs text-slate-500">
                         {account.consumer_repair_enabled === false ? 'paused' : 'enabled'}
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <div>{percentFromBps(account.replacement_platform_fee_bps ?? 700)}</div>
+                      <div>{percentFromBps(account.replacement_platform_fee_bps ?? 500)}</div>
                       <div className="text-xs text-slate-500">
                         {account.consumer_replacement_enabled ? 'enabled' : 'paused'}
                       </div>

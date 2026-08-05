@@ -1099,7 +1099,7 @@ export default function AccountDetailPage() {
                   type="number"
                   min="0"
                   step="0.01"
-                  value={basisPoints(account.repair_platform_fee_bps ?? 300)}
+                  value={basisPoints(account.repair_platform_fee_bps ?? 500)}
                   onChange={(e) =>
                     void updateBillingSetting(
                       'repair_platform_fee_bps',
@@ -1121,7 +1121,7 @@ export default function AccountDetailPage() {
                   type="number"
                   min="0"
                   step="0.01"
-                  value={basisPoints(account.replacement_platform_fee_bps ?? 700)}
+                  value={basisPoints(account.replacement_platform_fee_bps ?? 500)}
                   onChange={(e) =>
                     void updateBillingSetting(
                       'replacement_platform_fee_bps',
@@ -1336,7 +1336,7 @@ export default function AccountDetailPage() {
           </div>
 
           <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-            Current terms: {account.billing_enabled === false ? 'billing disabled' : `${basisPoints(account.repair_platform_fee_bps ?? 300)}% repair / ${basisPoints(account.replacement_platform_fee_bps ?? 700)}% replacement`}
+            Current terms: {account.billing_enabled === false ? 'billing disabled' : `${basisPoints(account.repair_platform_fee_bps ?? 500)}% repair / ${basisPoints(account.replacement_platform_fee_bps ?? 500)}% replacement`}
             {' '}with {gatewayLabel(account.payment_gateway_provider)} ({gatewayStatusLabel(account.payment_gateway_status)}).
             Monthly invoices are created on the 1st for previous-month charges and auto charged on the 5th.
           </div>
