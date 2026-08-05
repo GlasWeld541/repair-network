@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { Download, ExternalLink, Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/notifications';
+import { Skeleton } from '@/components/ui/skeleton';
 
 function money(value: number | null | undefined) {
   return Number(value || 0).toLocaleString('en-US', {
@@ -119,8 +120,49 @@ export default function InvoicePage() {
 
   if (loading) {
     return (
-      <div className="p-6 text-sm text-slate-500">
-        Loading invoice...
+      <div className="min-h-screen bg-slate-50 px-6 py-6">
+        <div className="mx-auto max-w-6xl space-y-6">
+          <div className="flex items-start justify-between">
+            <div className="space-y-2.5">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-8 w-40" />
+              <Skeleton className="h-4 w-64" />
+            </div>
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-10 w-36 rounded-xl" />
+              <Skeleton className="h-10 w-32 rounded-xl" />
+            </div>
+          </div>
+
+          <div className="space-y-8 rounded-3xl border border-slate-200 bg-white p-8 shadow-soft">
+            <div className="flex items-start justify-between border-b border-slate-200 pb-6">
+              <Skeleton className="h-7 w-56" />
+              <Skeleton className="h-7 w-32" />
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-5"
+                >
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-4 w-32" />
+                </div>
+              ))}
+            </div>
+
+            <div className="grid gap-5 rounded-2xl border border-slate-200 bg-slate-50 p-6 lg:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="space-y-2">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-8 w-28" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

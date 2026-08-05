@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useToast, useConfirm } from '@/components/ui/notifications';
+import { DetailPageSkeleton } from '@/components/ui/skeleton';
 
 type Carrier = {
   id: string;
@@ -167,7 +168,7 @@ export default function AdminRoutingPage() {
     await load();
   }
 
-  if (loading) return <div className="p-6 text-sm text-slate-500">Loading routing...</div>;
+  if (loading) return <DetailPageSkeleton cards={3} />;
 
   return (
     <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">

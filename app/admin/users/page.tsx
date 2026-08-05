@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/notifications';
+import { ListPageSkeleton } from '@/components/ui/skeleton';
 
 type AccessRequest = {
   id: string;
@@ -648,7 +649,7 @@ export default function AdminUsersPage() {
   );
 
   if (loading) {
-    return <div className="p-6 text-sm text-slate-500">Loading user access...</div>;
+    return <ListPageSkeleton withFilters columns={6} rows={8} minWidth={1000} />;
   }
 
   return (

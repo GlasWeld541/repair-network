@@ -5,6 +5,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { distanceMiles } from '@/lib/geo';
+import { Skeleton, SkeletonRows, ListPageSkeleton } from '@/components/ui/skeleton';
 
 const YES_NO_UNKNOWN = ['Unknown', 'Yes', 'No'] as const;
 const OUTREACH_OPTIONS = [
@@ -43,6 +44,7 @@ function AccountsPageContent() {
 
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [role, setRole] = useState<Role>(null);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [stateFilter, setStateFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
@@ -133,6 +135,7 @@ function AccountsPageContent() {
         .order('account_name');
 
       setAccounts((data as AccountRow[]) || []);
+      setLoading(false);
       return;
     }
 
@@ -144,6 +147,7 @@ function AccountsPageContent() {
 
     if (!shopData?.account_id) {
       setAccounts([]);
+      setLoading(false);
       return;
     }
 
@@ -155,6 +159,7 @@ function AccountsPageContent() {
       .eq('id', shopData.account_id);
 
     setAccounts((data as AccountRow[]) || []);
+    setLoading(false);
   }
 
   async function updateAccount(
@@ -361,6 +366,9 @@ function AccountsPageContent() {
 
       {nearError ? <p className="text-sm text-rose-600">{nearError}</p> : null}
 
+      {loading ? (
+        <Skeleton className="h-4 w-40" />
+      ) : (
       <p className="text-sm text-slate-500">
         {showDistance
           ? `${filteredAccounts.length} shop${filteredAccounts.length === 1 ? '' : 's'} within ${radius} mi of "${nearQuery.trim()}"${
@@ -370,6 +378,7 @@ function AccountsPageContent() {
             }`
           : `${filteredAccounts.length} account${filteredAccounts.length === 1 ? '' : 's'}`}
       </p>
+      )}
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-soft">
         <table className="min-w-[1180px] text-sm">
@@ -390,7 +399,9 @@ function AccountsPageContent() {
           </thead>
 
           <tbody>
-            {filteredAccounts.map((account) => (
+            {loading ? <SkeletonRows columns={showDistance ? 11 : 10} rows={8} /> : null}
+
+            {!loading && filteredAccounts.map((account) => (
               <tr
                 key={account.id}
                 className={`border-t hover:bg-slate-50 ${
@@ -515,7 +526,7 @@ function AccountsPageContent() {
               </tr>
             ))}
 
-            {!filteredAccounts.length && (
+            {!loading && !filteredAccounts.length && (
               <tr>
                 <td
                   colSpan={showDistance ? 11 : 10}
@@ -568,7 +579,7 @@ function EditableCell({
 
 export default function AccountsPage() {
   return (
-    <Suspense fallback={<div className="p-6">Loading...</div>}>
+    <Suspense fallback={<ListPageSkeleton withFilters columns={10} rows={8} minWidth={1180} />}>
       <AccountsPageContent />
     </Suspense>
   );

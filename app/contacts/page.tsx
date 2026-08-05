@@ -5,6 +5,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Search, Pencil, Check } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Contact } from '@/lib/types';
+import { SkeletonRows, ListPageSkeleton } from '@/components/ui/skeleton';
 
 type EditingCell = {
   id: string;
@@ -31,6 +32,7 @@ function formatPhoneInput(value: string) {
 
 function ContactsPageContent() {
   const [rows, setRows] = useState<Contact[]>([]);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<EditingCell>(null);
   const [draft, setDraft] = useState('');
@@ -69,6 +71,7 @@ function ContactsPageContent() {
     if (roleData.role === 'shop') {
       if (!roleData.account_id) {
         setRows([]);
+        setLoading(false);
         return;
       }
 
@@ -78,6 +81,7 @@ function ContactsPageContent() {
     const { data } = await query;
 
     setRows((data as Contact[]) || []);
+    setLoading(false);
   }
 
   function flashSaved() {
@@ -215,7 +219,9 @@ function ContactsPageContent() {
           </thead>
 
           <tbody>
-            {filtered.map((row) => (
+            {loading ? <SkeletonRows columns={6} rows={8} /> : null}
+
+            {!loading && filtered.map((row) => (
               <tr key={row.id} className="border-t border-slate-100">
                 <td className="px-4 py-3 font-medium text-ink">
                   {row.account_id ? (
@@ -237,6 +243,14 @@ function ContactsPageContent() {
                 <td className="px-4 py-3">{renderCell(row, 'billing_city')}</td>
               </tr>
             ))}
+
+            {!loading && !filtered.length ? (
+              <tr>
+                <td colSpan={6} className="py-10 text-center text-slate-500">
+                  {query ? 'No contacts match your search.' : 'No contacts yet.'}
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>
@@ -246,7 +260,7 @@ function ContactsPageContent() {
 
 export default function ContactsPage() {
   return (
-    <Suspense fallback={<div className="p-6">Loading...</div>}>
+    <Suspense fallback={<ListPageSkeleton columns={6} rows={8} minWidth={1000} />}>
       <ContactsPageContent />
     </Suspense>
   );

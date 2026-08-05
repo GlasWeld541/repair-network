@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { ArrowLeft, Check, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useToast, useConfirm } from '@/components/ui/notifications';
+import { DetailPageSkeleton } from '@/components/ui/skeleton';
 
 type AccountRow = {
   id: string;
@@ -862,7 +863,7 @@ export default function AccountDetailPage() {
     );
   }
 
-  if (loading) return <div className="p-6">Loading...</div>;
+  if (loading) return <DetailPageSkeleton cards={4} />;
 
   if (blocked) {
     return (

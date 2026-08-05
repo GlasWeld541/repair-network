@@ -6,6 +6,7 @@ import { Eye, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import ProviderPickerModal from '@/components/provider-picker';
 import { useToast } from '@/components/ui/notifications';
+import { ListPageSkeleton } from '@/components/ui/skeleton';
 
 type Intake = {
   id: string;
@@ -513,7 +514,7 @@ export default function AdminConsumerIntakePage() {
     : 'needs_review';
 
   if (loading) {
-    return <div className="p-6 text-sm text-slate-500">Loading consumer intake...</div>;
+    return <ListPageSkeleton withFilters columns={7} rows={8} minWidth={1100} />;
   }
 
   const totalPages = Math.max(1, Math.ceil(intakes.length / PAGE_SIZE));

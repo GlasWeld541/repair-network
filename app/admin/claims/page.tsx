@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/notifications';
+import { ListPageSkeleton } from '@/components/ui/skeleton';
 
 type ClaimIntake = {
   id: string;
@@ -352,7 +353,7 @@ export default function AdminClaimsPage() {
     [claims]
   );
 
-  if (loading) return <div className="p-6 text-sm text-slate-500">Loading claims...</div>;
+  if (loading) return <ListPageSkeleton withFilters columns={8} rows={8} minWidth={1150} />;
 
   return (
     <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">

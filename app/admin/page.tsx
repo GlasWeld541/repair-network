@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Eye } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { SkeletonPageHeader, SkeletonCard } from '@/components/ui/skeleton';
 
 export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -52,7 +53,17 @@ export default function AdminDashboardPage() {
   }, []);
 
   if (loading) {
-    return <div className="p-6 text-sm text-slate-500">Loading...</div>;
+    return (
+      <div className="mx-auto max-w-[1380px] space-y-8 px-4 py-6 sm:px-6">
+        <SkeletonPageHeader />
+        <div className="grid gap-5 md:grid-cols-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} lines={2} />
+          ))}
+        </div>
+        <SkeletonCard lines={1} />
+      </div>
+    );
   }
 
   if (!authorized) {

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/notifications';
+import { ListPageSkeleton } from '@/components/ui/skeleton';
 
 type BillingEvent = {
   id: string;
@@ -246,7 +247,7 @@ export default function AdminBillingPage() {
   }
 
   if (loading) {
-    return <div className="p-6 text-sm text-slate-500">Loading billing...</div>;
+    return <ListPageSkeleton withStats columns={6} rows={6} minWidth={1000} />;
   }
 
   return (
