@@ -450,7 +450,9 @@ export default function AdminConsumerIntakePage() {
         claim_number: intake.claim_number,
         policy_number: intake.policy_number,
         job_status: 'New',
-        invoice_amount: 0,
+        // Auto-populate the standard $100 repair price (editable on the job screen);
+        // replacements are priced per-quote so they start at 0.
+        invoice_amount: triageResult === 'repair' ? 100 : 0,
         amount_paid: 0,
         invoice_date: new Date().toISOString().slice(0, 10),
       })

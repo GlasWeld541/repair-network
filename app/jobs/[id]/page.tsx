@@ -228,6 +228,32 @@ export default function JobDetailPage() {
     flashSaved('Provider reassigned');
   }
 
+  // Save an editable money figure on the job. When editing the price and an invoice already
+  // exists, sync it onto the invoice row too, since display + the completion billing event
+  // read the invoice's invoice_amount first — otherwise the edit wouldn't take effect.
+  async function saveMoney(field: 'invoice_amount' | 'insurance_amount', value: number | null) {
+    if (!job || isReadOnly) return;
+    if (Number(job[field] ?? null) === Number(value ?? null)) return; // no-op
+
+    setWorking(true);
+    const { error } = await supabase.from('jobs').update({ [field]: value }).eq('id', job.id);
+    if (!error && field === 'invoice_amount' && invoice?.id) {
+      const { error: invErr } = await supabase
+        .from('invoices')
+        .update({ invoice_amount: value })
+        .eq('id', invoice.id);
+      if (!invErr) setInvoice({ ...invoice, invoice_amount: value });
+    }
+    setWorking(false);
+
+    if (error) {
+      toast.error(`Could not save: ${error.message}`);
+      return;
+    }
+    setJob({ ...job, [field]: value });
+    flashSaved();
+  }
+
   async function updateJobField(field: string, value: string | number | null) {
     if (!job || isReadOnly) return;
 
@@ -593,6 +619,12 @@ export default function JobDetailPage() {
     ? Number(invoice.invoice_amount || 0) - Number(invoice.amount_paid || 0)
     : displayOutstanding;
 
+  // Per-job money math: price (invoice) − what insurance covers = what the customer pays
+  // out of pocket ("to collect"). Price is invoice-row-aware; insurance is a job field.
+  const price = Number(displayInvoiceAmount || 0);
+  const insuranceCovers = Number(job.insurance_amount || 0);
+  const customerOwes = Math.max(price - insuranceCovers, 0);
+
   const vehicle = [job.vehicle_year, job.vehicle_make, job.vehicle_model]
     .filter(Boolean)
     .join(' ');
@@ -841,6 +873,30 @@ export default function JobDetailPage() {
                 cancel={() => setEditing(null)}
                 readOnly={isReadOnly}
               />
+            </div>
+          </Section>
+
+          <Section title="Money">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <MoneyInput
+                label="Price (invoice)"
+                value={price}
+                onSave={(v) => void saveMoney('invoice_amount', v)}
+                readOnly={isReadOnly}
+                working={working}
+              />
+              <MoneyInput
+                label="Insurance covers"
+                value={insuranceCovers}
+                onSave={(v) => void saveMoney('insurance_amount', v)}
+                readOnly={isReadOnly}
+                working={working}
+              />
+              <ComputedMoney label="Customer owes" value={customerOwes} tone="brand" hint="Price − insurance" />
+            </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-3">
+              <ComputedMoney label="Paid" value={Number(displayPaid || 0)} tone="green" small />
+              <ComputedMoney label="Outstanding" value={displayOutstanding} tone="red" small hint="Price − paid" />
             </div>
           </Section>
 
@@ -1628,6 +1684,89 @@ function Quick({
       <div className="mt-1 text-sm font-medium text-slate-900">
         {valueOrDash(value)}
       </div>
+    </div>
+  );
+}
+
+// An editable dollar amount (blur to save). Shows a read-only figure in demo/shop views.
+function MoneyInput({
+  label,
+  value,
+  onSave,
+  readOnly,
+  working,
+}: {
+  label: string;
+  value: number;
+  onSave: (v: number | null) => void;
+  readOnly: boolean;
+  working: boolean;
+}) {
+  const [draft, setDraft] = useState<string>(value ? String(value) : '');
+  useEffect(() => {
+    setDraft(value ? String(value) : '');
+  }, [value]);
+
+  if (readOnly) return <ComputedMoney label={label} value={value} />;
+
+  return (
+    <label className="block">
+      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</div>
+      <div className="mt-1 flex items-center rounded-lg border border-slate-300 bg-white px-2 focus-within:border-brand-500">
+        <span className="text-slate-400">$</span>
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          inputMode="decimal"
+          value={draft}
+          disabled={working}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => {
+            const t = draft.trim();
+            const n = t === '' ? null : Number(t);
+            if (n !== null && !Number.isFinite(n)) return;
+            onSave(n);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+          }}
+          className="h-9 w-full bg-transparent px-1 text-sm outline-none disabled:opacity-60"
+        />
+      </div>
+    </label>
+  );
+}
+
+// A read-only derived money figure (customer-owes / paid / outstanding).
+function ComputedMoney({
+  label,
+  value,
+  tone,
+  small,
+  hint,
+}: {
+  label: string;
+  value: number;
+  tone?: 'green' | 'red' | 'brand';
+  small?: boolean;
+  hint?: string;
+}) {
+  const color =
+    tone === 'green'
+      ? 'text-emerald-700'
+      : tone === 'red'
+        ? 'text-rose-700'
+        : tone === 'brand'
+          ? 'text-brand-700'
+          : 'text-slate-900';
+  return (
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</div>
+      <div className={`mt-1 font-semibold ${small ? 'text-base' : 'text-lg'} ${color}`}>
+        {money(value)}
+      </div>
+      {hint ? <div className="text-[11px] text-slate-400">{hint}</div> : null}
     </div>
   );
 }
