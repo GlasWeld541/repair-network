@@ -68,6 +68,21 @@ type ViewMode =
 // Work-status buckets (job_status), distinct from the receivables views above.
 const ONGOING_STATUSES = ['New', 'In Progress', 'Submitted'];
 
+type SortKey =
+  | 'date'
+  | 'customer'
+  | 'shop'
+  | 'status'
+  | 'service'
+  | 'carrier'
+  | 'invoice'
+  | 'paid'
+  | 'balance'
+  | 'aging';
+type SortDir = 'asc' | 'desc';
+// Columns that sort alphabetically (default A→Z); everything else is numeric/date (high→low).
+const TEXT_SORT_KEYS: SortKey[] = ['customer', 'shop', 'status', 'service', 'carrier'];
+
 function jobStatusOf(j: { job_status: string | null }) {
   return j.job_status || 'New';
 }
@@ -119,6 +134,23 @@ export default function JobsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('current');
   const [startDate, setStartDate] = useState(firstDayOfCurrentMonthIso());
   const [endDate, setEndDate] = useState(todayIso());
+
+  // Admin dashboard filters + column sort. Providers/carriers narrow the all-jobs view;
+  // shops are RLS-scoped to their own jobs so these stay admin-only.
+  const [providerFilter, setProviderFilter] = useState('');
+  const [carrierFilter, setCarrierFilter] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('date');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      // Text columns read best A→Z; money/date/aging default high→low (most recent / biggest).
+      setSortDir(TEXT_SORT_KEYS.includes(key) ? 'asc' : 'desc');
+    }
+  }
 
   const [showCreate, setShowCreate] = useState(false);
   const [newCustomer, setNewCustomer] = useState('');
@@ -280,6 +312,10 @@ export default function JobsPage() {
 
   const filtered = useMemo(() => {
     return jobs.filter((j) => {
+      // Universal narrowing across every view: assigned provider + insurance carrier.
+      if (providerFilter && j.assigned_account_id !== providerFilter) return false;
+      if (carrierFilter && (j.insurance_carrier || '') !== carrierFilter) return false;
+
       const balance = outstandingAmount(j);
       const days = daysOutstanding(j);
       const status = jobStatusOf(j);
@@ -300,7 +336,35 @@ export default function JobsPage() {
 
       return true;
     });
-  }, [jobs, viewMode, startDate, endDate]);
+  }, [jobs, viewMode, startDate, endDate, providerFilter, carrierFilter]);
+
+  const sorted = useMemo(() => {
+    const val = (j: JobWithInvoice): string | number => {
+      switch (sortKey) {
+        case 'customer': return (j.customer_name || '').toLowerCase();
+        case 'shop': return (j.assigned_account_name || '').toLowerCase();
+        case 'status': return jobStatusOf(j);
+        case 'service': return j.service_type || '';
+        case 'carrier': return (j.insurance_carrier || '').toLowerCase();
+        case 'invoice': return invoiceAmount(j);
+        case 'paid': return paidAmount(j);
+        case 'balance': return outstandingAmount(j);
+        case 'aging': return daysOutstanding(j);
+        default: return jobDate(j);
+      }
+    };
+    const arr = [...filtered];
+    arr.sort((a, b) => {
+      const va = val(a);
+      const vb = val(b);
+      const c =
+        typeof va === 'number' && typeof vb === 'number'
+          ? va - vb
+          : String(va).localeCompare(String(vb));
+      return sortDir === 'asc' ? c : -c;
+    });
+    return arr;
+  }, [filtered, sortKey, sortDir]);
 
   const totals = useMemo(() => {
     return filtered.reduce(
@@ -312,6 +376,38 @@ export default function JobsPage() {
       },
       { sales: 0, paid: 0, outstanding: 0 }
     );
+  }, [filtered]);
+
+  // Distinct insurance carriers present in the loaded jobs, for the admin filter dropdown.
+  const carrierOptions = useMemo(() => {
+    const set = new Set<string>();
+    jobs.forEach((j) => {
+      const c = (j.insurance_carrier || '').trim();
+      if (c) set.add(c);
+    });
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [jobs]);
+
+  // Per-provider rollup over the current filtered view — the "provider performance /
+  // forecasting" panel. Sorted by sales so the biggest earners lead.
+  const providerStats = useMemo(() => {
+    const m = new Map<string, { name: string; jobs: number; sales: number; paid: number; outstanding: number }>();
+    filtered.forEach((j) => {
+      const key = j.assigned_account_id || 'unassigned';
+      const row = m.get(key) || {
+        name: j.assigned_account_name || 'Unassigned',
+        jobs: 0,
+        sales: 0,
+        paid: 0,
+        outstanding: 0,
+      };
+      row.jobs += 1;
+      row.sales += invoiceAmount(j);
+      row.paid += paidAmount(j);
+      row.outstanding += outstandingAmount(j);
+      m.set(key, row);
+    });
+    return [...m.values()].sort((a, b) => b.sales - a.sales);
   }, [filtered]);
 
   return (
@@ -466,6 +562,51 @@ export default function JobsPage() {
             <Filter active={viewMode === 'paid'} onClick={() => setViewMode('paid')}>Paid</Filter>
           </div>
 
+          {/* ADMIN: provider + carrier filters (all jobs → narrow to one shop/carrier) */}
+          {role === 'admin' ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={providerFilter}
+                onChange={(e) => setProviderFilter(e.target.value)}
+                className="h-8 rounded border px-2 text-sm"
+              >
+                <option value="">All providers</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.account_name || 'Unnamed'}
+                    {account.provider_type === 'independent_tech' ? ' — Ind. tech' : ''}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={carrierFilter}
+                onChange={(e) => setCarrierFilter(e.target.value)}
+                className="h-8 rounded border px-2 text-sm"
+              >
+                <option value="">All carriers</option>
+                {carrierOptions.map((carrier) => (
+                  <option key={carrier} value={carrier}>
+                    {carrier}
+                  </option>
+                ))}
+              </select>
+
+              {providerFilter || carrierFilter ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProviderFilter('');
+                    setCarrierFilter('');
+                  }}
+                  className="rounded border px-2 py-1 text-xs text-slate-600"
+                >
+                  Reset
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
           {/* DATE GROUP */}
           <div className="ml-auto flex items-center gap-2">
             <input
@@ -516,25 +657,28 @@ export default function JobsPage() {
         <table className="min-w-[1100px] text-sm">
           <thead className="bg-slate-50 text-slate-500">
             <tr>
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Customer</th>
-              <th className="px-4 py-3">Status</th>
+              <SortHeader label="Date" k="date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+              <SortHeader label="Customer" k="customer" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+              {role === 'admin' ? (
+                <SortHeader label="Provider" k="shop" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+              ) : null}
+              <SortHeader label="Status" k="status" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
               <th className="px-4 py-3">Origin</th>
-              <th className="px-4 py-3">Service</th>
-              <th className="px-4 py-3">Carrier</th>
+              <SortHeader label="Service" k="service" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+              <SortHeader label="Carrier" k="carrier" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
               <th className="px-4 py-3">Claim</th>
-              <th className="px-4 py-3">Invoice</th>
-              <th className="px-4 py-3">Paid</th>
-              <th className="px-4 py-3">Balance</th>
-              <th className="px-4 py-3">Aging</th>
+              <SortHeader label="Invoice" k="invoice" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+              <SortHeader label="Paid" k="paid" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+              <SortHeader label="Balance" k="balance" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+              <SortHeader label="Aging" k="aging" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
             </tr>
           </thead>
 
           <tbody>
             {loading ? (
-              <SkeletonRows columns={11} rows={8} />
+              <SkeletonRows columns={role === 'admin' ? 12 : 11} rows={8} />
             ) : (
-              filtered.map((j) => (
+              sorted.map((j) => (
                 <tr
                   key={j.id}
                   onClick={() => router.push(`/jobs/${j.id}`)}
@@ -542,6 +686,9 @@ export default function JobsPage() {
                 >
                   <td className="px-4 py-3">{jobDate(j)}</td>
                   <td className="px-4 py-3">{j.customer_name}</td>
+                  {role === 'admin' ? (
+                    <td className="px-4 py-3">{j.assigned_account_name || '—'}</td>
+                  ) : null}
                   <td className="px-4 py-3"><StatusBadge status={j.job_status} /></td>
                   <td className="px-4 py-3">
                     <div>{j.intake_origin || 'admin'}</div>
@@ -561,9 +708,9 @@ export default function JobsPage() {
               ))
             )}
 
-            {!loading && !filtered.length ? (
+            {!loading && !sorted.length ? (
               <tr>
-                <td colSpan={11} className="py-10 text-center text-slate-500">
+                <td colSpan={role === 'admin' ? 12 : 11} className="py-10 text-center text-slate-500">
                   No jobs match this view.
                 </td>
               </tr>
@@ -572,7 +719,67 @@ export default function JobsPage() {
         </table>
       </div>
 
+      {/* PROVIDER PERFORMANCE (admin) — per-provider rollup over the current view */}
+      {role === 'admin' && !loading && providerStats.length ? (
+        <div className="overflow-x-auto rounded-2xl border bg-white shadow-soft">
+          <div className="flex items-center justify-between px-4 pt-4">
+            <h2 className="text-sm font-semibold text-slate-900">By provider</h2>
+            <span className="text-xs text-slate-500">{providerStats.length} in view</span>
+          </div>
+          <table className="mt-2 min-w-[720px] text-sm">
+            <thead className="bg-slate-50 text-slate-500">
+              <tr>
+                <th className="px-4 py-3 text-left">Provider</th>
+                <th className="px-4 py-3 text-right">Jobs</th>
+                <th className="px-4 py-3 text-right">Sales</th>
+                <th className="px-4 py-3 text-right">Paid</th>
+                <th className="px-4 py-3 text-right">Outstanding</th>
+              </tr>
+            </thead>
+            <tbody>
+              {providerStats.map((p, i) => (
+                <tr key={i} className="border-t">
+                  <td className="px-4 py-3 font-medium text-slate-900">{p.name}</td>
+                  <td className="px-4 py-3 text-right">{p.jobs}</td>
+                  <td className="px-4 py-3 text-right">{money(p.sales)}</td>
+                  <td className="px-4 py-3 text-right text-emerald-700">{money(p.paid)}</td>
+                  <td className="px-4 py-3 text-right text-rose-700">{money(p.outstanding)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
     </div>
+  );
+}
+
+function SortHeader({
+  label,
+  k,
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  k: SortKey;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (k: SortKey) => void;
+}) {
+  const active = sortKey === k;
+  return (
+    <th className="px-4 py-3">
+      <button
+        type="button"
+        onClick={() => onSort(k)}
+        className={`inline-flex items-center gap-1 ${active ? 'text-slate-900' : 'hover:text-slate-700'}`}
+      >
+        {label}
+        <span className="text-[10px] text-slate-400">{active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span>
+      </button>
+    </th>
   );
 }
 
