@@ -85,16 +85,25 @@ export default function ProviderPickerModal({
         origin && a.latitude != null && a.longitude != null
           ? distanceMiles(origin.latitude, origin.longitude, a.latitude, a.longitude)
           : null;
-      return { a, dist, active: activeCounts[a.id] || 0, order: i };
+      return {
+        a,
+        dist,
+        active: activeCounts[a.id] || 0,
+        order: i,
+        certified: a.glasweld_certified === 'Yes',
+      };
     });
-    if (origin) {
-      withMeta.sort((x, y) => {
-        if (x.dist == null && y.dist == null) return x.order - y.order;
-        if (x.dist == null) return 1;
-        if (y.dist == null) return -1;
-        return x.dist - y.dist;
-      });
-    }
+    // Client rule: GlasWeld-certified providers rank ABOVE everyone else, then nearest
+    // first within each tier. So a certified shop always leads a non-certified one, even
+    // when the non-certified one is closer. Unknown distance sinks to the bottom of its
+    // tier; with no origin at all this falls back to the incoming (proximity-scored) order.
+    withMeta.sort((x, y) => {
+      if (x.certified !== y.certified) return x.certified ? -1 : 1;
+      if (x.dist == null && y.dist == null) return x.order - y.order;
+      if (x.dist == null) return 1;
+      if (y.dist == null) return -1;
+      return x.dist - y.dist;
+    });
     return withMeta;
   }, [accounts, activeCounts, origin]);
 
@@ -115,7 +124,11 @@ export default function ProviderPickerModal({
     ({ a, active }) => active >= BUSY_THRESHOLD && a.id !== selectedId,
   ).length;
 
-  const sortLabel = origin ? 'Nearest first' : geocoding ? 'Locating…' : 'By match';
+  const sortLabel = origin
+    ? 'Certified first, then nearest'
+    : geocoding
+      ? 'Locating…'
+      : 'Certified first';
 
   return (
     <div

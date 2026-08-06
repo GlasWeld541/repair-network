@@ -91,6 +91,23 @@ function bpsLabel(value: number | null | undefined) {
   return `${(Number(value || 0) / 100).toFixed(2)}%`;
 }
 
+// Derive the job's Damage Type from Rex's SmartScan read. For consumer leads the break
+// type lives in the free-text damage_notes (Rex's "Damage read: …") — damage_location is
+// a position, and isn't sent at all for SmartScan intakes — so we scan the notes for the
+// break type and map it to the canonical Damage Type options the job screen uses (which
+// stay editable there). Check "combination" first: those reads mention "bullseye"/"star"
+// too. Falls back to whatever damage_location the intake carried (agent leads set it).
+function deriveDamageType(intake: Intake, triageResult: string): string {
+  if (triageResult === 'replacement') return 'Replacement';
+  const hay = `${intake.damage_notes || ''} ${intake.damage_location || ''}`.toLowerCase();
+  if (/combination|combo/.test(hay)) return 'Combo Break';
+  if (/bull.?s?.?eye/.test(hay)) return 'Bullseye';
+  if (/star/.test(hay)) return 'Star Break';
+  if (/crack/.test(hay)) return 'Crack';
+  if (/chip|pit|bruise|rock/.test(hay)) return 'Pit';
+  return intake.damage_location || '';
+}
+
 function statusClass(status: string) {
   if (status === 'assigned' || status === 'scheduled') return 'border-brand-200 bg-brand-50 text-brand-700';
   if (status === 'completed') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
@@ -308,6 +325,10 @@ export default function AdminConsumerIntakePage() {
         return { account, score };
       })
       .sort((a, b) => {
+        // Certified providers rank first (client rule), then by proximity score, then name.
+        const aCert = a.account.glasweld_certified === 'Yes';
+        const bCert = b.account.glasweld_certified === 'Yes';
+        if (aCert !== bCert) return aCert ? -1 : 1;
         if (b.score !== a.score) return b.score - a.score;
         return String(a.account.account_name || '').localeCompare(String(b.account.account_name || ''));
       })
@@ -418,7 +439,7 @@ export default function AdminConsumerIntakePage() {
         vehicle_make: intake.vehicle_make,
         vehicle_model: intake.vehicle_model,
         vehicle_vin: intake.vehicle_vin,
-        damage_type: triageResult === 'replacement' ? 'Replacement' : intake.damage_location,
+        damage_type: deriveDamageType(intake, triageResult),
         damage_notes: [
           intake.damage_size ? `Size: ${intake.damage_size}` : '',
           intake.damage_notes || '',

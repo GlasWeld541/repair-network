@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { ArrowLeft, Check, ChevronDown, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import BeforeAfterSlider from '@/components/before-after-slider';
+import ProviderPickerModal from '@/components/provider-picker';
 import { useToast } from '@/components/ui/notifications';
 import { DetailPageSkeleton } from '@/components/ui/skeleton';
 
@@ -53,6 +54,12 @@ export default function JobDetailPage() {
   const [scoring, setScoring] = useState(false);
   const [chargeAmount, setChargeAmount] = useState<number>(0);
   const [savedMessage, setSavedMessage] = useState('');
+
+  // Provider (re)assignment — admins can swap the assigned shop while the job is still
+  // 'New' (before work starts); it locks once In Progress. Loaded lazily for admins only.
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [activeCounts, setActiveCounts] = useState<Record<string, number>>({});
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const [editing, setEditing] = useState<EditableTarget>(null);
   const [draftValue, setDraftValue] = useState('');
@@ -122,6 +129,33 @@ export default function JobDetailPage() {
       .select('*')
       .eq('job_id', id);
 
+    // Providers + current job load, for admin reassignment (busy = active jobs, so the
+    // picker can flag over-loaded shops). Shops/carriers never reassign, so skip the fetch.
+    if (roleData.role === 'admin') {
+      const [{ data: accountRows }, { data: jobRows }] = await Promise.all([
+        supabase
+          .from('accounts')
+          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, repair_platform_fee_bps, replacement_platform_fee_bps')
+          .order('account_name'),
+        supabase
+          .from('jobs')
+          .select('assigned_account_id, job_status')
+          .not('assigned_account_id', 'is', null),
+      ]);
+
+      const counts: Record<string, number> = {};
+      ((jobRows as { assigned_account_id: string | null; job_status: string | null }[]) || []).forEach(
+        (j) => {
+          if (!j.assigned_account_id) return;
+          const st = j.job_status || 'New';
+          if (st === 'Completed' || st === 'Canceled') return;
+          counts[j.assigned_account_id] = (counts[j.assigned_account_id] || 0) + 1;
+        },
+      );
+      setAccounts((accountRows as any[]) || []);
+      setActiveCounts(counts);
+    }
+
     let eventData: any[] = [];
 
     if (invoiceData?.id) {
@@ -149,6 +183,49 @@ export default function JobDetailPage() {
       .from('invoices')
       .update({ tech_name: String(techName || '').trim() || null })
       .eq('id', invoice.id);
+  }
+
+  // Swap the assigned shop — allowed at any point mid-job (New / In Progress / Submitted),
+  // just not on a Completed or Canceled job (those are closed, billed records; reassigning
+  // would misattribute the invoice + platform fee). Re-prices platform_fee_bps to the NEW
+  // provider's rate for the job's service type so billing follows whoever actually does the
+  // work (independent techs are fee-exempt → their stored 0 is preserved). Writes both the
+  // id and the denormalized name the rest of the UI reads.
+  async function reassignProvider(accountId: string) {
+    setPickerOpen(false);
+    if (!job || isReadOnly || reassignBlocked) return;
+    const account = accounts.find((a) => a.id === accountId);
+    if (!account || accountId === job.assigned_account_id) return;
+
+    const feeBps =
+      job.service_type === 'replacement'
+        ? Number(account.replacement_platform_fee_bps ?? 500)
+        : job.service_type === 'repair'
+          ? Number(account.repair_platform_fee_bps ?? 500)
+          : Number(job.platform_fee_bps ?? 0);
+
+    setWorking(true);
+    const { error } = await supabase
+      .from('jobs')
+      .update({
+        assigned_account_id: account.id,
+        assigned_account_name: account.account_name,
+        platform_fee_bps: feeBps,
+      })
+      .eq('id', job.id);
+    setWorking(false);
+
+    if (error) {
+      toast.error(`Could not reassign provider: ${error.message}`);
+      return;
+    }
+    setJob({
+      ...job,
+      assigned_account_id: account.id,
+      assigned_account_name: account.account_name,
+      platform_fee_bps: feeBps,
+    });
+    flashSaved('Provider reassigned');
   }
 
   async function updateJobField(field: string, value: string | number | null) {
@@ -524,8 +601,31 @@ export default function JobDetailPage() {
   const afterPhotos = photos.filter((photo) => photo.type === 'after');
   const latestEvent = events[0];
 
+  // A job can be handed to a different provider at any point mid-job — only a Completed or
+  // Canceled job is locked (closed, billed records; reassigning would misattribute the
+  // invoice + fee). Only admins get the fetched accounts, so the control never renders for
+  // shops/carriers.
+  const reassignBlocked = job.job_status === 'Completed' || job.job_status === 'Canceled';
+  const canReassign = !isReadOnly && !reassignBlocked;
+  // A repair-only shop can't take a replacement (and vice-versa); mirror the intake filter.
+  const eligibleProviders = accounts.filter((a) => {
+    if (a.active === false) return false;
+    if (job.service_type === 'replacement') return a.consumer_replacement_enabled === true;
+    if (job.service_type === 'repair') return a.consumer_repair_enabled !== false;
+    return true;
+  });
+
   return (
     <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">
+      <ProviderPickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        accounts={eligibleProviders}
+        activeCounts={activeCounts}
+        origin={null}
+        selectedId={job.assigned_account_id || ''}
+        onSelect={(id) => void reassignProvider(id)}
+      />
       <div className="flex items-center justify-between">
         <Link href="/jobs" className="inline-flex items-center gap-2 text-sm text-brand-700">
           <ArrowLeft className="h-4 w-4" />
@@ -649,7 +749,31 @@ export default function JobDetailPage() {
         <div className="space-y-6 lg:col-span-2">
           <Section title="Job Information">
             <div className="grid gap-4 md:grid-cols-2">
-              <Info label="Shop" value={job.assigned_account_name} />
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Shop
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="text-sm text-slate-900">
+                    {valueOrDash(job.assigned_account_name)}
+                  </span>
+                  {canReassign ? (
+                    <button
+                      type="button"
+                      onClick={() => setPickerOpen(true)}
+                      disabled={working}
+                      className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Change
+                    </button>
+                  ) : null}
+                </div>
+                {!isReadOnly && reassignBlocked ? (
+                  <div className="mt-0.5 text-xs text-slate-400">
+                    Locked — {(job.job_status || '').toLowerCase()} jobs can't be reassigned.
+                  </div>
+                ) : null}
+              </div>
               <EditableSelect
                 label="Job Status"
                 value={job.job_status || 'New'}
