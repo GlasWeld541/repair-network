@@ -10,6 +10,8 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
   const [role, setRole] = useState<string | null>(null);
+  // Count of brand-new (untriaged) consumer/agent leads, shown as a badge on the Intake card.
+  const [newLeadCount, setNewLeadCount] = useState(0);
 
   useEffect(() => {
     async function checkAccess() {
@@ -47,6 +49,13 @@ export default function AdminDashboardPage() {
       setRole(data.role);
       setAuthorized(true);
       setLoading(false);
+
+      // New-lead notification count for the Intake card (best-effort; never blocks the page).
+      const { count } = await supabase
+        .from('consumer_intakes')
+        .select('*', { count: 'exact', head: true })
+        .eq('intake_status', 'new');
+      setNewLeadCount(count || 0);
     }
 
     void checkAccess();
@@ -96,6 +105,7 @@ export default function AdminDashboardPage() {
       description:
         'Review public leads, triage repair versus replacement, and create routed jobs.',
       href: '/admin/intake',
+      badge: newLeadCount,
     },
     {
       title: 'Claims & Routing',
@@ -148,8 +158,15 @@ export default function AdminDashboardPage() {
           >
             <div className="flex items-start justify-between">
               <div>
-                <div className="text-lg font-semibold text-slate-900 group-hover:text-brand-800">
-                  {card.title}
+                <div className="flex items-center gap-2">
+                  <div className="text-lg font-semibold text-slate-900 group-hover:text-brand-800">
+                    {card.title}
+                  </div>
+                  {card.badge ? (
+                    <span className="inline-flex items-center rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">
+                      {card.badge} new
+                    </span>
+                  ) : null}
                 </div>
 
                 <p className="mt-2 text-sm leading-6 text-slate-500">
