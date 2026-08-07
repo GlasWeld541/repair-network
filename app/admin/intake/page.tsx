@@ -115,6 +115,21 @@ function statusClass(status: string) {
   return 'border-amber-200 bg-amber-50 text-amber-700';
 }
 
+// Compact relative time ("2h ago") for how fresh a lead is — no date-fns dependency.
+function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return '';
+  const s = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return d < 30 ? `${d}d ago` : new Date(iso).toLocaleDateString();
+}
+
 const PAGE_SIZE = 8;
 
 export default function AdminConsumerIntakePage() {
@@ -611,15 +626,29 @@ export default function AdminConsumerIntakePage() {
                       <span className="font-semibold text-slate-900">
                         {intake.customer_name || 'Unnamed'}
                       </span>
-                      <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusClass(intake.intake_status)}`}>
-                        {intake.intake_status}
-                      </span>
+                      {intake.intake_status === 'new' ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-2.5 py-0.5 text-xs font-bold text-white">
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                          New
+                        </span>
+                      ) : (
+                        <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusClass(intake.intake_status)}`}>
+                          {intake.intake_status}
+                        </span>
+                      )}
                       <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
                         {intake.lead_type}
                       </span>
                       {intake.assigned_job_id ? (
                         <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
                           job created
+                        </span>
+                      ) : null}
+                      {intake.created_at ? (
+                        <span
+                          className={`text-xs ${intake.intake_status === 'new' ? 'font-semibold text-amber-700' : 'text-slate-400'}`}
+                        >
+                          {timeAgo(intake.created_at)}
                         </span>
                       ) : null}
                     </div>
