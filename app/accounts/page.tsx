@@ -38,6 +38,9 @@ type AccountWithDistance = AccountRow & { distance: number | null };
 type Role = 'admin' | 'shop' | 'carrier' | 'demo' | null;
 
 const RADIUS_OPTIONS = [10, 25, 50, 100, 250] as const;
+const PAGE_SIZE = 50;
+const ADMIN_COLS =
+  'id, account_name, city, state, glasweld_certified, insurance, uses_onyx, uses_zoom_injector, repair_only, outreach_status, latitude, longitude, active, provider_type';
 
 function AccountsPageContent() {
   const searchParams = useSearchParams();
@@ -49,6 +52,13 @@ function AccountsPageContent() {
   const [stateFilter, setStateFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<'active' | 'disabled' | 'all'>('active');
+
+  // Server-side pagination (the network now has thousands of accounts — fetching all at once
+  // is slow and silently capped at PostgREST's 1000-row limit). Filters + range run in the DB.
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [debouncedCity, setDebouncedCity] = useState('');
 
   // Proximity ("near ZIP/city within N miles") — geocode the entered origin once, then
   // rank/filter accounts by Haversine distance. Reuses /api/geocode + lib/geo, the same
@@ -96,7 +106,7 @@ function AccountsPageContent() {
   }
 
   useEffect(() => {
-    void loadAccounts();
+    void resolveRole();
   }, []);
 
   useEffect(() => {
@@ -104,7 +114,28 @@ function AccountsPageContent() {
     setStateFilter((searchParams.get('state') || '').trim().toUpperCase());
   }, [searchParams]);
 
-  async function loadAccounts() {
+  // Debounce the free-text inputs so each keystroke doesn't fire a query.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(t);
+  }, [query]);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedCity(cityFilter), 300);
+    return () => clearTimeout(t);
+  }, [cityFilter]);
+
+  // Any filter change returns to page 1.
+  useEffect(() => {
+    setPage(0);
+  }, [debouncedQuery, debouncedCity, stateFilter, statusFilter, origin, radius]);
+
+  // Admin/demo: (re)load the current page from the server whenever filters or page change.
+  useEffect(() => {
+    if (role === 'admin' || role === 'demo') void loadAdminAccounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, debouncedQuery, debouncedCity, stateFilter, statusFilter, page, origin, radius]);
+
+  async function resolveRole() {
     const { data: userData } = await supabase.auth.getUser();
     const email = userData.user?.email?.toLowerCase() || '';
 
@@ -118,47 +149,64 @@ function AccountsPageContent() {
       window.location.href = '/login';
       return;
     }
-
     if (roleData.role === 'carrier') {
       window.location.href = '/claims';
       return;
     }
 
-    setRole(roleData.role);
-
     if (roleData.role === 'admin' || roleData.role === 'demo') {
-      const { data } = await supabase
-        .from('accounts')
-        .select(
-          'id, account_name, city, state, glasweld_certified, insurance, uses_onyx, uses_zoom_injector, repair_only, outreach_status, latitude, longitude, active, provider_type'
-        )
-        .order('account_name');
-
-      setAccounts((data as AccountRow[]) || []);
-      setLoading(false);
+      setRole(roleData.role); // the effect above loads the first page
       return;
     }
 
+    // Shop: only ever their own account.
+    setRole(roleData.role);
     const { data: shopData } = await supabase
       .from('shop_users')
       .select('account_id')
       .eq('user_email', email)
       .maybeSingle();
-
     if (!shopData?.account_id) {
       setAccounts([]);
       setLoading(false);
       return;
     }
-
     const { data } = await supabase
       .from('accounts')
-      .select(
-        'id, account_name, city, state, glasweld_certified, insurance, uses_onyx, uses_zoom_injector, repair_only, outreach_status'
-      )
+      .select(ADMIN_COLS)
       .eq('id', shopData.account_id);
-
     setAccounts((data as AccountRow[]) || []);
+    setTotal((data || []).length);
+    setLoading(false);
+  }
+
+  async function loadAdminAccounts() {
+    setLoading(true);
+    let q = supabase.from('accounts').select(ADMIN_COLS, { count: 'exact' });
+
+    const s = debouncedQuery.trim().replace(/[(),]/g, ' ').trim(); // strip PostgREST .or delimiters
+    if (s) q = q.or(`account_name.ilike.%${s}%,city.ilike.%${s}%,state.ilike.%${s}%`);
+    if (stateFilter) q = q.ilike('state', stateFilter);
+    if (debouncedCity.trim()) q = q.ilike('city', `%${debouncedCity.trim()}%`);
+    if (statusFilter === 'active') q = q.neq('active', false);
+    else if (statusFilter === 'disabled') q = q.eq('active', false);
+
+    if (origin) {
+      // Proximity ranks by Haversine client-side, so pull the geocoded matches (bounded) and
+      // let the memo filter by radius + sort — no server paging in this mode.
+      const { data } = await q
+        .not('latitude', 'is', null)
+        .not('longitude', 'is', null)
+        .limit(1000);
+      setAccounts((data as AccountRow[]) || []);
+      setTotal((data || []).length);
+    } else {
+      const { data, count } = await q
+        .order('account_name')
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+      setAccounts((data as AccountRow[]) || []);
+      setTotal(count || 0);
+    }
     setLoading(false);
   }
 
@@ -191,39 +239,13 @@ function AccountsPageContent() {
     );
   }
 
+  // Search / state / city / status are applied server-side (see loadAdminAccounts). The memo
+  // only adds proximity: when an origin is set, keep accounts within the radius, nearest first.
   const filteredAccounts = useMemo<AccountWithDistance[]>(() => {
-    const q = query.trim().toLowerCase();
-    const city = cityFilter.trim().toLowerCase();
-
-    const base = accounts.filter((account) => {
-      const haystack = [
-        account.account_name ?? '',
-        account.city ?? '',
-        account.state ?? '',
-      ]
-        .join(' ')
-        .toLowerCase();
-
-      const matchesSearch = !q || haystack.includes(q);
-      const matchesState =
-        !stateFilter || (account.state || '').toUpperCase() === stateFilter;
-      const matchesCity = !city || (account.city || '').toLowerCase().includes(city);
-      const matchesStatus =
-        statusFilter === 'all' ||
-        (statusFilter === 'active'
-          ? account.active !== false
-          : account.active === false);
-
-      return matchesSearch && matchesState && matchesCity && matchesStatus;
-    });
-
-    // No proximity origin set → return as-is, no distance.
     if (!origin) {
-      return base.map((account) => ({ ...account, distance: null }));
+      return accounts.map((account) => ({ ...account, distance: null }));
     }
-
-    // Proximity active → keep only mapped accounts within the radius, nearest first.
-    return base
+    return accounts
       .map((account) => ({
         ...account,
         distance:
@@ -238,13 +260,10 @@ function AccountsPageContent() {
       }))
       .filter((account) => account.distance != null && account.distance <= radius)
       .sort((a, b) => (a.distance as number) - (b.distance as number));
-  }, [accounts, query, cityFilter, stateFilter, statusFilter, origin, radius]);
+  }, [accounts, origin, radius]);
 
   const showDistance = origin != null;
-  const unmappedCount = useMemo(
-    () => accounts.filter((a) => a.latitude == null || a.longitude == null).length,
-    [accounts]
-  );
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="space-y-6">
@@ -371,12 +390,10 @@ function AccountsPageContent() {
       ) : (
       <p className="text-sm text-slate-500">
         {showDistance
-          ? `${filteredAccounts.length} shop${filteredAccounts.length === 1 ? '' : 's'} within ${radius} mi of "${nearQuery.trim()}"${
-              unmappedCount
-                ? ` · ${unmappedCount} unmapped shop${unmappedCount === 1 ? '' : 's'} hidden`
-                : ''
-            }`
-          : `${filteredAccounts.length} account${filteredAccounts.length === 1 ? '' : 's'}`}
+          ? `${filteredAccounts.length} shop${filteredAccounts.length === 1 ? '' : 's'} within ${radius} mi of "${nearQuery.trim()}" (mapped only)`
+          : total > 0
+            ? `${total.toLocaleString()} account${total === 1 ? '' : 's'} · showing ${(page * PAGE_SIZE + 1).toLocaleString()}–${Math.min((page + 1) * PAGE_SIZE, total).toLocaleString()}`
+            : '0 accounts'}
       </p>
       )}
 
@@ -541,6 +558,31 @@ function AccountsPageContent() {
           </tbody>
         </table>
       </div>
+
+      {/* Pager — only in the server-paginated list (proximity mode returns all matches). */}
+      {!loading && !showDistance && (role === 'admin' || role === 'demo') && total > PAGE_SIZE ? (
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+          >
+            ← Previous
+          </button>
+          <span className="text-sm text-slate-500">
+            Page {page + 1} of {pageCount.toLocaleString()}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => (p + 1 < pageCount ? p + 1 : p))}
+            disabled={page + 1 >= pageCount}
+            className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+          >
+            Next →
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

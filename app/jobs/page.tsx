@@ -213,9 +213,12 @@ export default function JobsPage() {
     const { data: jobData } = await jobQuery.order('created_at', { ascending: false });
 
     if (roleData.role === 'admin') {
+      // Only ACTIVE accounts are assignable / have jobs — scope to them so this doesn't pull
+      // (and silently cap at 1000 of) the thousands of inactive candidate accounts.
       const { data: accountData } = await supabase
         .from('accounts')
         .select('id, account_name, provider_type')
+        .eq('active', true)
         .order('account_name');
 
       setAccounts((accountData as Account[]) || []);
