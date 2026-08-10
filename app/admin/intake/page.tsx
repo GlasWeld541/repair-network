@@ -202,7 +202,10 @@ export default function AdminConsumerIntakePage() {
           .order('created_at', { ascending: false }),
         supabase
           .from('accounts')
+          // Only active accounts are assignable — scope server-side so we don't fetch (and
+          // cap at 1000 of) the thousands of inactive candidate accounts the picker discards.
           .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type')
+          .eq('active', true)
           .order('account_name'),
         supabase
           .from('consumer_intake_photos')
