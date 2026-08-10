@@ -340,11 +340,13 @@ export default function AdminConsumerIntakePage() {
         return { account, score };
       })
       .sort((a, b) => {
-        // Certified providers rank first (client rule), then by proximity score, then name.
+        // Geography first (Shiloh): nearest region leads, with certification the tiebreaker
+        // within the same proximity — so a far certified shop no longer gets suggested over
+        // a closer provider. Then name for stable ordering.
+        if (b.score !== a.score) return b.score - a.score;
         const aCert = a.account.glasweld_certified === 'Yes';
         const bCert = b.account.glasweld_certified === 'Yes';
         if (aCert !== bCert) return aCert ? -1 : 1;
-        if (b.score !== a.score) return b.score - a.score;
         return String(a.account.account_name || '').localeCompare(String(b.account.account_name || ''));
       })
       .map((row) => row.account);
