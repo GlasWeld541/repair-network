@@ -68,6 +68,10 @@ export default function ProviderPickerModal({
 }) {
   const [search, setSearch] = useState('');
   const [showBusy, setShowBusy] = useState(false);
+  // Geography is the primary metric (Shiloh: don't route a customer to a certified shop
+  // 180 mi away over a closer one). Default "nearest"; admins can flip to "certified" to
+  // lead with certification when distances are comparable.
+  const [sortMode, setSortMode] = useState<'nearest' | 'certified'>('nearest');
 
   // Close on Escape while open.
   useEffect(() => {
@@ -93,19 +97,26 @@ export default function ProviderPickerModal({
         certified: a.glasweld_certified === 'Yes',
       };
     });
-    // Client rule: GlasWeld-certified providers rank ABOVE everyone else, then nearest
-    // first within each tier. So a certified shop always leads a non-certified one, even
-    // when the non-certified one is closer. Unknown distance sinks to the bottom of its
-    // tier; with no origin at all this falls back to the incoming (proximity-scored) order.
-    withMeta.sort((x, y) => {
-      if (x.certified !== y.certified) return x.certified ? -1 : 1;
+    // Geography-first (default): nearest leads, with certification the tiebreaker between
+    // equidistant providers — so a customer is never routed to a far certified shop over a
+    // closer one. "Certified" mode restores certified-leads-everyone (nearest within tier)
+    // for when the admin wants to prioritize certification. Unknown distance sinks to the
+    // bottom; with no origin at all this falls back to the incoming (proximity-scored) order.
+    const cert = (x: (typeof withMeta)[number], y: (typeof withMeta)[number]) =>
+      x.certified === y.certified ? null : x.certified ? -1 : 1;
+    const nearer = (x: (typeof withMeta)[number], y: (typeof withMeta)[number]) => {
       if (x.dist == null && y.dist == null) return x.order - y.order;
       if (x.dist == null) return 1;
       if (y.dist == null) return -1;
       return x.dist - y.dist;
+    };
+    withMeta.sort((x, y) => {
+      if (sortMode === 'certified') return cert(x, y) ?? nearer(x, y);
+      const byDist = nearer(x, y);
+      return byDist !== 0 ? byDist : (cert(x, y) ?? x.order - y.order);
     });
     return withMeta;
-  }, [accounts, activeCounts, origin]);
+  }, [accounts, activeCounts, origin, sortMode]);
 
   if (!open) return null;
 
@@ -124,11 +135,13 @@ export default function ProviderPickerModal({
     ({ a, active }) => active >= BUSY_THRESHOLD && a.id !== selectedId,
   ).length;
 
-  const sortLabel = origin
-    ? 'Certified first, then nearest'
-    : geocoding
-      ? 'Locating…'
-      : 'Certified first';
+  const sortLabel = geocoding
+    ? 'Locating…'
+    : !origin
+      ? 'By region'
+      : sortMode === 'nearest'
+        ? 'Nearest first, then certified'
+        : 'Certified first, then nearest';
 
   return (
     <div
@@ -161,8 +174,8 @@ export default function ProviderPickerModal({
           </button>
         </div>
 
-        {/* Search */}
-        <div className="border-b border-slate-100 px-5 py-3">
+        {/* Search + sort */}
+        <div className="flex flex-col gap-2 border-b border-slate-100 px-5 py-3 sm:flex-row sm:items-center">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -170,6 +183,24 @@ export default function ProviderPickerModal({
             className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
             autoFocus
           />
+          {origin && (
+            <div className="flex shrink-0 rounded-lg border border-slate-300 p-0.5 text-sm">
+              {(['nearest', 'certified'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setSortMode(mode)}
+                  className={`rounded-md px-3 py-1.5 font-medium transition ${
+                    sortMode === mode
+                      ? 'bg-brand-600 text-white'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {mode === 'nearest' ? 'Nearest' : 'Certified'}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* List */}
