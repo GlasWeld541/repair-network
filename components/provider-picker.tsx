@@ -9,6 +9,12 @@ import { distanceMiles } from '@/lib/geo';
 // Below it, the current load shows as an informational count.
 const BUSY_THRESHOLD = 3;
 
+// "Coverage first, quality next" (Derek): the default ranking prefers the most QUALIFIED shop
+// within this radius of the customer, so we ensure someone can actually reach the job before
+// optimizing for certification — a certified shop 180 mi away shouldn't beat a closer one.
+// Shops beyond it fall back to nearest-first. Tune as the network densifies.
+const COVERAGE_RADIUS_MILES = 50;
+
 export type ProviderAccount = {
   id: string;
   account_name: string | null;
@@ -71,7 +77,7 @@ export default function ProviderPickerModal({
   // Geography is the primary metric (Shiloh: don't route a customer to a certified shop
   // 180 mi away over a closer one). Default "nearest"; admins can flip to "certified" to
   // lead with certification when distances are comparable.
-  const [sortMode, setSortMode] = useState<'nearest' | 'certified'>('nearest');
+  const [sortMode, setSortMode] = useState<'best' | 'nearest'>('best');
 
   // Close on Escape while open.
   useEffect(() => {
@@ -110,10 +116,16 @@ export default function ProviderPickerModal({
       if (y.dist == null) return -1;
       return x.dist - y.dist;
     };
+    const covered = (m: (typeof withMeta)[number]) =>
+      m.dist != null && m.dist <= COVERAGE_RADIUS_MILES;
     withMeta.sort((x, y) => {
-      if (sortMode === 'certified') return cert(x, y) ?? nearer(x, y);
-      const byDist = nearer(x, y);
-      return byDist !== 0 ? byDist : (cert(x, y) ?? x.order - y.order);
+      if (sortMode === 'nearest') return nearer(x, y); // pure distance
+      // 'best' (default): coverage first (within radius), then quality (certified), then nearest.
+      const xc = covered(x);
+      const yc = covered(y);
+      if (xc !== yc) return xc ? -1 : 1; // a reachable shop always leads an out-of-range one
+      if (xc && yc) return cert(x, y) ?? nearer(x, y); // both reachable -> most qualified, then nearest
+      return nearer(x, y); // neither reachable -> nearest fallback
     });
     return withMeta;
   }, [accounts, activeCounts, origin, sortMode]);
@@ -140,8 +152,8 @@ export default function ProviderPickerModal({
     : !origin
       ? 'By region'
       : sortMode === 'nearest'
-        ? 'Nearest first, then certified'
-        : 'Certified first, then nearest';
+        ? 'Nearest first'
+        : `Most qualified within ${COVERAGE_RADIUS_MILES} mi, then nearest`;
 
   return (
     <div
@@ -185,7 +197,7 @@ export default function ProviderPickerModal({
           />
           {origin && (
             <div className="flex shrink-0 rounded-lg border border-slate-300 p-0.5 text-sm">
-              {(['nearest', 'certified'] as const).map((mode) => (
+              {(['best', 'nearest'] as const).map((mode) => (
                 <button
                   key={mode}
                   type="button"
@@ -196,7 +208,7 @@ export default function ProviderPickerModal({
                       : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  {mode === 'nearest' ? 'Nearest' : 'Certified'}
+                  {mode === 'best' ? 'Best match' : 'Nearest'}
                 </button>
               ))}
             </div>
