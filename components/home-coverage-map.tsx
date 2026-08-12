@@ -35,9 +35,16 @@ type AccountMapRow = {
   outreach_status: string | null;
 };
 
+type ProviderKind = 'repair' | 'replacement';
+
 type PopupAccount = AccountMapRow & {
-  qualificationStatus: 'red' | 'yellow' | 'green';
+  providerKind: ProviderKind;
 };
+
+// Map marker colors by service type (Derek 2026-08-12): repair-only shops vs replacement shops,
+// replacing the old compliance stoplight now that replacement companies are in the network.
+const REPAIR_COLOR = '#059669'; // emerald-600
+const REPLACEMENT_COLOR = '#2563eb'; // blue-600
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 
@@ -80,36 +87,21 @@ const unclusteredLayer: LayerProps = {
     'circle-radius': 8,
     'circle-color': [
       'match',
-      ['get', 'qualificationStatus'],
-      'green',
-      '#16a34a',
-      'yellow',
-      '#eab308',
-      '#dc2626',
+      ['get', 'providerKind'],
+      'replacement',
+      REPLACEMENT_COLOR,
+      REPAIR_COLOR,
     ],
     'circle-stroke-width': 2,
     'circle-stroke-color': '#ffffff',
   },
 };
 
-function getQualificationStatus(row: AccountMapRow): 'red' | 'yellow' | 'green' {
-  const coreChecks = [
-    row.glasweld_certified === 'Yes',
-    row.uses_onyx === 'Yes',
-    row.uses_zoom_injector === 'Yes',
-    row.repair_only === 'Yes',
-  ];
-
-  const coreYesCount = coreChecks.filter(Boolean).length;
-
-  const hasStrongEngagement =
-    row.outreach_status === 'Qualified' ||
-    row.outreach_status === 'Onboarded';
-
-  if (coreYesCount === 4) return 'green';
-  if (coreYesCount >= 2 || hasStrongEngagement) return 'yellow';
-
-  return 'red';
+function getProviderKind(row: AccountMapRow): ProviderKind {
+  // Repair-only shops (incl. "Likely Yes") are repair; everyone else does replacement.
+  const repairOnly =
+    row.repair_only === 'Yes' || row.repair_only === 'Likely Yes';
+  return repairOnly ? 'repair' : 'replacement';
 }
 
 function buildBounds(rows: AccountMapRow[]): LngLatBoundsLike | null {
@@ -291,7 +283,7 @@ export default function HomeCoverageMap() {
           type: 'Feature' as const,
           properties: {
             id: row.id,
-            qualificationStatus: getQualificationStatus(row),
+            providerKind: getProviderKind(row),
           },
           geometry: {
             type: 'Point' as const,
@@ -346,7 +338,7 @@ export default function HomeCoverageMap() {
 
       setPopupAccount({
         ...account,
-        qualificationStatus: getQualificationStatus(account),
+        providerKind: getProviderKind(account),
       });
     },
     [visibleAccounts]
@@ -373,10 +365,10 @@ export default function HomeCoverageMap() {
       <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
-            Repair coverage map
+            Network coverage map
           </div>
           <div className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
-            Live qualified repair footprint
+            Repair &amp; replacement providers
           </div>
         </div>
 
@@ -474,19 +466,15 @@ export default function HomeCoverageMap() {
                   <div
                     className={[
                       'h-2.5 w-2.5 rounded-full',
-                      popupAccount.qualificationStatus === 'green'
-                        ? 'bg-emerald-600'
-                        : popupAccount.qualificationStatus === 'yellow'
-                          ? 'bg-amber-500'
-                          : 'bg-rose-600',
+                      popupAccount.providerKind === 'replacement'
+                        ? 'bg-blue-600'
+                        : 'bg-emerald-600',
                     ].join(' ')}
                   />
                   <span className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-                    {popupAccount.qualificationStatus === 'green'
-                      ? 'Insurance-ready'
-                      : popupAccount.qualificationStatus === 'yellow'
-                        ? 'In progress'
-                        : 'Needs review'}
+                    {popupAccount.providerKind === 'replacement'
+                      ? 'Replacement'
+                      : 'Repair'}
                   </span>
                 </div>
 
@@ -505,21 +493,17 @@ export default function HomeCoverageMap() {
         <div className="pointer-events-none absolute bottom-4 left-4 rounded-2xl border border-white/70 bg-white/90 px-4 py-3 shadow-lg backdrop-blur">
           <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
             <MapPinned className="h-4 w-4 text-slate-500" />
-            Zoom to street level and inspect live repair coverage.
+            Zoom to street level to inspect the provider network.
           </div>
 
           <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-600">
             <span className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />
-              Insurance-ready
+              Repair
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-              In progress
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-rose-600" />
-              Needs review
+              <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
+              Replacement
             </span>
           </div>
         </div>
