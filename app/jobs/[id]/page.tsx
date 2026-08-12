@@ -60,6 +60,10 @@ export default function JobDetailPage() {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [activeCounts, setActiveCounts] = useState<Record<string, number>>({});
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Customer origin for the provider picker's distance ranking (best-match / nearest),
+  // geocoded from the job's customer city/state/ZIP — same as the intake picker.
+  const [origin, setOrigin] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [geocoding, setGeocoding] = useState(false);
 
   const [editing, setEditing] = useState<EditableTarget>(null);
   const [draftValue, setDraftValue] = useState('');
@@ -80,6 +84,39 @@ export default function JobDetailPage() {
       setChargeAmount(Number(Math.max(balance, 0).toFixed(2)));
     }
   }, [invoice]);
+
+  // Geocode the customer location so the provider picker can rank by real distance
+  // (best-match / nearest). Fails soft to null → the picker falls back to "By region".
+  useEffect(() => {
+    const query = [job?.customer_city, job?.customer_state, job?.customer_zip]
+      .filter(Boolean)
+      .join(', ');
+    if (!query) {
+      setOrigin(null);
+      return;
+    }
+    let cancelled = false;
+    setGeocoding(true);
+    fetch(`/api/geocode?q=${encodeURIComponent(query)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        setOrigin(
+          d?.latitude != null && d?.longitude != null
+            ? { latitude: Number(d.latitude), longitude: Number(d.longitude) }
+            : null
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setOrigin(null);
+      })
+      .finally(() => {
+        if (!cancelled) setGeocoding(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [job?.customer_city, job?.customer_state, job?.customer_zip]);
 
   function flashSaved(message = 'Saved') {
     setSavedMessage(message);
@@ -652,9 +689,15 @@ export default function JobDetailPage() {
       <ProviderPickerModal
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
+        customerLocation={
+          [job.customer_city, job.customer_state, job.customer_zip]
+            .filter(Boolean)
+            .join(', ') || undefined
+        }
         accounts={eligibleProviders}
         activeCounts={activeCounts}
-        origin={null}
+        origin={origin}
+        geocoding={geocoding}
         selectedId={job.assigned_account_id || ''}
         onSelect={(id) => void reassignProvider(id)}
       />
@@ -680,15 +723,18 @@ export default function JobDetailPage() {
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
+          {/* Display-only title. customer_name is edited in the Customer & Vehicle section;
+              wiring the title to the same shared `editing.field` too rendered TWO autoFocus
+              inputs, whose focus race blurred the field and dropped it out of edit mode. */}
           <EditableTitle
             value={job.customer_name || ''}
-            onEdit={() => startEdit('customer_name', job.customer_name)}
-            isEditing={editing?.field === 'customer_name'}
+            onEdit={() => {}}
+            isEditing={false}
             draftValue={draftValue}
             setDraftValue={setDraftValue}
-            onSave={() => void saveDraftField('customer_name')}
-            onCancel={() => setEditing(null)}
-            readOnly={isReadOnly}
+            onSave={() => {}}
+            onCancel={() => {}}
+            readOnly
           />
 
           <p className="mt-1 text-sm text-slate-500">
@@ -1731,7 +1777,7 @@ function MoneyInput({
           onKeyDown={(e) => {
             if (e.key === 'Enter') e.currentTarget.blur();
           }}
-          className="h-9 w-full bg-transparent px-1 text-sm outline-none disabled:opacity-60"
+          className="h-9 w-full border-0 bg-transparent px-1 text-sm outline-none focus:ring-0 disabled:opacity-60"
         />
       </div>
     </label>
