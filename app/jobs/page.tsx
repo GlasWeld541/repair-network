@@ -571,7 +571,7 @@ export default function JobsPage() {
               <select
                 value={providerFilter}
                 onChange={(e) => setProviderFilter(e.target.value)}
-                className="h-8 rounded border px-2 text-sm"
+                className="rounded border px-2 py-1.5 text-sm leading-normal"
               >
                 <option value="">All providers</option>
                 {accounts.map((account) => (
@@ -585,7 +585,7 @@ export default function JobsPage() {
               <select
                 value={carrierFilter}
                 onChange={(e) => setCarrierFilter(e.target.value)}
-                className="h-8 rounded border px-2 text-sm"
+                className="rounded border px-2 py-1.5 text-sm leading-normal"
               >
                 <option value="">All carriers</option>
                 {carrierOptions.map((carrier) => (
