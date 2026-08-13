@@ -151,6 +151,24 @@ async function geocodeAddress(row: AccountMapRow) {
   };
 }
 
+// Supabase caps a single PostgREST response at ~1000 rows, so a plain select of every
+// mapped account silently stops at 1000 (the "1000 mapped locations" ceiling Derek hit).
+// Page through with .range() so the full network footprint loads. `build` re-creates the
+// query each page (Supabase builders are single-use) and must apply the .range() itself.
+async function fetchAllAccountRows(
+  build: (from: number, to: number) => PromiseLike<{ data: unknown }>
+): Promise<AccountMapRow[]> {
+  const PAGE = 1000;
+  const all: AccountMapRow[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data } = await build(from, from + PAGE - 1);
+    const rows = (data as AccountMapRow[] | null) ?? [];
+    all.push(...rows);
+    if (rows.length < PAGE) break;
+  }
+  return all;
+}
+
 export default function HomeCoverageMap() {
   const mapRef = useRef<MapRef | null>(null);
   const geocodingInProgress = useRef<Set<string>>(new Set());
@@ -184,13 +202,16 @@ export default function HomeCoverageMap() {
   }, []);
 
   const loadMappedAccounts = useCallback(async () => {
-    const { data } = await supabase
-      .from('accounts')
-      .select(ACCOUNT_SELECT)
-      .not('latitude', 'is', null)
-      .not('longitude', 'is', null);
+    const rows = await fetchAllAccountRows((from, to) =>
+      supabase
+        .from('accounts')
+        .select(ACCOUNT_SELECT)
+        .not('latitude', 'is', null)
+        .not('longitude', 'is', null)
+        .range(from, to)
+    );
 
-    setAllAccounts((data as AccountMapRow[]) ?? []);
+    setAllAccounts(rows);
   }, []);
 
   const backfillCoordinates = useCallback(async () => {
@@ -231,17 +252,20 @@ export default function HomeCoverageMap() {
     const bounds = map.getBounds();
     if (!bounds) return;
 
-    const { data } = await supabase
-      .from('accounts')
-      .select(ACCOUNT_SELECT)
-      .not('latitude', 'is', null)
-      .not('longitude', 'is', null)
-      .gte('longitude', bounds.getWest())
-      .lte('longitude', bounds.getEast())
-      .gte('latitude', bounds.getSouth())
-      .lte('latitude', bounds.getNorth());
+    const rows = await fetchAllAccountRows((from, to) =>
+      supabase
+        .from('accounts')
+        .select(ACCOUNT_SELECT)
+        .not('latitude', 'is', null)
+        .not('longitude', 'is', null)
+        .gte('longitude', bounds.getWest())
+        .lte('longitude', bounds.getEast())
+        .gte('latitude', bounds.getSouth())
+        .lte('latitude', bounds.getNorth())
+        .range(from, to)
+    );
 
-    setVisibleAccounts((data as AccountMapRow[]) ?? []);
+    setVisibleAccounts(rows);
   }, []);
 
   useEffect(() => {
