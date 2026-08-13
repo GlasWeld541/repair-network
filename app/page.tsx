@@ -60,11 +60,20 @@ export default function HomePage() {
 
   useEffect(() => {
     async function loadCounters() {
-      const { data } = await supabase
-        .from('accounts')
-        .select('id, state, repair_only');
-
-      const rows = data || [];
+      // Page past Supabase's ~1000-row response cap so the headline counters reflect
+      // the whole network, not the first 1000 accounts.
+      type CounterRow = { id: string; state: string | null; repair_only: string | null };
+      const PAGE = 1000;
+      const rows: CounterRow[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data } = await supabase
+          .from('accounts')
+          .select('id, state, repair_only')
+          .range(from, from + PAGE - 1);
+        const page = (data as CounterRow[] | null) ?? [];
+        rows.push(...page);
+        if (page.length < PAGE) break;
+      }
 
       setTotalLocations(rows.length);
 
