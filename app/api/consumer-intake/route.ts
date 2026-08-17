@@ -107,6 +107,9 @@ export async function POST(request: Request) {
         lead_type: leadType,
         source,
         payment_path: normalizedPaymentPath(formData.get('payment_path') as string),
+        // Replacement + cash customer asked to spread the cost over time. Routing FILTER
+        // only (matched to accounts.offers_financing = true) — never a ranking input.
+        needs_financing: clean(formData.get('needs_financing')) === 'true',
         customer_name: customerName,
         customer_phone: customerPhone || null,
         customer_email: customerEmail || null,
@@ -180,36 +183,79 @@ export async function POST(request: Request) {
       });
     }
 
-    await admin.from('notification_events').insert([
-      {
-        event_type: 'Consumer Intake Received',
-        audience: 'admin',
-        consumer_intake_id: intake.id,
-        status: 'pending',
-        subject: `New ${leadType} glass intake: ${customerName}`,
-        body: 'A new consumer-first intake was submitted and needs triage.',
-        metadata: {
-          source,
-          postal_code: payload.postal_code,
-          payment_path: normalizedPaymentPath(formData.get('payment_path') as string),
-        },
+    // Admin audit row (the alert email itself is sent below). consumer_intake_id links it
+    // to the lead — without that column this insert used to fail silently.
+    await admin.from('notification_events').insert({
+      event_type: 'Consumer Intake Received',
+      audience: 'admin',
+      consumer_intake_id: intake.id,
+      status: 'pending',
+      subject: `New ${leadType} glass intake: ${customerName}`,
+      body: 'A new consumer-first intake was submitted and needs triage.',
+      metadata: {
+        source,
+        postal_code: payload.postal_code,
+        payment_path: normalizedPaymentPath(formData.get('payment_path') as string),
       },
-      {
+    });
+
+    // Customer confirmation email — the reassuring "we've got it, we'll be in touch"
+    // the customer never used to receive. Best-effort + gated (RESEND_API_KEY + a
+    // customer email), and the send outcome is recorded on the audit row. Never blocks
+    // or fails the intake response.
+    try {
+      const nowIso = new Date().toISOString();
+      let custStatus = 'skipped';
+      let custError: string | null = null;
+      const custSubject = 'We received your windshield review request';
+
+      if (customerEmail) {
+        const esc = (value: string) =>
+          value.replace(
+            /[&<>"]/g,
+            (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string
+          );
+        const vehicle = [payload.vehicle_year, payload.vehicle_make, payload.vehicle_model]
+          .filter(Boolean)
+          .join(' ');
+        const html = `
+          <div style="font-family:system-ui,Arial,sans-serif;max-width:560px">
+            <h2 style="color:#0f172a;margin:0 0 4px">We've got your windshield request</h2>
+            <p style="color:#334155;margin:0 0 16px;line-height:1.55">Hi ${esc(customerName)}, thanks for sending your damage details${vehicle ? ` for your ${esc(vehicle)}` : ''}. Our team will review your photos with a repair-first eye and reach out about the smartest next step — repair, replacement, cash pay, or insurance.</p>
+            <p style="color:#334155;margin:0 0 16px;line-height:1.55">A repairable chip keeps your original factory seal, costs far less than a full replacement, and usually takes about 30 minutes. If a replacement is truly needed, we'll help route that too.</p>
+            <p style="color:#64748b;margin:0;font-size:13px">If you didn't request this, you can safely ignore this email.</p>
+          </div>`;
+        const result = await sendEmail({
+          to: customerEmail,
+          subject: custSubject,
+          replyTo: process.env.INTAKE_NOTIFY_EMAIL || undefined,
+          html,
+        });
+        if (result.ok) {
+          custStatus = 'sent';
+        } else if ('skipped' in result && result.skipped) {
+          custStatus = 'skipped'; // email provider not configured yet
+        } else {
+          custStatus = 'failed';
+          custError = 'error' in result ? result.error : 'send failed';
+        }
+      }
+
+      await admin.from('notification_events').insert({
         event_type: 'Consumer Intake Confirmation',
         audience: 'customer',
         consumer_intake_id: intake.id,
         recipient_email: customerEmail || null,
-        status: 'pending',
-        subject: 'We received your windshield review request',
-        body:
-          'We received your windshield damage information. The next step is a repair-first review so we can help determine whether repair, replacement, cash pay, or insurance is the smarter path.',
-        metadata: {
-          customer_phone: customerPhone || null,
-          source,
-          postal_code: payload.postal_code,
-        },
-      },
-    ]);
+        status: custStatus,
+        error_message: custError,
+        sent_at: custStatus === 'sent' ? nowIso : null,
+        subject: custSubject,
+        body: "Confirmation that we received the customer's windshield submission and will review it repair-first.",
+        metadata: { source, postal_code: payload.postal_code },
+      });
+    } catch {
+      // A notification failure must never affect the intake response.
+    }
 
     // Best-effort admin alert email. Gated on RESEND_API_KEY + INTAKE_NOTIFY_EMAIL, so it
     // is inert until configured and NEVER blocks or fails the intake — the lead is saved.

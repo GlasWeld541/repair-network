@@ -35,6 +35,7 @@ type Job = {
   intake_origin: string | null;
   service_type: string | null;
   payment_path: string | null;
+  payment_method: string | null;
   platform_fee_cents: number | null;
   marketing_source: string | null;
 };

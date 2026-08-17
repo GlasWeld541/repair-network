@@ -14,6 +14,9 @@ const JOB_STATUSES = ['New', 'In Progress', 'Submitted', 'Completed', 'Canceled'
 const DAMAGE_TYPES = ['Combo Break', 'Bullseye', 'Star Break', 'Crack', 'Pit', 'Other'];
 const SERVICE_TYPES = ['repair', 'replacement', 'unknown'];
 const PAYMENT_PATHS = ['unknown', 'cash', 'insurance'];
+// Reporting only — how the customer actually paid. Distinct from payment_path (which drives
+// the customer-owes math). Optional; the platform fee is ALWAYS the full invoice total.
+const PAYMENT_METHODS = ['cash', 'card', 'insurance', 'financing'];
 type EditableTarget = { table: 'jobs'; field: string } | null;
 
 function money(value: number | null | undefined) {
@@ -419,6 +422,7 @@ export default function JobDetailPage() {
           intake_origin: completedJob.intake_origin || 'admin',
           service_type: serviceType,
           payment_path: completedJob.payment_path || 'unknown',
+          payment_method: completedJob.payment_method || null,
           platform_fee_bps: percentageBps,
         },
       },
@@ -873,6 +877,13 @@ export default function JobDetailPage() {
                 onSave={(value) => void updateJobField('payment_path', value)}
                 readOnly={isReadOnly}
               />
+              <EditableSelect
+                label="Payment Method (optional)"
+                value={job.payment_method || ''}
+                options={PAYMENT_METHODS}
+                onSave={(value) => void updateJobField('payment_method', value || null)}
+                readOnly={isReadOnly}
+              />
               <EditableField
                 label="Invoice Date"
                 value={job.invoice_date}
@@ -1102,6 +1113,9 @@ export default function JobDetailPage() {
               <Quick label="Origin" value={job.intake_origin || 'admin'} />
               <Quick label="Service" value={job.service_type || 'repair'} />
               <Quick label="Payment Path" value={job.payment_path || 'unknown'} />
+              {job.payment_method ? (
+                <Quick label="Payment Method" value={job.payment_method} />
+              ) : null}
               <Quick
                 label="Platform Fee"
                 value={
