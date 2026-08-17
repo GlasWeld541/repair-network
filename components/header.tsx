@@ -223,76 +223,70 @@ export default function Header() {
     <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.28)]">
       <div className="mx-auto max-w-[1380px] px-4 py-3 sm:px-6 lg:px-10 lg:py-4">
         <div className="flex items-center justify-between gap-3">
-          <Link
-            href="/"
-            className="group flex min-w-0 items-center gap-3 sm:gap-5"
-            onClick={() => setMenuOpen(false)}
-          >
-            <div className="relative h-12 w-12 flex-shrink-0 sm:h-16 sm:w-16 lg:h-24 lg:w-24">
-              <Image
-                src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
-                alt="GlasWeld"
-                fill
-                className="object-contain object-left transition-transform duration-200 group-hover:scale-105"
-                priority
-              />
-            </div>
+          <div className="flex min-w-0 items-center gap-3">
+            {/* Menu toggle — opens the left sidebar drawer (all screen sizes), for design
+                consistency with the Rex app's side nav. */}
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              aria-label="Open menu"
+              aria-expanded={menuOpen}
+              className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
 
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-white sm:text-[17px]">
-                GlasWeld Repair Network™
+            <Link
+              href="/"
+              className="group flex min-w-0 items-center gap-3 sm:gap-4"
+              onClick={() => setMenuOpen(false)}
+            >
+              <div className="relative h-10 w-10 flex-shrink-0 sm:h-12 sm:w-12 lg:h-16 lg:w-16">
+                <Image
+                  src="https://glasweld.com/wp-content/uploads/2020/01/logo-footer.png"
+                  alt="GlasWeld"
+                  fill
+                  className="object-contain object-left transition-transform duration-200 group-hover:scale-105"
+                  priority
+                />
               </div>
-              <div className="mt-1 hidden text-[10px] uppercase tracking-[0.32em] text-brand-200/80 sm:block">
-                Claims Control Platform
+
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-white sm:text-[17px]">
+                  GlasWeld Repair Network™
+                </div>
+                <div className="mt-1 hidden text-[10px] uppercase tracking-[0.32em] text-brand-200/80 sm:block">
+                  Claims Control Platform
+                </div>
               </div>
-            </div>
-          </Link>
-
-          {/* Desktop cluster */}
-          <div className="hidden items-center gap-5 lg:flex">
-            {searchForm('hidden items-center gap-3 xl:flex')}
-
-            <nav className="flex items-center rounded-2xl border border-white/10 bg-white/5 p-1 text-sm text-slate-300">
-              {renderNavLinks(
-                (active) =>
-                  `rounded-xl px-4 py-2 ${
-                    active ? 'bg-white text-slate-950' : 'hover:bg-white/10 hover:text-white'
-                  }`,
-              )}
-            </nav>
-
-            {role ? (
-              <button
-                onClick={handleLogout}
-                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200"
-              >
-                Logout
-              </button>
-            ) : (
-              <Link
-                href="/login"
-                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200 hover:bg-white/10 hover:text-white"
-              >
-                Login
-              </Link>
-            )}
+            </Link>
           </div>
 
-          {/* Mobile menu toggle */}
-          <button
-            type="button"
-            onClick={() => setMenuOpen((open) => !open)}
-            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-            aria-expanded={menuOpen}
-            className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 lg:hidden"
-          >
-            {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          {/* Search stays inline on wide screens; nav + logout live in the drawer. */}
+          {searchForm('hidden items-center gap-3 xl:flex')}
         </div>
+      </div>
 
-        {/* Mobile menu panel */}
-        {menuOpen ? (
-          <div className="mt-4 space-y-4 lg:hidden">
+      {/* Left sidebar drawer — nav + logout, opened from the menu button on every screen size. */}
+      {menuOpen ? (
+        <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true">
+          <button
+            aria-label="Close menu"
+            onClick={() => setMenuOpen(false)}
+            className="absolute inset-0 h-full w-full cursor-default bg-slate-950/60"
+          />
+          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[82%] flex-col gap-4 border-r border-slate-800 bg-slate-950 p-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-white">Menu</span>
+              <button
+                onClick={() => setMenuOpen(false)}
+                aria-label="Close menu"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 hover:bg-white/10"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
             <nav className="grid gap-1 text-sm">
               {renderNavLinks(
                 (active) =>
@@ -302,27 +296,30 @@ export default function Header() {
               )}
             </nav>
 
-            {searchForm('grid gap-2')}
+            {/* Search in the drawer on narrow screens (it's inline in the top bar on wide ones). */}
+            <div className="xl:hidden">{searchForm('grid gap-2')}</div>
 
-            {role ? (
-              <button
-                onClick={handleLogout}
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-slate-200 hover:bg-white/10"
-              >
-                Logout
-              </button>
-            ) : (
-              <Link
-                href="/login"
-                onClick={() => setMenuOpen(false)}
-                className="block rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-center text-sm font-medium text-slate-200 hover:bg-white/10"
-              >
-                Login
-              </Link>
-            )}
-          </div>
-        ) : null}
-      </div>
+            <div className="mt-auto">
+              {role ? (
+                <button
+                  onClick={handleLogout}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-slate-200 hover:bg-white/10"
+                >
+                  Logout
+                </button>
+              ) : (
+                <Link
+                  href="/login"
+                  onClick={() => setMenuOpen(false)}
+                  className="block rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-center text-sm font-medium text-slate-200 hover:bg-white/10"
+                >
+                  Login
+                </Link>
+              )}
+            </div>
+          </aside>
+        </div>
+      ) : null}
     </header>
   );
 }
