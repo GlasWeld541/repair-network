@@ -38,6 +38,8 @@ type AccountRow = {
   consumer_routing_notes: string | null;
   repair_platform_fee_bps: number | null;
   replacement_platform_fee_bps: number | null;
+  offers_financing: boolean | null;
+  financing_provider: string | null;
 };
 
 type AccountPaymentMethod = {
@@ -283,7 +285,7 @@ export default function AccountDetailPage() {
     const { data: accountData, error: accountError } = await supabase
       .from('accounts')
       .select(
-        'id, account_name, street, city, state, postal_code, company_phone, company_email, claim_routing_enabled, claim_routing_paused_reason, claim_capacity_daily, claim_capacity_weekly, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes, consumer_repair_enabled, consumer_replacement_enabled, agent_referral_enabled, consumer_routing_notes, repair_platform_fee_bps, replacement_platform_fee_bps'
+        'id, account_name, street, city, state, postal_code, company_phone, company_email, claim_routing_enabled, claim_routing_paused_reason, claim_capacity_daily, claim_capacity_weekly, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes, consumer_repair_enabled, consumer_replacement_enabled, agent_referral_enabled, consumer_routing_notes, repair_platform_fee_bps, replacement_platform_fee_bps, offers_financing, financing_provider'
       )
       .eq('id', id)
       .single();
@@ -364,6 +366,26 @@ export default function AccountDetailPage() {
     setEditing(null);
     flashSaved();
     await load();
+  }
+
+  // Self-declared boolean flag on the member's own profile (e.g. offers_financing).
+  // Editable in the profile like the other Account Info fields (isReadOnly = demo only);
+  // not admin-gated, so it self-declares once shop write access lands.
+  async function saveAccountFlag(field: keyof AccountRow, value: boolean) {
+    if (isReadOnly) return;
+
+    const { error } = await supabase
+      .from('accounts')
+      .update({ [field]: value })
+      .eq('id', id);
+
+    if (error) {
+      toast.error(`Could not update: ${error.message}`);
+      return;
+    }
+
+    setAccount((current) => (current ? { ...current, [field]: value } : current));
+    flashSaved();
   }
 
   async function updateBillingSetting(
@@ -954,6 +976,35 @@ export default function AccountDetailPage() {
             value={account.company_email}
             isEmail
           />
+        </div>
+
+        <div className="mt-6 border-t border-slate-100 pt-5">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+            Customer financing
+          </div>
+          <p className="mt-1 text-xs text-slate-400">
+            Self-declared. Used only to route customers who ask to spread the cost over time —
+            it never affects your ranking, priority, or score.
+          </p>
+          <label className="mt-3 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={account.offers_financing === true}
+              disabled={isReadOnly}
+              onChange={(e) => void saveAccountFlag('offers_financing', e.target.checked)}
+              className="h-4 w-4"
+            />
+            We offer a customer payment plan / financing
+          </label>
+          {account.offers_financing ? (
+            <div className="mt-4 max-w-sm">
+              <AccountField
+                label="Financing provider (optional)"
+                field="financing_provider"
+                value={account.financing_provider}
+              />
+            </div>
+          ) : null}
         </div>
       </div>
 

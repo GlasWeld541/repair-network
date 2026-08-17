@@ -15,6 +15,7 @@ type Intake = {
   intake_status: string;
   triage_result: string;
   payment_path: string;
+  needs_financing: boolean | null;
   routing_status: string;
   assigned_account_id: string | null;
   assigned_job_id: string | null;
@@ -65,6 +66,7 @@ type Account = {
   consumer_replacement_enabled: boolean | null;
   active: boolean | null;
   provider_type: string | null;
+  offers_financing: boolean | null;
 };
 
 type Photo = {
@@ -204,7 +206,7 @@ export default function AdminConsumerIntakePage() {
           .from('accounts')
           // Only active accounts are assignable — scope server-side so we don't fetch (and
           // cap at 1000 of) the thousands of inactive candidate accounts the picker discards.
-          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type')
+          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, offers_financing')
           .eq('active', true)
           .order('account_name'),
         supabase
@@ -262,7 +264,11 @@ export default function AdminConsumerIntakePage() {
     const current = selectedAccount(intake);
     if (!current) return;
     const routes = value === 'repair' || value === 'replacement';
-    const stillValid = routes && accountOptions(value).some((account) => account.id === current.id);
+    const stillValid =
+      routes &&
+      accountOptions(value, intake.needs_financing === true).some(
+        (account) => account.id === current.id
+      );
     if (!stillValid) {
       updateSelection(intake.id, 'assigned_account_id', '');
     }
@@ -314,10 +320,14 @@ export default function AdminConsumerIntakePage() {
     if (next) void ensureOrigin(intake);
   }
 
-  function accountOptions(triageResult: string) {
+  function accountOptions(triageResult: string, needsFinancing = false) {
     return accounts.filter((account) => {
       // Disabled shops are out of the network — never route/assign to them.
       if (account.active === false) return false;
+      // Financing is a pure FILTER, applied on top of the routing criteria — never a
+      // ranking input. A replacement+cash customer who asked to spread the cost only sees
+      // shops that self-declared they offer financing.
+      if (needsFinancing && account.offers_financing !== true) return false;
       if (triageResult === 'replacement') return account.consumer_replacement_enabled === true;
       if (triageResult === 'repair') return account.consumer_repair_enabled !== false;
       return true;
@@ -329,7 +339,7 @@ export default function AdminConsumerIntakePage() {
     const intakeCity = String(intake.city || '').trim().toLowerCase();
     const intakeZip = String(intake.postal_code || '').trim();
 
-    return accountOptions(triageResult)
+    return accountOptions(triageResult, intake.needs_financing === true)
       .map((account) => {
         let score = 0;
         const accountState = String(account.state || '').trim().toLowerCase();
@@ -683,6 +693,11 @@ export default function AdminConsumerIntakePage() {
                     <div><b>Damage:</b> {[intake.damage_location, intake.damage_size].filter(Boolean).join(' · ') || '-'}</div>
                     <div className="mt-1 whitespace-pre-wrap">{intake.damage_notes || 'No notes.'}</div>
                     <div className="mt-2"><b>Insurance:</b> {intake.insurance_carrier || '-'}</div>
+                    {intake.needs_financing ? (
+                      <div className="mt-1 font-semibold text-amber-700">
+                        Needs financing — provider options are filtered to shops that offer a payment plan.
+                      </div>
+                    ) : null}
                     {intake.agent_name || intake.agent_email ? (
                       <div className="mt-1"><b>Agent:</b> {[intake.agent_name, intake.agent_email].filter(Boolean).join(' · ')}</div>
                     ) : null}
