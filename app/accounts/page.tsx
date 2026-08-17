@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { useToast, useConfirm } from '@/components/ui/notifications';
 import { distanceMiles } from '@/lib/geo';
 import { Skeleton, SkeletonRows, ListPageSkeleton } from '@/components/ui/skeleton';
 
@@ -70,6 +71,26 @@ function AccountsPageContent() {
   const [nearError, setNearError] = useState('');
 
   const isReadOnly = role === 'demo';
+  const selectable = !isReadOnly && role !== 'shop';
+
+  const toast = useToast();
+  const confirm = useConfirm();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Shared server-side filter (search / state / city / status) so the paged load and
+  // "select all matching" apply the exact same WHERE and never drift.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const applyAccountFilters = (q: any) => {
+    const s = debouncedQuery.trim().replace(/[(),]/g, ' ').trim();
+    let out = q;
+    if (s) out = out.or(`account_name.ilike.%${s}%,city.ilike.%${s}%,state.ilike.%${s}%`);
+    if (stateFilter) out = out.ilike('state', stateFilter);
+    if (debouncedCity.trim()) out = out.ilike('city', `%${debouncedCity.trim()}%`);
+    if (statusFilter === 'active') out = out.neq('active', false);
+    else if (statusFilter === 'disabled') out = out.eq('active', false);
+    return out;
+  };
 
   async function runProximity() {
     const q = nearQuery.trim();
@@ -182,14 +203,9 @@ function AccountsPageContent() {
 
   async function loadAdminAccounts() {
     setLoading(true);
-    let q = supabase.from('accounts').select(ADMIN_COLS, { count: 'exact' });
-
-    const s = debouncedQuery.trim().replace(/[(),]/g, ' ').trim(); // strip PostgREST .or delimiters
-    if (s) q = q.or(`account_name.ilike.%${s}%,city.ilike.%${s}%,state.ilike.%${s}%`);
-    if (stateFilter) q = q.ilike('state', stateFilter);
-    if (debouncedCity.trim()) q = q.ilike('city', `%${debouncedCity.trim()}%`);
-    if (statusFilter === 'active') q = q.neq('active', false);
-    else if (statusFilter === 'disabled') q = q.eq('active', false);
+    const q = applyAccountFilters(
+      supabase.from('accounts').select(ADMIN_COLS, { count: 'exact' })
+    );
 
     if (origin) {
       // Proximity ranks by Haversine client-side, so pull the geocoded matches (bounded) and
@@ -237,6 +253,128 @@ function AccountsPageContent() {
     setAccounts((current) =>
       current.map((account) => (account.id === id ? { ...account, active } : account))
     );
+  }
+
+  // ---- bulk selection + actions ----
+
+  function toggleRow(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const clearSelection = () => setSelected(new Set());
+
+  // Pull EVERY id matching the current filter (across all pages), id-only in bounded pages.
+  async function selectAllMatching() {
+    setBulkBusy(true);
+    try {
+      const ids: string[] = [];
+      const P = 1000;
+      for (let from = 0; ; from += P) {
+        const { data } = await applyAccountFilters(
+          supabase.from('accounts').select('id')
+        ).range(from, from + P - 1);
+        const rows = (data as { id: string }[]) || [];
+        ids.push(...rows.map((r) => r.id));
+        if (rows.length < P) break;
+      }
+      setSelected(new Set(ids));
+      toast.info(`Selected ${ids.length.toLocaleString()} matching account${ids.length === 1 ? '' : 's'}`);
+    } catch {
+      toast.error('Could not select all matching accounts.');
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  // Apply a field update to every selected account, chunked so thousands of ids don't blow
+  // the request. Optimistically patches the rows in view (field edits don't change the filter).
+  async function bulkUpdate(patch: Partial<AccountRow>, label: string) {
+    if (!selectable || selected.size === 0) return;
+    const ids = [...selected];
+    setBulkBusy(true);
+    try {
+      for (let i = 0; i < ids.length; i += 200) {
+        const { error } = await supabase
+          .from('accounts')
+          .update(patch)
+          .in('id', ids.slice(i, i + 200));
+        if (error) throw error;
+      }
+      setAccounts((cur) => cur.map((a) => (selected.has(a.id) ? { ...a, ...patch } : a)));
+      toast.success(`${label} · ${ids.length.toLocaleString()} account${ids.length === 1 ? '' : 's'}`);
+      clearSelection();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Bulk update failed.');
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function bulkSetActive(active: boolean) {
+    if (!selectable || selected.size === 0) return;
+    const ids = [...selected];
+    setBulkBusy(true);
+    try {
+      for (let i = 0; i < ids.length; i += 200) {
+        const { error } = await supabase
+          .from('accounts')
+          .update({ active })
+          .in('id', ids.slice(i, i + 200));
+        if (error) throw error;
+      }
+      toast.success(
+        `${active ? 'Enabled' : 'Disabled'} ${ids.length.toLocaleString()} account${ids.length === 1 ? '' : 's'}`
+      );
+      clearSelection();
+      await loadAdminAccounts();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Bulk status change failed.');
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function bulkDelete() {
+    if (!selectable || selected.size === 0) return;
+    const ids = [...selected];
+    const ok = await confirm({
+      title: `Delete ${ids.length.toLocaleString()} account${ids.length === 1 ? '' : 's'}?`,
+      message:
+        "This permanently removes them. Accounts linked to jobs or claims can't be deleted and are skipped.",
+      destructive: true,
+      confirmLabel: 'Delete',
+    });
+    if (!ok) return;
+    setBulkBusy(true);
+    let deleted = 0;
+    let blocked = 0;
+    try {
+      for (let i = 0; i < ids.length; i += 200) {
+        const chunk = ids.slice(i, i + 200);
+        const { error } = await supabase.from('accounts').delete().in('id', chunk);
+        if (!error) {
+          deleted += chunk.length;
+          continue;
+        }
+        // A chunk fails if any row is FK-referenced — retry row-by-row to remove what we can.
+        for (const id of chunk) {
+          const { error: e2 } = await supabase.from('accounts').delete().eq('id', id);
+          if (e2) blocked += 1;
+          else deleted += 1;
+        }
+      }
+      if (deleted) toast.success(`Deleted ${deleted.toLocaleString()} account${deleted === 1 ? '' : 's'}`);
+      if (blocked) toast.error(`${blocked.toLocaleString()} couldn't be deleted (linked to jobs/claims)`);
+      clearSelection();
+      await loadAdminAccounts();
+    } finally {
+      setBulkBusy(false);
+    }
   }
 
   // Search / state / city / status are applied server-side (see loadAdminAccounts). The memo
@@ -397,10 +535,109 @@ function AccountsPageContent() {
       </p>
       )}
 
+      {selectable && selected.size > 0 ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm">
+          <span className="font-semibold text-brand-800">
+            {selected.size.toLocaleString()} selected
+          </span>
+          <button type="button" onClick={clearSelection} className="text-slate-500 underline">
+            Clear
+          </button>
+          {!origin &&
+          total > selected.size &&
+          filteredAccounts.length > 0 &&
+          filteredAccounts.every((a) => selected.has(a.id)) ? (
+            <button
+              type="button"
+              onClick={selectAllMatching}
+              disabled={bulkBusy}
+              className="font-semibold text-brand-700 underline disabled:opacity-50"
+            >
+              Select all {total.toLocaleString()} matching
+            </button>
+          ) : null}
+          <span className="mx-1 hidden h-5 w-px bg-brand-200 sm:block" />
+          <button
+            type="button"
+            disabled={bulkBusy}
+            onClick={() => bulkSetActive(true)}
+            className="rounded-lg border border-emerald-300 bg-white px-2.5 py-1 font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+          >
+            Enable
+          </button>
+          <button
+            type="button"
+            disabled={bulkBusy}
+            onClick={() => bulkSetActive(false)}
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Disable
+          </button>
+          <button
+            type="button"
+            disabled={bulkBusy}
+            onClick={bulkDelete}
+            className="rounded-lg border border-rose-300 bg-white px-2.5 py-1 font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+          >
+            Delete
+          </button>
+          <span className="mx-1 hidden h-5 w-px bg-brand-200 sm:block" />
+          <BulkSelect
+            label="type"
+            disabled={bulkBusy}
+            options={[['shop', 'Shop'], ['independent_tech', 'Ind. tech']]}
+            onPick={(v) => bulkUpdate({ provider_type: v }, 'Type set')}
+          />
+          <BulkSelect
+            label="repair-only"
+            disabled={bulkBusy}
+            options={[['Yes', 'Yes'], ['No', 'No'], ['Unknown', 'Unknown']]}
+            onPick={(v) => bulkUpdate({ repair_only: v }, 'Repair-only set')}
+          />
+          <BulkSelect
+            label="outreach"
+            disabled={bulkBusy}
+            options={OUTREACH_OPTIONS.map((o) => [o, o] as [string, string])}
+            onPick={(v) => bulkUpdate({ outreach_status: v }, 'Outreach set')}
+          />
+          <BulkSelect
+            label="certified"
+            disabled={bulkBusy}
+            options={[['Yes', 'Yes'], ['No', 'No'], ['Unknown', 'Unknown']]}
+            onPick={(v) => bulkUpdate({ glasweld_certified: v }, 'Certified set')}
+          />
+        </div>
+      ) : null}
+
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-soft">
         <table className="min-w-[1180px] text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
+              {selectable ? (
+                <th className="px-3 py-3">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all on this page"
+                    checked={
+                      filteredAccounts.length > 0 &&
+                      filteredAccounts.every((a) => selected.has(a.id))
+                    }
+                    onChange={() =>
+                      setSelected((prev) => {
+                        const next = new Set(prev);
+                        const allSel =
+                          filteredAccounts.length > 0 &&
+                          filteredAccounts.every((a) => next.has(a.id));
+                        filteredAccounts.forEach((a) =>
+                          allSel ? next.delete(a.id) : next.add(a.id)
+                        );
+                        return next;
+                      })
+                    }
+                    className="h-4 w-4 cursor-pointer"
+                  />
+                </th>
+              ) : null}
               <th className="px-4 py-3">Account</th>
               <th className="px-4 py-3">City</th>
               <th className="px-4 py-3">State</th>
@@ -416,15 +653,28 @@ function AccountsPageContent() {
           </thead>
 
           <tbody>
-            {loading ? <SkeletonRows columns={showDistance ? 11 : 10} rows={8} /> : null}
+            {loading ? (
+              <SkeletonRows columns={(showDistance ? 11 : 10) + (selectable ? 1 : 0)} rows={8} />
+            ) : null}
 
             {!loading && filteredAccounts.map((account) => (
               <tr
                 key={account.id}
                 className={`border-t hover:bg-slate-50 ${
-                  account.active === false ? 'opacity-60' : ''
-                }`}
+                  selected.has(account.id) ? 'bg-brand-50/60' : ''
+                } ${account.active === false ? 'opacity-60' : ''}`}
               >
+                {selectable ? (
+                  <td className="px-3 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${account.account_name || 'account'}`}
+                      checked={selected.has(account.id)}
+                      onChange={() => toggleRow(account.id)}
+                      className="h-4 w-4 cursor-pointer"
+                    />
+                  </td>
+                ) : null}
                 <td className="px-4 py-3 font-medium">
                   <div className="flex items-center gap-2">
                     <Link
@@ -546,7 +796,7 @@ function AccountsPageContent() {
             {!loading && !filteredAccounts.length && (
               <tr>
                 <td
-                  colSpan={showDistance ? 11 : 10}
+                  colSpan={(showDistance ? 11 : 10) + (selectable ? 1 : 0)}
                   className="py-10 text-center text-slate-500"
                 >
                   {showDistance
@@ -584,6 +834,38 @@ function AccountsPageContent() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+// A compact "Set <field>…" dropdown for the bulk toolbar: picking a value fires onPick and
+// the control snaps back to the placeholder (it's a fire-once action, not a bound value).
+function BulkSelect({
+  label,
+  options,
+  onPick,
+  disabled,
+}: {
+  label: string;
+  options: [string, string][];
+  onPick: (value: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <select
+      value=""
+      disabled={disabled}
+      onChange={(e) => {
+        if (e.target.value) onPick(e.target.value);
+      }}
+      className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+    >
+      <option value="">Set {label}…</option>
+      {options.map(([value, text]) => (
+        <option key={value} value={value}>
+          {text}
+        </option>
+      ))}
+    </select>
   );
 }
 
