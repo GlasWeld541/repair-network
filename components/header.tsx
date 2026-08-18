@@ -253,7 +253,7 @@ export default function Header() {
 
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold text-white sm:text-[17px]">
-                  GlasWeld Repair Network™
+                  GlasWeld Network™
                 </div>
                 <div className="mt-1 hidden text-[10px] uppercase tracking-[0.32em] text-brand-200/80 sm:block">
                   Claims Control Platform

@@ -9,22 +9,22 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 const overviewCards = [
   {
-    title: 'Repair only',
+    title: 'Repair-only first',
     body:
-      'Every location in this network focuses on repair. No windshield replacement revenue means no incentive to convert a repairable claim.',
+      'Repairable damage should be inspected by someone who is not financially rewarded for turning it into a replacement.',
     icon: ShieldCheck,
   },
   {
-    title: 'Certified process',
+    title: 'Two ways carriers save',
     body:
-      'Locations are selected for quality, consistency, and lower claim risk. The network is built to protect outcomes, not just fill geography.',
-    icon: BadgeCheck,
+      'Keep repairable damage out of the claims system when possible. For claims that must be opened, reduce severity by stopping unnecessary replacements before they happen.',
+    icon: TrendingDown,
   },
   {
-    title: 'Better claim results',
+    title: 'Right provider, right outcome',
     body:
-      'Lower severity, fewer unnecessary replacements, and a more consistent repair-first experience for both carriers and customers.',
-    icon: TrendingDown,
+      'Repairable chips go first to repair-only providers. True replacements go to qualified full-service shops. The decision is based on the glass, not replacement revenue.',
+    icon: BadgeCheck,
   },
 ];
 
@@ -103,59 +103,47 @@ export default function HomePage() {
         <div className="grid gap-10 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
           <div>
             <div className="text-sm font-semibold uppercase tracking-[0.32em] text-teal-300">
-              Repair-first network
+              Repair-first glass network
             </div>
 
             <h1 className="mt-5 max-w-none text-4xl font-semibold leading-[1.06] tracking-[-0.035em] lg:text-[58px]">
-              Reduce glass claim costs by eliminating unnecessary replacements.
+              Fewer glass claims. Lower claim severity. Better glass decisions.
             </h1>
 
             <p className="mt-6 max-w-[920px] text-lg leading-8 text-slate-300">
-              This network is built exclusively with repair-focused businesses that do not perform
-              full windshield replacements. Without a financial incentive to upsell replacements,
-              claims are handled correctly the first time, reducing cost while maintaining a
-              higher-quality customer experience.
+              GlasWeld puts a neutral repair-first decision in front of the glass claim. Repairable
+              chips are routed first to providers who do not profit from replacing the windshield,
+              removing the conflict that turns repairable damage into unnecessary replacements. When
+              replacement is truly necessary, the customer is routed to a qualified full-service
+              glass provider.
             </p>
 
-            <div className="mt-8 grid max-w-2xl gap-4 sm:grid-cols-3">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                {countersLoading ? (
-                  <Skeleton className="h-9 w-16 rounded-lg bg-white/20" />
-                ) : (
-                  <div className="text-3xl font-semibold text-white">
-                    {totalLocations}
+            <div className="mt-8 grid max-w-3xl grid-cols-2 gap-4 sm:grid-cols-4">
+              {[
+                { value: totalLocations, label: 'Provider locations' },
+                { value: statesCovered, label: 'States covered' },
+                { value: repairOnlyCount, label: 'Repair-only providers' },
+                {
+                  value: Math.max(0, totalLocations - repairOnlyCount),
+                  label: 'Replacement-capable providers',
+                },
+              ].map((stat) => (
+                <div
+                  key={stat.label}
+                  className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                >
+                  {countersLoading ? (
+                    <Skeleton className="h-9 w-16 rounded-lg bg-white/20" />
+                  ) : (
+                    <div className="text-3xl font-semibold text-white">
+                      {stat.value.toLocaleString()}
+                    </div>
+                  )}
+                  <div className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-teal-300">
+                    {stat.label}
                   </div>
-                )}
-                <div className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-teal-300">
-                  Mapped locations
                 </div>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                {countersLoading ? (
-                  <Skeleton className="h-9 w-16 rounded-lg bg-white/20" />
-                ) : (
-                  <div className="text-3xl font-semibold text-white">
-                    {statesCovered}
-                  </div>
-                )}
-                <div className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-teal-300">
-                  States covered
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                {countersLoading ? (
-                  <Skeleton className="h-9 w-16 rounded-lg bg-white/20" />
-                ) : (
-                  <div className="text-3xl font-semibold text-white">
-                    {repairOnlyCount}
-                  </div>
-                )}
-                <div className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-teal-300">
-                  Repair-only shops
-                </div>
-              </div>
+              ))}
             </div>
           </div>
 
@@ -187,11 +175,11 @@ export default function HomePage() {
 
       <section className="space-y-4">
         <div className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-600">
-          Real-time repair coverage footprint
+          Real-time glass network footprint
         </div>
 
         <div className="text-lg font-semibold text-slate-800">
-          Live qualified repair footprint
+          Live repair-first provider footprint
         </div>
 
         <HomeCoverageMap />
