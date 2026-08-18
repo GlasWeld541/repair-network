@@ -267,15 +267,27 @@ export default function Header() {
         </div>
       </div>
 
-      {/* Left sidebar drawer — nav + logout, opened from the menu button on every screen size. */}
-      {menuOpen ? (
-        <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true">
-          <button
-            aria-label="Close menu"
-            onClick={() => setMenuOpen(false)}
-            className="absolute inset-0 h-full w-full cursor-default bg-slate-950/60"
-          />
-          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[82%] flex-col gap-4 border-r border-slate-800 bg-slate-950 p-4 shadow-2xl">
+      {/* Left sidebar drawer — always mounted so it can slide in/out; toggled by menuOpen.
+          (Conditional mount would pop in/out with no transition.) */}
+      <div
+        className={`fixed inset-0 z-[60] ${menuOpen ? '' : 'pointer-events-none'}`}
+        role="dialog"
+        aria-modal="true"
+        aria-hidden={!menuOpen}
+      >
+        <button
+          aria-label="Close menu"
+          onClick={() => setMenuOpen(false)}
+          tabIndex={menuOpen ? 0 : -1}
+          className={`absolute inset-0 h-full w-full cursor-default bg-slate-950/60 transition-opacity duration-300 ${
+            menuOpen ? 'opacity-100' : 'opacity-0'
+          }`}
+        />
+        <aside
+          className={`absolute inset-y-0 left-0 flex w-72 max-w-[82%] flex-col gap-4 border-r border-slate-800 bg-slate-950 p-4 shadow-2xl transition-transform duration-300 ease-out ${
+            menuOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-white">Menu</span>
               <button
@@ -319,7 +331,6 @@ export default function Header() {
             </div>
           </aside>
         </div>
-      ) : null}
     </header>
   );
 }
