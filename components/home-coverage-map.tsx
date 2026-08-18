@@ -392,12 +392,12 @@ export default function HomeCoverageMap() {
             Network coverage map
           </div>
           <div className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
-            Repair &amp; replacement providers
+            Repair-only and replacement-capable providers
           </div>
         </div>
 
         <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-          {allAccounts.length} mapped businesses
+          {allAccounts.length.toLocaleString()} mapped provider locations
         </div>
       </div>
 
@@ -523,11 +523,11 @@ export default function HomeCoverageMap() {
           <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-600">
             <span className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />
-              Repair
+              Repair-only
             </span>
             <span className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
-              Replacement
+              Replacement-capable
             </span>
           </div>
         </div>
