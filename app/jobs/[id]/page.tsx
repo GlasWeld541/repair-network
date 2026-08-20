@@ -582,6 +582,31 @@ export default function JobDetailPage() {
     await loadPage();
   }
 
+  // #189 (option B): admin confirms the assigned shop has accepted the job. Stamps
+  // accepted_at and sends the customer their "you've been matched" email (once). The
+  // service-role write + email live in POST /api/jobs/[id]/accept.
+  async function confirmAccepted() {
+    if (isReadOnly || working) return;
+    setWorking(true);
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/accept`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data?.error || 'Could not confirm acceptance.');
+        return;
+      }
+      if (data.emailed) toast.success('Shop accepted — customer notified by email.');
+      else if (data.email_skipped)
+        toast.success('Shop accepted. Customer email not sent (email not configured).');
+      else toast.success('Shop acceptance confirmed.');
+      await loadPage();
+    } catch {
+      toast.error('Could not confirm acceptance.');
+    } finally {
+      setWorking(false);
+    }
+  }
+
   async function collectPayment(amountOverride?: number) {
     if (!invoice || !job || isReadOnly) return;
 
@@ -796,6 +821,31 @@ export default function JobDetailPage() {
                 </button>
               ) : null}
             </>
+          ) : null}
+
+          {!isReadOnly &&
+          job.assigned_account_id &&
+          job.job_status !== 'Completed' &&
+          job.job_status !== 'Canceled' ? (
+            job.accepted_at ? (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700"
+                title="The customer has been emailed their match."
+              >
+                <Check className="h-4 w-4" />
+                Shop accepted
+              </span>
+            ) : (
+              <button
+                type="button"
+                disabled={working}
+                onClick={() => void confirmAccepted()}
+                title="Confirm the assigned shop accepted, and email the customer their match."
+                className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-100 disabled:opacity-60"
+              >
+                Confirm shop accepted
+              </button>
+            )
           ) : null}
 
           {job.job_status === 'Completed' ? (
