@@ -132,6 +132,19 @@ function timeAgo(iso: string | null | undefined): string {
   return d < 30 ? `${d}d ago` : new Date(iso).toLocaleDateString();
 }
 
+/** True when an ISO timestamp falls on the viewer's local calendar day. */
+function isToday(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
+
 const PAGE_SIZE = 8;
 
 export default function AdminConsumerIntakePage() {
@@ -144,6 +157,7 @@ export default function AdminConsumerIntakePage() {
   const [selection, setSelection] = useState<Record<string, Record<string, string>>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activeCounts, setActiveCounts] = useState<Record<string, number>>({});
+  const [providerRatings, setProviderRatings] = useState<Record<string, { avg: number; count: number }>>({});
   const [openPickerId, setOpenPickerId] = useState<string | null>(null);
   const [origins, setOrigins] = useState<
     Record<string, { latitude: number; longitude: number } | null>
@@ -151,6 +165,7 @@ export default function AdminConsumerIntakePage() {
   const [geocodingId, setGeocodingId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [queueFilter, setQueueFilter] = useState<'all' | 'today' | 'new'>('all');
 
   const isDemo = role === 'demo';
 
@@ -215,26 +230,47 @@ export default function AdminConsumerIntakePage() {
           .order('created_at', { ascending: true }),
         supabase
           .from('jobs')
-          .select('assigned_account_id, job_status')
+          .select('assigned_account_id, job_status, repair_score, repair_score_status')
           .not('assigned_account_id', 'is', null),
       ]);
 
     // Count providers currently busy on a job (anything not finished/canceled) so the
-    // picker can exclude them by default.
+    // picker can exclude them by default. In the same pass, roll up each provider's Rex
+    // repair scores — only ADMIN-APPROVED scores count (matching the tech-ratings model), so
+    // a pending/rejected score never inflates a provider's rating.
     const counts: Record<string, number> = {};
-    ((jobRows as { assigned_account_id: string | null; job_status: string | null }[]) || []).forEach(
-      (job) => {
-        if (!job.assigned_account_id) return;
-        const status = job.job_status || 'New';
-        if (status === 'Completed' || status === 'Canceled') return;
+    const scoreAgg: Record<string, { sum: number; count: number }> = {};
+    (
+      (jobRows as {
+        assigned_account_id: string | null;
+        job_status: string | null;
+        repair_score: number | null;
+        repair_score_status: string | null;
+      }[]) || []
+    ).forEach((job) => {
+      if (!job.assigned_account_id) return;
+      const status = job.job_status || 'New';
+      if (status !== 'Completed' && status !== 'Canceled') {
         counts[job.assigned_account_id] = (counts[job.assigned_account_id] || 0) + 1;
       }
-    );
+      if (job.repair_score_status === 'approved' && typeof job.repair_score === 'number') {
+        const agg = scoreAgg[job.assigned_account_id] || { sum: 0, count: 0 };
+        agg.sum += job.repair_score;
+        agg.count += 1;
+        scoreAgg[job.assigned_account_id] = agg;
+      }
+    });
+
+    const ratings: Record<string, { avg: number; count: number }> = {};
+    Object.entries(scoreAgg).forEach(([accountId, agg]) => {
+      ratings[accountId] = { avg: agg.sum / agg.count, count: agg.count };
+    });
 
     setIntakes((intakeRows as Intake[]) || []);
     setAccounts((accountRows as Account[]) || []);
     setPhotos((photoRows as Photo[]) || []);
     setActiveCounts(counts);
+    setProviderRatings(ratings);
     setLoading(false);
   }
 
@@ -561,6 +597,21 @@ export default function AdminConsumerIntakePage() {
     [intakes]
   );
 
+  const todayCount = useMemo(
+    () => intakes.filter((intake) => isToday(intake.created_at)).length,
+    [intakes]
+  );
+  const newCount = useMemo(
+    () => intakes.filter((intake) => intake.intake_status === 'new').length,
+    [intakes]
+  );
+
+  const filteredIntakes = useMemo(() => {
+    if (queueFilter === 'today') return intakes.filter((intake) => isToday(intake.created_at));
+    if (queueFilter === 'new') return intakes.filter((intake) => intake.intake_status === 'new');
+    return intakes;
+  }, [intakes, queueFilter]);
+
   const openIntake = openPickerId ? intakes.find((i) => i.id === openPickerId) || null : null;
   const openTriage = openIntake
     ? getSelected(openIntake, 'triage_result') || 'needs_review'
@@ -570,9 +621,9 @@ export default function AdminConsumerIntakePage() {
     return <ListPageSkeleton withFilters columns={7} rows={8} minWidth={1100} />;
   }
 
-  const totalPages = Math.max(1, Math.ceil(intakes.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filteredIntakes.length / PAGE_SIZE));
   const pageSafe = Math.min(page, totalPages - 1);
-  const pagedIntakes = intakes.slice(pageSafe * PAGE_SIZE, (pageSafe + 1) * PAGE_SIZE);
+  const pagedIntakes = filteredIntakes.slice(pageSafe * PAGE_SIZE, (pageSafe + 1) * PAGE_SIZE);
 
   return (
     <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">
@@ -607,10 +658,52 @@ export default function AdminConsumerIntakePage() {
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <h2 className="text-lg font-semibold text-slate-900">Triage Queue</h2>
-          <span className="text-sm text-slate-500">{intakes.length} total</span>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-slate-900">Triage Queue</h2>
+            <span className="text-sm text-slate-500">{filteredIntakes.length} shown</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {([
+              { key: 'all', label: 'All', count: intakes.length },
+              { key: 'today', label: 'Today', count: todayCount },
+              { key: 'new', label: 'New', count: newCount },
+            ] as const).map((chip) => (
+              <button
+                key={chip.key}
+                type="button"
+                onClick={() => {
+                  setQueueFilter(chip.key);
+                  setPage(0);
+                }}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  queueFilter === chip.key
+                    ? 'border-brand-600 bg-brand-600 text-white'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-brand-300 hover:text-brand-700'
+                }`}
+              >
+                {chip.label}
+                <span
+                  className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] ${
+                    queueFilter === chip.key ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  {chip.count}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
+
+        {pagedIntakes.length === 0 ? (
+          <div className="px-5 py-10 text-center text-sm text-slate-500">
+            {queueFilter === 'today'
+              ? 'No submissions received today yet.'
+              : queueFilter === 'new'
+                ? 'No new (untriaged) leads right now.'
+                : 'No intakes yet.'}
+          </div>
+        ) : null}
 
         <div className="divide-y divide-slate-100">
           {pagedIntakes.map((intake) => {
@@ -836,18 +929,12 @@ export default function AdminConsumerIntakePage() {
               </div>
             );
           })}
-
-          {!intakes.length ? (
-            <div className="p-10 text-center text-sm text-slate-500">
-              No consumer or agent intakes yet.
-            </div>
-          ) : null}
         </div>
 
         {totalPages > 1 ? (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-3 text-sm">
             <span className="text-slate-500">
-              Page {pageSafe + 1} of {totalPages} · showing {pagedIntakes.length} of {intakes.length}
+              Page {pageSafe + 1} of {totalPages} · showing {pagedIntakes.length} of {filteredIntakes.length}
             </span>
             <div className="flex gap-2">
               <button
@@ -880,6 +967,7 @@ export default function AdminConsumerIntakePage() {
           }
           accounts={rankedAccountOptions(openIntake, openTriage)}
           activeCounts={activeCounts}
+          ratings={providerRatings}
           origin={origins[openIntake.id] ?? null}
           geocoding={geocodingId === openIntake.id}
           selectedId={getSelected(openIntake, 'assigned_account_id')}
