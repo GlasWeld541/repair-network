@@ -37,7 +37,7 @@ type Origin = { latitude: number; longitude: number } | null;
 function certBadges(a: ProviderAccount) {
   const out: string[] = [];
   if (a.glasweld_certified === 'Yes') out.push('Certified');
-  if (a.uses_onyx === 'Yes') out.push('Onyx');
+  if (a.uses_onyx === 'Yes') out.push('Onyx/Emerald');
   if (a.uses_zoom_injector === 'Yes') out.push('Zoom');
   if (a.repair_only === 'Yes') out.push('Repair-only');
   return out;
@@ -56,6 +56,7 @@ export default function ProviderPickerModal({
   onClose,
   accounts,
   activeCounts,
+  ratings = {},
   origin,
   selectedId,
   onSelect,
@@ -66,6 +67,9 @@ export default function ProviderPickerModal({
   onClose: () => void;
   accounts: ProviderAccount[];
   activeCounts: Record<string, number>;
+  // Rolled-up Rex repair scores per provider (admin-approved only). Optional — call sites
+  // without score data (e.g. job reassignment) simply don't offer the "Top rated" sort.
+  ratings?: Record<string, { avg: number; count: number }>;
   origin: Origin;
   selectedId: string;
   onSelect: (id: string) => void;
@@ -76,8 +80,14 @@ export default function ProviderPickerModal({
   const [showBusy, setShowBusy] = useState(false);
   // Geography is the primary metric (Shiloh: don't route a customer to a certified shop
   // 180 mi away over a closer one). Default "nearest"; admins can flip to "certified" to
-  // lead with certification when distances are comparable.
-  const [sortMode, setSortMode] = useState<'best' | 'nearest'>('best');
+  // lead with certification when distances are comparable. "Top rated" (when rating data is
+  // present) leads with each provider's rolled-up Rex repair score — Nayab's 3rd sort dimension.
+  const [sortMode, setSortMode] = useState<'best' | 'nearest' | 'rated'>('best');
+
+  const hasRatings = useMemo(
+    () => accounts.some((a) => (ratings[a.id]?.count ?? 0) > 0),
+    [accounts, ratings],
+  );
 
   // Close on Escape while open.
   useEffect(() => {
@@ -95,12 +105,15 @@ export default function ProviderPickerModal({
         origin && a.latitude != null && a.longitude != null
           ? distanceMiles(origin.latitude, origin.longitude, a.latitude, a.longitude)
           : null;
+      const r = ratings[a.id];
       return {
         a,
         dist,
         active: activeCounts[a.id] || 0,
         order: i,
         certified: a.glasweld_certified === 'Yes',
+        rating: r && r.count > 0 ? r.avg : null,
+        ratingCount: r?.count ?? 0,
       };
     });
     // Geography-first (default): nearest leads, with certification the tiebreaker between
@@ -118,7 +131,17 @@ export default function ProviderPickerModal({
     };
     const covered = (m: (typeof withMeta)[number]) =>
       m.dist != null && m.dist <= COVERAGE_RADIUS_MILES;
+    // Higher Rex repair score leads; an unrated provider (no approved scores) sinks below every
+    // rated one, then falls back to the incoming proximity order.
+    const byRating = (x: (typeof withMeta)[number], y: (typeof withMeta)[number]) => {
+      if (x.rating == null && y.rating == null) return nearer(x, y);
+      if (x.rating == null) return 1;
+      if (y.rating == null) return -1;
+      if (y.rating !== x.rating) return y.rating - x.rating;
+      return nearer(x, y);
+    };
     withMeta.sort((x, y) => {
+      if (sortMode === 'rated') return byRating(x, y); // top-rated first
       if (sortMode === 'nearest') return nearer(x, y); // pure distance
       // 'best' (default): coverage first (within radius), then quality (certified), then nearest.
       const xc = covered(x);
@@ -128,7 +151,7 @@ export default function ProviderPickerModal({
       return nearer(x, y); // neither reachable -> nearest fallback
     });
     return withMeta;
-  }, [accounts, activeCounts, origin, sortMode]);
+  }, [accounts, activeCounts, ratings, origin, sortMode]);
 
   if (!open) return null;
 
@@ -147,13 +170,16 @@ export default function ProviderPickerModal({
     ({ a, active }) => active >= BUSY_THRESHOLD && a.id !== selectedId,
   ).length;
 
-  const sortLabel = geocoding
-    ? 'Locating…'
-    : !origin
-      ? 'By region'
-      : sortMode === 'nearest'
-        ? 'Nearest first'
-        : `Most qualified within ${COVERAGE_RADIUS_MILES} mi, then nearest`;
+  const sortLabel =
+    sortMode === 'rated'
+      ? 'Top rated first (Rex repair score)'
+      : geocoding
+        ? 'Locating…'
+        : !origin
+          ? 'By region'
+          : sortMode === 'nearest'
+            ? 'Nearest first'
+            : `Most qualified within ${COVERAGE_RADIUS_MILES} mi, then nearest`;
 
   return (
     <div
@@ -195,9 +221,14 @@ export default function ProviderPickerModal({
             className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
             autoFocus
           />
-          {origin && (
+          {origin || hasRatings ? (
             <div className="flex shrink-0 rounded-lg border border-slate-300 p-0.5 text-sm">
-              {(['best', 'nearest'] as const).map((mode) => (
+              {(
+                [
+                  ...(origin ? (['best', 'nearest'] as const) : []),
+                  ...(hasRatings ? (['rated'] as const) : []),
+                ] as ('best' | 'nearest' | 'rated')[]
+              ).map((mode) => (
                 <button
                   key={mode}
                   type="button"
@@ -208,16 +239,16 @@ export default function ProviderPickerModal({
                       : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  {mode === 'best' ? 'Best match' : 'Nearest'}
+                  {mode === 'best' ? 'Best match' : mode === 'nearest' ? 'Nearest' : 'Top rated'}
                 </button>
               ))}
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* List */}
         <div className="flex-1 space-y-2 overflow-y-auto px-5 py-3">
-          {visible.map(({ a, dist, active }) => {
+          {visible.map(({ a, dist, active, rating, ratingCount }) => {
             const selected = a.id === selectedId;
             const badges = certBadges(a);
             return (
@@ -253,6 +284,14 @@ export default function ProviderPickerModal({
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
+                    {rating != null ? (
+                      <span
+                        className="whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-200"
+                        title={`Average Rex repair score across ${ratingCount} approved repair${ratingCount === 1 ? '' : 's'}`}
+                      >
+                        ★ {rating.toFixed(1)} · {ratingCount}
+                      </span>
+                    ) : null}
                     {dist != null ? (
                       <span className="whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
                         {dist < 10 ? dist.toFixed(1) : Math.round(dist)} mi

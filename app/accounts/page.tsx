@@ -27,6 +27,7 @@ type AccountRow = {
   uses_onyx: string | null;
   uses_zoom_injector: string | null;
   repair_only: string | null;
+  offers_financing: boolean | null;
   outreach_status: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -41,7 +42,7 @@ type Role = 'admin' | 'shop' | 'carrier' | 'demo' | null;
 const RADIUS_OPTIONS = [10, 25, 50, 100, 250] as const;
 const PAGE_SIZE = 50;
 const ADMIN_COLS =
-  'id, account_name, city, state, glasweld_certified, insurance, uses_onyx, uses_zoom_injector, repair_only, outreach_status, latitude, longitude, active, provider_type';
+  'id, account_name, city, state, glasweld_certified, insurance, uses_onyx, uses_zoom_injector, repair_only, offers_financing, outreach_status, latitude, longitude, active, provider_type';
 
 function AccountsPageContent() {
   const searchParams = useSearchParams();
@@ -252,6 +253,21 @@ function AccountsPageContent() {
 
     setAccounts((current) =>
       current.map((account) => (account.id === id ? { ...account, active } : account))
+    );
+  }
+
+  // offers_financing is a boolean, so it can't ride the string-valued updateAccount path —
+  // map the Yes/No/Unknown cell to true/false/null (self-declared; a routing filter only).
+  async function setAccountFinancing(id: string, value: string) {
+    if (isReadOnly) return;
+
+    const offers_financing = value === 'Yes' ? true : value === 'No' ? false : null;
+    await supabase.from('accounts').update({ offers_financing }).eq('id', id);
+
+    setAccounts((current) =>
+      current.map((account) =>
+        account.id === id ? { ...account, offers_financing } : account
+      )
     );
   }
 
@@ -644,9 +660,10 @@ function AccountsPageContent() {
               {showDistance ? <th className="px-4 py-3">Distance</th> : null}
               <th className="px-4 py-3">Certified</th>
               <th className="px-4 py-3">Insurance</th>
-              <th className="px-4 py-3">Onyx</th>
+              <th className="px-4 py-3">Onyx/Emerald</th>
               <th className="px-4 py-3">Zoom</th>
               <th className="px-4 py-3">Repair Only</th>
+              <th className="px-4 py-3">Financing</th>
               <th className="px-4 py-3">Outreach</th>
               <th className="px-4 py-3">Status</th>
             </tr>
@@ -654,7 +671,7 @@ function AccountsPageContent() {
 
           <tbody>
             {loading ? (
-              <SkeletonRows columns={(showDistance ? 11 : 10) + (selectable ? 1 : 0)} rows={8} />
+              <SkeletonRows columns={(showDistance ? 12 : 11) + (selectable ? 1 : 0)} rows={8} />
             ) : null}
 
             {!loading && filteredAccounts.map((account) => (
@@ -757,6 +774,21 @@ function AccountsPageContent() {
 
                 <td className="px-4 py-3">
                   <EditableCell
+                    value={
+                      account.offers_financing === true
+                        ? 'Yes'
+                        : account.offers_financing === false
+                          ? 'No'
+                          : 'Unknown'
+                    }
+                    options={YES_NO_UNKNOWN}
+                    readOnly={isReadOnly}
+                    onChange={(value) => setAccountFinancing(account.id, value)}
+                  />
+                </td>
+
+                <td className="px-4 py-3">
+                  <EditableCell
                     value={account.outreach_status || 'Not Contacted'}
                     options={OUTREACH_OPTIONS}
                     readOnly={isReadOnly}
@@ -796,7 +828,7 @@ function AccountsPageContent() {
             {!loading && !filteredAccounts.length && (
               <tr>
                 <td
-                  colSpan={(showDistance ? 11 : 10) + (selectable ? 1 : 0)}
+                  colSpan={(showDistance ? 12 : 11) + (selectable ? 1 : 0)}
                   className="py-10 text-center text-slate-500"
                 >
                   {showDistance
