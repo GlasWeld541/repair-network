@@ -798,15 +798,38 @@ export default function AdminConsumerIntakePage() {
 
                   {intakePhotos.length ? (
                     <div className="mt-4 grid grid-cols-3 gap-2">
-                      {intakePhotos.map((photo) => (
-                        <a key={photo.id} href={photo.file_url} target="_blank" rel="noreferrer">
-                          <img
-                            src={photo.file_url}
-                            alt={photo.file_name}
-                            className="aspect-square rounded-xl border border-slate-200 object-cover"
-                          />
-                        </a>
-                      ))}
+                      {intakePhotos.map((photo) => {
+                        const n = (photo.file_name || '').toLowerCase();
+                        const label = n.startsWith('adas')
+                          ? 'Camera zone'
+                          : n.startsWith('closeup')
+                            ? 'Close-up'
+                            : n.startsWith('windshield')
+                              ? 'Windshield'
+                              : n.startsWith('vin')
+                                ? 'VIN'
+                                : '';
+                        return (
+                          <a
+                            key={photo.id}
+                            href={photo.file_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block"
+                          >
+                            <img
+                              src={photo.file_url}
+                              alt={photo.file_name}
+                              className="aspect-square rounded-xl border border-slate-200 object-cover"
+                            />
+                            {label ? (
+                              <div className="mt-1 text-center text-[11px] font-medium text-slate-500">
+                                {label}
+                              </div>
+                            ) : null}
+                          </a>
+                        );
+                      })}
                     </div>
                   ) : null}
                 </div>
