@@ -67,6 +67,9 @@ type Account = {
   active: boolean | null;
   provider_type: string | null;
   offers_financing: boolean | null;
+  // Rolling Customer Satisfaction Index (avg of rated jobs) + how many ratings it's based on.
+  csi_score: number | null;
+  csi_count: number | null;
 };
 
 type Photo = {
@@ -221,7 +224,7 @@ export default function AdminConsumerIntakePage() {
           .from('accounts')
           // Only active accounts are assignable — scope server-side so we don't fetch (and
           // cap at 1000 of) the thousands of inactive candidate accounts the picker discards.
-          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, offers_financing')
+          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, offers_financing, csi_score, csi_count')
           .eq('active', true)
           .order('account_name'),
         supabase
@@ -389,10 +392,16 @@ export default function AdminConsumerIntakePage() {
         return { account, score };
       })
       .sort((a, b) => {
-        // Geography first (Shiloh): nearest region leads, with certification the tiebreaker
-        // within the same proximity — so a far certified shop no longer gets suggested over
-        // a closer provider. Then name for stable ordering.
+        // Geography first (Shiloh): nearest region leads. Within the same proximity, break ties
+        // by Customer Satisfaction Index (higher first), then certification, then name. A far
+        // shop never jumps a closer one on CSI alone — CSI only sorts equally-near providers,
+        // matching the PRD's rank = scores + certification + CSI.
         if (b.score !== a.score) return b.score - a.score;
+        // Unrated shops are treated as a neutral 3.5 so a brand-new shop isn't buried below a
+        // mediocre rating, but a genuinely high CSI still surfaces.
+        const aCsi = a.account.csi_score ?? 3.5;
+        const bCsi = b.account.csi_score ?? 3.5;
+        if (aCsi !== bCsi) return bCsi - aCsi;
         const aCert = a.account.glasweld_certified === 'Yes';
         const bCert = b.account.glasweld_certified === 'Yes';
         if (aCert !== bCert) return aCert ? -1 : 1;
