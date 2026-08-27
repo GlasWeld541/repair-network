@@ -3,7 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createAdminClient } from '@/lib/supabase';
 import { sendEmail } from '@/lib/email';
-import { buildMatchedEmail } from '@/lib/matched-email';
+import { buildMatchedEmail, buildTechAssignmentEmail } from '@/lib/matched-email';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -79,21 +79,52 @@ export async function POST(_request: Request, context: RouteContext) {
 
     // Stamp acceptance (idempotent — keep the first accepted_at).
     const acceptedAt = job.accepted_at || new Date().toISOString();
-    if (!job.accepted_at) {
+    const firstAccept = !job.accepted_at;
+    if (firstAccept) {
       await admin.from('jobs').update({ accepted_at: acceptedAt }).eq('id', id);
+    }
+
+    // Shop details — used by both the customer match email and the tech alert below.
+    const { data: account } = await admin
+      .from('accounts')
+      .select('account_name, city, state, glasweld_certified, company_email')
+      .eq('id', job.assigned_account_id)
+      .maybeSingle();
+
+    // Alert the assigned shop/tech on the FIRST acceptance so they're notified and have the
+    // customer contact + details to schedule immediately (no longer relying on them noticing it
+    // in Rex). Best-effort — a skipped/failed email never blocks acceptance.
+    let techEmailed = false;
+    if (firstAccept && account?.company_email) {
+      const vehicle = [job.vehicle_year, job.vehicle_make, job.vehicle_model]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+        .join(' ');
+      const location = [job.customer_city, job.customer_state, job.customer_zip]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+        .join(', ');
+      const damage = [job.damage_type, job.damage_notes]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+        .join(' — ');
+      const { subject, html } = buildTechAssignmentEmail({
+        shopName: account.account_name || job.assigned_account_name,
+        customerName: job.customer_name,
+        customerPhone: job.customer_phone,
+        vehicle: vehicle || null,
+        location: location || null,
+        damage: damage || null,
+        serviceType: job.service_type,
+      });
+      const techResult = await sendEmail({ to: account.company_email, subject, html });
+      techEmailed = techResult.ok;
     }
 
     // Send the customer their match — exactly once (guarded by matched_email_sent_at).
     let emailed = false;
     let emailSkipped = false;
     if (!job.matched_email_sent_at && job.customer_email) {
-      // Enrich with the shop's location + certification + rolled-up Rex score.
-      const { data: account } = await admin
-        .from('accounts')
-        .select('account_name, city, state, glasweld_certified')
-        .eq('id', job.assigned_account_id)
-        .maybeSingle();
-
       let score: number | null = null;
       const { data: scored } = await admin
         .from('jobs')
@@ -135,6 +166,7 @@ export async function POST(_request: Request, context: RouteContext) {
       emailed,
       email_skipped: emailSkipped,
       already_sent: Boolean(job.matched_email_sent_at),
+      tech_emailed: techEmailed,
     });
   } catch (e) {
     return NextResponse.json(

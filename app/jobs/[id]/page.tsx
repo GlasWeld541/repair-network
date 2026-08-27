@@ -17,6 +17,10 @@ const PAYMENT_PATHS = ['unknown', 'cash', 'insurance'];
 // Reporting only — how the customer actually paid. Distinct from payment_path (which drives
 // the customer-owes math). Optional; the platform fee is ALWAYS the full invoice total.
 const PAYMENT_METHODS = ['cash', 'card', 'insurance', 'financing'];
+// Customer Satisfaction (CSI) rating for this job, 1-5. Interim admin entry until the
+// customer-facing collection flow (at completion) is finalized; setting it rolls the shop's
+// rolling CSI up via the network.jobs trigger, feeding provider ranking.
+const SATISFACTION_OPTIONS = ['1', '2', '3', '4', '5'];
 type EditableTarget = { table: 'jobs'; field: string } | null;
 
 function money(value: number | null | undefined) {
@@ -175,7 +179,7 @@ export default function JobDetailPage() {
       const [{ data: accountRows }, { data: jobRows }] = await Promise.all([
         supabase
           .from('accounts')
-          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, repair_platform_fee_bps, replacement_platform_fee_bps')
+          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, repair_platform_fee_bps, replacement_platform_fee_bps, csi_score, csi_count')
           .order('account_name'),
         supabase
           .from('jobs')
@@ -932,6 +936,15 @@ export default function JobDetailPage() {
                 value={job.payment_method || ''}
                 options={PAYMENT_METHODS}
                 onSave={(value) => void updateJobField('payment_method', value || null)}
+                readOnly={isReadOnly}
+              />
+              <EditableSelect
+                label="Customer Satisfaction (1–5)"
+                value={job.customer_satisfaction != null ? String(job.customer_satisfaction) : ''}
+                options={SATISFACTION_OPTIONS}
+                onSave={(value) =>
+                  void updateJobField('customer_satisfaction', value ? Number(value) : null)
+                }
                 readOnly={isReadOnly}
               />
               <EditableField

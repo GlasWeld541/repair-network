@@ -30,6 +30,9 @@ export type ProviderAccount = {
   uses_zoom_injector: string | null;
   repair_only: string | null;
   provider_type: string | null;
+  // Rolling Customer Satisfaction Index (avg of rated jobs) + how many ratings it reflects.
+  csi_score?: number | null;
+  csi_count?: number | null;
 };
 
 type Origin = { latitude: number; longitude: number } | null;
@@ -114,6 +117,8 @@ export default function ProviderPickerModal({
         certified: a.glasweld_certified === 'Yes',
         rating: r && r.count > 0 ? r.avg : null,
         ratingCount: r?.count ?? 0,
+        csi: a.csi_count && a.csi_count > 0 && a.csi_score != null ? a.csi_score : null,
+        csiCount: a.csi_count ?? 0,
       };
     });
     // Geography-first (default): nearest leads, with certification the tiebreaker between
@@ -123,6 +128,13 @@ export default function ProviderPickerModal({
     // bottom; with no origin at all this falls back to the incoming (proximity-scored) order.
     const cert = (x: (typeof withMeta)[number], y: (typeof withMeta)[number]) =>
       x.certified === y.certified ? null : x.certified ? -1 : 1;
+    // Customer Satisfaction Index tiebreaker: higher CSI first. Unrated shops are treated as a
+    // neutral 3.5 so a brand-new shop isn't buried below a mediocre rating.
+    const byCsi = (x: (typeof withMeta)[number], y: (typeof withMeta)[number]) => {
+      const xc = x.csi ?? 3.5;
+      const yc = y.csi ?? 3.5;
+      return xc === yc ? null : yc - xc;
+    };
     const nearer = (x: (typeof withMeta)[number], y: (typeof withMeta)[number]) => {
       if (x.dist == null && y.dist == null) return x.order - y.order;
       if (x.dist == null) return 1;
@@ -147,7 +159,8 @@ export default function ProviderPickerModal({
       const xc = covered(x);
       const yc = covered(y);
       if (xc !== yc) return xc ? -1 : 1; // a reachable shop always leads an out-of-range one
-      if (xc && yc) return cert(x, y) ?? nearer(x, y); // both reachable -> most qualified, then nearest
+      // both reachable -> higher CSI, then certified, then nearest
+      if (xc && yc) return byCsi(x, y) ?? cert(x, y) ?? nearer(x, y);
       return nearer(x, y); // neither reachable -> nearest fallback
     });
     return withMeta;
@@ -248,7 +261,7 @@ export default function ProviderPickerModal({
 
         {/* List */}
         <div className="flex-1 space-y-2 overflow-y-auto px-5 py-3">
-          {visible.map(({ a, dist, active, rating, ratingCount }) => {
+          {visible.map(({ a, dist, active, rating, ratingCount, csi, csiCount }) => {
             const selected = a.id === selectedId;
             const badges = certBadges(a);
             return (
@@ -284,6 +297,14 @@ export default function ProviderPickerModal({
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
+                    {csi != null ? (
+                      <span
+                        className="whitespace-nowrap rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700 ring-1 ring-inset ring-sky-200"
+                        title={`Customer satisfaction (CSI) across ${csiCount} rated job${csiCount === 1 ? '' : 's'}`}
+                      >
+                        CSI {csi.toFixed(1)} · {csiCount}
+                      </span>
+                    ) : null}
                     {rating != null ? (
                       <span
                         className="whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-200"
