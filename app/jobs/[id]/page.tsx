@@ -342,6 +342,8 @@ export default function JobDetailPage() {
     ) {
       await recordCompletedJobBillingEvent(nextJob);
       await syncInvoiceTechName(nextJob.tech_name);
+      // CSI (Option A) trigger — request the customer's satisfaction rating on completion.
+      void requestRating('auto');
     }
 
     if (field === 'job_status' && nextJob.claim_intake_id) {
@@ -364,6 +366,38 @@ export default function JobDetailPage() {
     }
 
     flashSaved();
+  }
+
+  // CSI collection (Option A). The single, reusable "send the customer their rating request"
+  // action — called automatically when a job completes, and manually from the admin button.
+  // The TRIGGER is intentionally decoupled: to move it later (e.g. to invoice-signed) change the
+  // call sites, not this or the server route. Server-side is idempotent + gated, so it's safe to
+  // call more than once. Best-effort — a failure here never blocks the job update.
+  async function requestRating(trigger: 'auto' | 'manual') {
+    if (!job) return;
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/request-rating`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trigger, force: trigger === 'manual' }),
+      });
+      const data = await res.json().catch(() => ({}) as Record<string, unknown>);
+      if (data.requested) {
+        const stamp = new Date().toISOString();
+        setJob((j: any) => (j ? { ...j, customer_satisfaction_requested_at: stamp } : j));
+        if (trigger === 'manual') toast.success('Rating request sent to the customer.');
+      } else if (trigger === 'manual') {
+        const reasons: Record<string, string> = {
+          no_email: 'No customer email on file for this job.',
+          already_rated: 'The customer has already rated this job.',
+          auto_disabled: 'Automatic sending is turned off.',
+          email_not_sent: 'Email could not be sent — check the email settings.',
+        };
+        toast.error(reasons[String(data.skipped)] || 'Could not send the rating request.');
+      }
+    } catch {
+      if (trigger === 'manual') toast.error('Could not send the rating request.');
+    }
   }
 
   async function recordCompletedJobBillingEvent(completedJob = job) {
@@ -658,6 +692,8 @@ export default function JobDetailPage() {
         job_status: 'Completed',
       });
       await syncInvoiceTechName(job.tech_name);
+      // CSI (Option A) trigger — payment-in-full auto-completion also requests the rating.
+      void requestRating('auto');
     }
 
     await supabase.from('invoice_events').insert({
@@ -947,6 +983,42 @@ export default function JobDetailPage() {
                 }
                 readOnly={isReadOnly}
               />
+              {!isReadOnly ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Customer rating request
+                  </div>
+                  {job.customer_satisfaction != null ? (
+                    <div className="mt-1 text-sm text-slate-700">
+                      Customer rated{' '}
+                      <span className="font-semibold">{job.customer_satisfaction}/5</span>
+                      {job.customer_satisfaction_comment ? (
+                        <span className="text-slate-500">
+                          {' '}
+                          — &ldquo;{job.customer_satisfaction_comment}&rdquo;
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void requestRating('manual')}
+                        className="rounded-md bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-brand-700"
+                      >
+                        {job.customer_satisfaction_requested_at
+                          ? 'Resend rating request'
+                          : 'Request rating'}
+                      </button>
+                      <span className="text-xs text-slate-400">
+                        {job.customer_satisfaction_requested_at
+                          ? `Sent ${new Date(job.customer_satisfaction_requested_at).toLocaleDateString()} · emails the customer a 1–5 link`
+                          : 'Emails the customer a 1–5 rating link (auto-sends on completion)'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : null}
               <EditableField
                 label="Invoice Date"
                 value={job.invoice_date}

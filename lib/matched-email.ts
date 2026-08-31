@@ -6,10 +6,10 @@
  * Pure (no I/O) so it stays easy to reason about; the caller sends it via lib/email.ts.
  */
 
-const SUPPORT_PHONE = '541-388-1156';
-const SUPPORT_PHONE_TEL = '+15413881156';
+export const SUPPORT_PHONE = '541-388-1156';
+export const SUPPORT_PHONE_TEL = '+15413881156';
 
-function esc(value: unknown): string {
+export function esc(value: unknown): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
