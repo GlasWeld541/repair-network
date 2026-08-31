@@ -130,7 +130,12 @@ export default function Header() {
     window.location.href = '/login';
   }
 
-  if (pathname === '/start' || pathname.startsWith('/start/')) {
+  // Public, chrome-less pages (customer-facing) — no partner-app header/nav.
+  if (
+    pathname === '/start' ||
+    pathname.startsWith('/start/') ||
+    pathname.startsWith('/rate/')
+  ) {
     return null;
   }
 
