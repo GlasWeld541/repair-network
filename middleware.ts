@@ -35,6 +35,11 @@ export async function middleware(req: NextRequest) {
     '/set-password',
     '/start',
     '/api/consumer-intake',
+    // Customer-facing satisfaction rating — reached from an email link (no login), gated only
+    // by the unguessable per-job token. (The admin send route /api/jobs/*/request-rating stays
+    // protected — it's called from inside the authed app.)
+    '/rate',
+    '/api/rate',
   ];
 
   const isPublicRoute = publicRoutes.some(
