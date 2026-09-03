@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Check, ChevronDown, Pencil } from 'lucide-react';
+import { Archive, ArrowLeft, Check, ChevronDown, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import BeforeAfterSlider from '@/components/before-after-slider';
 import ProviderPickerModal from '@/components/provider-picker';
-import { useToast } from '@/components/ui/notifications';
+import { useToast, useConfirm } from '@/components/ui/notifications';
 import { DetailPageSkeleton } from '@/components/ui/skeleton';
 
 const JOB_STATUSES = ['New', 'In Progress', 'Submitted', 'Completed', 'Canceled'];
@@ -50,6 +50,7 @@ export default function JobDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const toast = useToast();
+  const confirm = useConfirm();
 
   const [role, setRole] = useState<string | null>(null);
   const [job, setJob] = useState<any>(null);
@@ -620,6 +621,23 @@ export default function JobDetailPage() {
     await loadPage();
   }
 
+  // Archive (close) a job that never moved forward — customer went elsewhere, a duplicate,
+  // etc. Sets it to Canceled: a kept record, distinct from a finished repair, no fee. (REX-05)
+  async function archiveJob() {
+    if (isReadOnly) return;
+    const ok = await confirm({
+      title: 'Archive this job?',
+      message:
+        "It'll be closed out as Canceled — the record is kept, but no fee is assessed. Use this " +
+        'when the job never moved forward (e.g. the customer went elsewhere).',
+      confirmLabel: 'Archive job',
+      destructive: true,
+    });
+    if (!ok) return;
+    await updateJobField('job_status', 'Canceled');
+    await loadPage();
+  }
+
   // #189 (option B): admin confirms the assigned shop has accepted the job. Stamps
   // accepted_at and sends the customer their "you've been matched" email (once). The
   // service-role write + email live in POST /api/jobs/[id]/accept.
@@ -901,6 +919,24 @@ export default function JobDetailPage() {
               className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
             >
               Mark Complete
+            </button>
+          ) : null}
+
+          {job.job_status === 'Canceled' ? (
+            <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600">
+              <Archive className="h-4 w-4" />
+              Archived
+            </span>
+          ) : !isReadOnly && job.job_status !== 'Completed' ? (
+            <button
+              type="button"
+              disabled={working}
+              onClick={() => void archiveJob()}
+              title="Close this job as Canceled — a kept record, no fee. For jobs that never moved forward."
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+            >
+              <Archive className="h-4 w-4" />
+              Archive
             </button>
           ) : null}
         </div>
