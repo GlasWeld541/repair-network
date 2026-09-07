@@ -271,6 +271,16 @@ export default function JobDetailPage() {
           ? Number(account.repair_platform_fee_bps ?? 500)
           : Number(job.platform_fee_bps ?? 0);
 
+    // REX-01: reassigning makes it a fresh job REQUEST for the new provider — reset the
+    // acceptance state (24h window) and clear the match-email flag so the new provider must
+    // accept and the customer is re-notified of the new match on their accept.
+    const acceptanceReset = {
+      acceptance_status: 'pending',
+      acceptance_deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      accepted_at: null,
+      matched_email_sent_at: null,
+    };
+
     setWorking(true);
     const { error } = await supabase
       .from('jobs')
@@ -278,6 +288,7 @@ export default function JobDetailPage() {
         assigned_account_id: account.id,
         assigned_account_name: account.account_name,
         platform_fee_bps: feeBps,
+        ...acceptanceReset,
       })
       .eq('id', job.id);
     setWorking(false);
@@ -291,8 +302,11 @@ export default function JobDetailPage() {
       assigned_account_id: account.id,
       assigned_account_name: account.account_name,
       platform_fee_bps: feeBps,
+      accepted_at: null,
     });
-    flashSaved('Provider reassigned');
+    // Email the new provider the job request (customer hidden, 24h urgency). Fire-and-forget.
+    void fetch(`/api/jobs/${job.id}/notify-assigned`, { method: 'POST' }).catch(() => {});
+    flashSaved('Provider reassigned — request sent');
   }
 
   // Save an editable money figure on the job. When editing the price and an invoice already
@@ -660,30 +674,10 @@ export default function JobDetailPage() {
     await loadPage();
   }
 
-  // #189 (option B): admin confirms the assigned shop has accepted the job. Stamps
-  // accepted_at and sends the customer their "you've been matched" email (once). The
-  // service-role write + email live in POST /api/jobs/[id]/accept.
-  async function confirmAccepted() {
-    if (isReadOnly || working) return;
-    setWorking(true);
-    try {
-      const res = await fetch(`/api/jobs/${job.id}/accept`, { method: 'POST' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(data?.error || 'Could not confirm acceptance.');
-        return;
-      }
-      if (data.emailed) toast.success('Shop accepted — customer notified by email.');
-      else if (data.email_skipped)
-        toast.success('Shop accepted. Customer email not sent (email not configured).');
-      else toast.success('Shop acceptance confirmed.');
-      await loadPage();
-    } catch {
-      toast.error('Could not confirm acceptance.');
-    } finally {
-      setWorking(false);
-    }
-  }
+  // REX-01: acceptance is now the PROVIDER's action in Rex (POST /repairs/assigned-jobs/{id}/
+  // accept), not an admin button here — the job screen only shows the acceptance status. The
+  // admin /api/jobs/[id]/accept route is kept as a fallback/override but is no longer wired to
+  // a button.
 
   async function collectPayment(amountOverride?: number) {
     if (!invoice || !job || isReadOnly) return;
@@ -904,28 +898,26 @@ export default function JobDetailPage() {
             </>
           ) : null}
 
-          {!isReadOnly &&
-          job.assigned_account_id &&
+          {/* REX-01: the provider self-accepts in Rex — this is a read-only status, not an
+              admin action. Accepted => customer was emailed their match. */}
+          {job.assigned_account_id &&
           job.job_status !== 'Completed' &&
           job.job_status !== 'Canceled' ? (
             job.accepted_at ? (
               <span
                 className="inline-flex items-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700"
-                title="The customer has been emailed their match."
+                title="The provider accepted; the customer was emailed their match."
               >
                 <Check className="h-4 w-4" />
-                Shop accepted
+                Provider accepted
               </span>
             ) : (
-              <button
-                type="button"
-                disabled={working}
-                onClick={() => void confirmAccepted()}
-                title="Confirm the assigned shop accepted, and email the customer their match."
-                className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-100 disabled:opacity-60"
+              <span
+                className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700"
+                title="Waiting for the provider to accept the job request in Rex. Reassign if it's past the deadline."
               >
-                Confirm shop accepted
-              </button>
+                Awaiting provider acceptance
+              </span>
             )
           ) : null}
 

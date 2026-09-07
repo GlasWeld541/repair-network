@@ -525,6 +525,10 @@ export default function AdminConsumerIntakePage() {
         claim_number: intake.claim_number,
         policy_number: intake.policy_number,
         job_status: 'New',
+        // REX-01: the provider self-accepts this job in Rex. It's a pending "job request"
+        // with a 24h response window until they accept (the notify email fires below).
+        acceptance_status: 'pending',
+        acceptance_deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         // Auto-populate the standard $100 repair price (editable on the job screen);
         // replacements are priced per-quote so they start at 0.
         invoice_amount: triageResult === 'repair' ? 100 : 0,
@@ -596,6 +600,10 @@ export default function AdminConsumerIntakePage() {
         },
       },
     ]);
+
+    // REX-01: email the assigned provider a "job request" (customer hidden, 24h urgency) so
+    // they accept it in Rex. Fire-and-forget — a notify failure never blocks job creation.
+    void fetch(`/api/jobs/${job.id}/notify-assigned`, { method: 'POST' }).catch(() => {});
 
     setBusyId(null);
     await load();
