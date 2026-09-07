@@ -67,6 +67,9 @@ export default function JobDetailPage() {
   // 'New' (before work starts); it locks once In Progress. Loaded lazily for admins only.
   const [accounts, setAccounts] = useState<any[]>([]);
   const [activeCounts, setActiveCounts] = useState<Record<string, number>>({});
+  // Rolled-up Rex repair scores per provider (admin-approved only) — feeds the reassignment
+  // picker's "★ avg" badge, mirroring the intake triage view (REX-06).
+  const [providerRatings, setProviderRatings] = useState<Record<string, { avg: number; count: number }>>({});
   const [pickerOpen, setPickerOpen] = useState(false);
   // Customer origin for the provider picker's distance ranking (best-match / nearest),
   // geocoded from the job's customer city/state/ZIP — same as the intake picker.
@@ -184,21 +187,40 @@ export default function JobDetailPage() {
           .order('account_name'),
         supabase
           .from('jobs')
-          .select('assigned_account_id, job_status')
+          .select('assigned_account_id, job_status, repair_score, repair_score_status')
           .not('assigned_account_id', 'is', null),
       ]);
 
       const counts: Record<string, number> = {};
-      ((jobRows as { assigned_account_id: string | null; job_status: string | null }[]) || []).forEach(
-        (j) => {
-          if (!j.assigned_account_id) return;
-          const st = j.job_status || 'New';
-          if (st === 'Completed' || st === 'Canceled') return;
+      // Only ADMIN-APPROVED scores count toward a provider's average (matches the intake
+      // triage aggregate + the tech-ratings model).
+      const scoreAgg: Record<string, { sum: number; count: number }> = {};
+      (
+        (jobRows as {
+          assigned_account_id: string | null;
+          job_status: string | null;
+          repair_score: number | null;
+          repair_score_status: string | null;
+        }[]) || []
+      ).forEach((j) => {
+        if (!j.assigned_account_id) return;
+        const st = j.job_status || 'New';
+        if (st !== 'Completed' && st !== 'Canceled') {
           counts[j.assigned_account_id] = (counts[j.assigned_account_id] || 0) + 1;
-        },
-      );
+        }
+        if (j.repair_score_status === 'approved' && typeof j.repair_score === 'number') {
+          const agg = (scoreAgg[j.assigned_account_id] ??= { sum: 0, count: 0 });
+          agg.sum += j.repair_score;
+          agg.count += 1;
+        }
+      });
+      const ratings: Record<string, { avg: number; count: number }> = {};
+      for (const [accountId, agg] of Object.entries(scoreAgg)) {
+        if (agg.count > 0) ratings[accountId] = { avg: agg.sum / agg.count, count: agg.count };
+      }
       setAccounts((accountRows as any[]) || []);
       setActiveCounts(counts);
+      setProviderRatings(ratings);
     }
 
     let eventData: any[] = [];
@@ -783,6 +805,7 @@ export default function JobDetailPage() {
         }
         accounts={eligibleProviders}
         activeCounts={activeCounts}
+        ratings={providerRatings}
         origin={origin}
         geocoding={geocoding}
         selectedId={job.assigned_account_id || ''}
