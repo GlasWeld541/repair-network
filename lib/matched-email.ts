@@ -214,3 +214,48 @@ export function buildJobRequestEmail(
 </div>`;
   return { subject, html };
 }
+
+
+export type CorporateInvoiceEmailInput = {
+  shopName?: string | null;
+  apContact?: string | null;
+  /** e.g. "August 2026" */
+  periodLabel: string;
+  jobCount: number;
+  totalCents: number;
+};
+
+/**
+ * REX-03b corporate monthly invoice statement, emailed to the account's AP/billing contact on
+ * the 1st. Corporate accounts pay OUTSIDE the system by their agreed terms — this is a
+ * statement, not a charge. Best-effort (dark until Resend creds).
+ */
+export function buildCorporateInvoiceEmail(
+  input: CorporateInvoiceEmailInput,
+): { subject: string; html: string } {
+  const who = String(input.apContact || input.shopName || '').trim();
+  const greeting = who ? `Hi ${esc(who)},` : 'Hi,';
+  const total = `$${(Math.max(0, input.totalCents) / 100).toFixed(2)}`;
+  const jobs = `${input.jobCount} ${input.jobCount === 1 ? 'job' : 'jobs'}`;
+  const shop = esc(String(input.shopName || '').trim() || 'your account');
+  const subject = `GlasWeld Network invoice — ${input.periodLabel} (${total})`;
+  const html = `\
+<div style="margin:0;background:#f1f5f9;padding:24px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
+    <div style="background:#0b90a5;padding:18px 24px;color:#ffffff;font-size:18px;font-weight:700">GlasWeld</div>
+    <div style="padding:24px">
+      <p style="margin:0 0 12px;color:#0f172a">${greeting}</p>
+      <p style="margin:0 0 16px;color:#334155">Here is the GlasWeld Network invoice for <b>${shop}</b> covering <b>${esc(input.periodLabel)}</b>.</p>
+      <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;background:#f8fafc;margin:0 0 16px">
+        <table style="border-collapse:collapse;width:100%">
+          <tr><td style="padding:4px 0;color:#64748b;font-size:13px">Completed jobs</td><td style="padding:4px 0;color:#0f172a;font-size:14px;font-weight:600;text-align:right">${esc(jobs)}</td></tr>
+          <tr><td style="padding:8px 0 0;color:#0f172a;font-size:15px;font-weight:700;border-top:1px solid #e2e8f0">Total due</td><td style="padding:8px 0 0;color:#0f172a;font-size:15px;font-weight:700;text-align:right;border-top:1px solid #e2e8f0">${total}</td></tr>
+        </table>
+      </div>
+      <p style="margin:0 0 4px;color:#334155">This invoice is payable per your agreed corporate terms — no action is needed in the app.</p>
+      <p style="margin:12px 0 0;color:#64748b;font-size:13px">Questions about your invoice? Call <a href="tel:${SUPPORT_PHONE_TEL}" style="color:#0d7384;font-weight:600;text-decoration:none">${SUPPORT_PHONE}</a>. This is an automated statement.</p>
+    </div>
+  </div>
+</div>`;
+  return { subject, html };
+}

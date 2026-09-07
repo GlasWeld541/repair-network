@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Eye, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { billingBlocksRouting } from '@/lib/billing';
 import ProviderPickerModal from '@/components/provider-picker';
 import { useToast } from '@/components/ui/notifications';
 import { ListPageSkeleton } from '@/components/ui/skeleton';
@@ -70,6 +71,11 @@ type Account = {
   // Rolling Customer Satisfaction Index (avg of rated jobs) + how many ratings it's based on.
   csi_score: number | null;
   csi_count: number | null;
+  // REX-03 billing readiness (drives the routing gate + the picker badge).
+  billing_profile_type: string | null;
+  billing_enabled: boolean | null;
+  corporate_invoice_approved: boolean | null;
+  billing_past_due: boolean | null;
 };
 
 type Photo = {
@@ -224,7 +230,7 @@ export default function AdminConsumerIntakePage() {
           .from('accounts')
           // Only active accounts are assignable — scope server-side so we don't fetch (and
           // cap at 1000 of) the thousands of inactive candidate accounts the picker discards.
-          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, offers_financing, csi_score, csi_count')
+          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, offers_financing, csi_score, csi_count, billing_profile_type, billing_enabled, corporate_invoice_approved, billing_past_due')
           .eq('active', true)
           .order('account_name'),
         supabase
@@ -367,6 +373,9 @@ export default function AdminConsumerIntakePage() {
       // ranking input. A replacement+cash customer who asked to spread the cost only sees
       // shops that self-declared they offer financing.
       if (needsFinancing && account.offers_financing !== true) return false;
+      // REX-03: don't route to a shop whose billing profile isn't ready (flag-gated — advisory
+      // during beta, hard-excludes once NEXT_PUBLIC_BILLING_GATE_ENFORCED is on).
+      if (billingBlocksRouting(account)) return false;
       if (triageResult === 'replacement') return account.consumer_replacement_enabled === true;
       if (triageResult === 'repair') return account.consumer_repair_enabled !== false;
       return true;

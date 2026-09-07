@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Check, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { billingStanding, BILLING_PROFILE_LABELS } from '@/lib/billing';
 import { useToast, useConfirm } from '@/components/ui/notifications';
 import { DetailPageSkeleton } from '@/components/ui/skeleton';
 
@@ -40,6 +41,13 @@ type AccountRow = {
   replacement_platform_fee_bps: number | null;
   offers_financing: boolean | null;
   financing_provider: string | null;
+  // REX-03 billing profile: how this shop settles the GlasWeld fee. A shop must have a ready
+  // profile before it can receive routed jobs (see lib/billing).
+  billing_profile_type: string | null;
+  ap_billing_email: string | null;
+  billing_contact_name: string | null;
+  corporate_invoice_approved: boolean | null;
+  billing_past_due: boolean | null;
 };
 
 type AccountPaymentMethod = {
@@ -285,7 +293,7 @@ export default function AccountDetailPage() {
     const { data: accountData, error: accountError } = await supabase
       .from('accounts')
       .select(
-        'id, account_name, street, city, state, postal_code, company_phone, company_email, claim_routing_enabled, claim_routing_paused_reason, claim_capacity_daily, claim_capacity_weekly, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes, consumer_repair_enabled, consumer_replacement_enabled, agent_referral_enabled, consumer_routing_notes, repair_platform_fee_bps, replacement_platform_fee_bps, offers_financing, financing_provider'
+        'id, account_name, street, city, state, postal_code, company_phone, company_email, claim_routing_enabled, claim_routing_paused_reason, claim_capacity_daily, claim_capacity_weekly, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes, consumer_repair_enabled, consumer_replacement_enabled, agent_referral_enabled, consumer_routing_notes, repair_platform_fee_bps, replacement_platform_fee_bps, offers_financing, financing_provider, billing_profile_type, ap_billing_email, billing_contact_name, corporate_invoice_approved, billing_past_due'
       )
       .eq('id', id)
       .single();
@@ -1226,6 +1234,100 @@ export default function AccountDetailPage() {
               Billing Enabled
             </label>
           </div>
+
+          {/* REX-03: billing profile — how this shop settles the GlasWeld fee. A shop needs a
+              ready profile to receive routed jobs. */}
+          {(() => {
+            const bs = billingStanding(account);
+            return (
+              <div className="mb-5 rounded-xl border border-slate-200 bg-white px-4 py-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="text-sm font-semibold text-slate-900">Billing profile</div>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                      bs.tone === 'ok'
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : bs.tone === 'warn'
+                          ? 'bg-amber-50 text-amber-700'
+                          : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {bs.ok ? 'Ready to receive jobs' : `Not ready — ${bs.label}`}
+                  </span>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="text-sm">
+                    <span className="mb-1 block text-slate-600">Profile type</span>
+                    <select
+                      value={account.billing_profile_type || ''}
+                      onChange={(e) =>
+                        void updateBillingSetting('billing_profile_type', e.target.value || null)
+                      }
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    >
+                      <option value="">— Not set up —</option>
+                      <option value="pay_per_job">{BILLING_PROFILE_LABELS.pay_per_job}</option>
+                      <option value="monthly">{BILLING_PROFILE_LABELS.monthly}</option>
+                      <option value="corporate">{BILLING_PROFILE_LABELS.corporate}</option>
+                    </select>
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-slate-600">Billing contact</span>
+                    <input
+                      type="text"
+                      defaultValue={account.billing_contact_name || ''}
+                      onBlur={(e) =>
+                        void updateBillingSetting('billing_contact_name', e.target.value.trim() || null)
+                      }
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </label>
+                  {account.billing_profile_type === 'corporate' ? (
+                    <>
+                      <label className="text-sm">
+                        <span className="mb-1 block text-slate-600">AP / billing email</span>
+                        <input
+                          type="email"
+                          defaultValue={account.ap_billing_email || ''}
+                          onBlur={(e) =>
+                            void updateBillingSetting('ap_billing_email', e.target.value.trim() || null)
+                          }
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                          placeholder="ap@company.com"
+                        />
+                      </label>
+                      <label className="flex items-center gap-2 self-end text-sm font-medium text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={account.corporate_invoice_approved === true}
+                          onChange={(e) =>
+                            void updateBillingSetting('corporate_invoice_approved', e.target.checked)
+                          }
+                          className="h-4 w-4"
+                        />
+                        Corporate terms approved
+                      </label>
+                    </>
+                  ) : null}
+                  <label className="flex items-center gap-2 self-end text-sm font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={account.billing_past_due === true}
+                      onChange={(e) =>
+                        void updateBillingSetting('billing_past_due', e.target.checked)
+                      }
+                      className="h-4 w-4"
+                    />
+                    Past due (blocks new jobs)
+                  </label>
+                </div>
+                <p className="mt-3 text-xs text-slate-500">
+                  A shop must have a ready profile (billing enabled, or approved corporate terms)
+                  and not be past due before it can be routed new jobs.
+                </p>
+              </div>
+            );
+          })()}
 
           <div className="grid gap-4 md:grid-cols-3">
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">

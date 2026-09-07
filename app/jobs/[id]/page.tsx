@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Archive, ArrowLeft, Check, ChevronDown, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { billingBlocksRouting } from '@/lib/billing';
 import BeforeAfterSlider from '@/components/before-after-slider';
 import ProviderPickerModal from '@/components/provider-picker';
 import { useToast, useConfirm } from '@/components/ui/notifications';
@@ -183,7 +184,7 @@ export default function JobDetailPage() {
       const [{ data: accountRows }, { data: jobRows }] = await Promise.all([
         supabase
           .from('accounts')
-          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, repair_platform_fee_bps, replacement_platform_fee_bps, csi_score, csi_count')
+          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, repair_platform_fee_bps, replacement_platform_fee_bps, csi_score, csi_count, billing_profile_type, billing_enabled, corporate_invoice_approved, billing_past_due')
           .order('account_name'),
         supabase
           .from('jobs')
@@ -782,6 +783,8 @@ export default function JobDetailPage() {
   // A repair-only shop can't take a replacement (and vice-versa); mirror the intake filter.
   const eligibleProviders = accounts.filter((a) => {
     if (a.active === false) return false;
+    // REX-03: exclude billing-not-ready shops when the gate is enforced (advisory otherwise).
+    if (billingBlocksRouting(a)) return false;
     if (job.service_type === 'replacement') return a.consumer_replacement_enabled === true;
     if (job.service_type === 'repair') return a.consumer_repair_enabled !== false;
     return true;

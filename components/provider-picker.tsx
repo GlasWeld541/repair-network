@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { distanceMiles } from '@/lib/geo';
+import { billingStanding } from '@/lib/billing';
 
 // A provider can hold several jobs at once — assignment is not one-at-a-time. "Busy" is a
 // soft caution, not a block: only providers at/over this active-job count are hidden by
@@ -33,6 +34,11 @@ export type ProviderAccount = {
   // Rolling Customer Satisfaction Index (avg of rated jobs) + how many ratings it reflects.
   csi_score?: number | null;
   csi_count?: number | null;
+  // REX-03: billing-profile readiness (shown as a badge; gates routing when enforced).
+  billing_profile_type?: string | null;
+  billing_enabled?: boolean | null;
+  corporate_invoice_approved?: boolean | null;
+  billing_past_due?: boolean | null;
 };
 
 type Origin = { latitude: number; longitude: number } | null;
@@ -264,6 +270,7 @@ export default function ProviderPickerModal({
           {visible.map(({ a, dist, active, rating, ratingCount, csi, csiCount }) => {
             const selected = a.id === selectedId;
             const badges = certBadges(a);
+            const bill = billingStanding(a);
             return (
               <button
                 key={a.id}
@@ -297,6 +304,18 @@ export default function ProviderPickerModal({
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span
+                      className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${
+                        bill.tone === 'ok'
+                          ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                          : bill.tone === 'warn'
+                            ? 'bg-amber-50 text-amber-700 ring-amber-200'
+                            : 'bg-slate-100 text-slate-500 ring-slate-200'
+                      }`}
+                      title="Billing readiness — a shop must have an active billing profile to receive routed jobs"
+                    >
+                      {bill.label}
+                    </span>
                     {csi != null ? (
                       <span
                         className="whitespace-nowrap rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700 ring-1 ring-inset ring-sky-200"
