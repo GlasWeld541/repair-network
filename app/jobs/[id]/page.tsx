@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Archive, ArrowLeft, Check, ChevronDown, Pencil } from 'lucide-react';
+import { Archive, ArrowLeft, Check, ChevronDown, MoreHorizontal, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { billingBlocksRouting } from '@/lib/billing';
 import BeforeAfterSlider from '@/components/before-after-slider';
@@ -45,6 +45,51 @@ function carrierStatusFromJobStatus(status: string | number | null) {
   if (status === 'In Progress') return 'In Progress';
   if (status === 'Canceled') return 'Canceled';
   return 'Assigned';
+}
+
+// Shared className for a row inside the OverflowMenu (links + buttons look identical).
+const MENU_ITEM =
+  'flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50';
+
+// Compact "⋯ More" overflow menu for the secondary/utility header actions, so the header
+// row stays uncluttered (one primary action + finish + this). Self-contained: manages its
+// own open state and closes on outside click (full-screen backdrop) or on any item click
+// (the container's onClick bubbles up before the item's own handler runs the action).
+function OverflowMenu({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="More actions"
+        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+      >
+        <MoreHorizontal className="h-4 w-4" />
+        More
+      </button>
+      {open ? (
+        <>
+          <button
+            type="button"
+            aria-hidden
+            tabIndex={-1}
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-40 cursor-default"
+          />
+          <div
+            role="menu"
+            onClick={() => setOpen(false)}
+            className="absolute right-0 z-50 mt-1 min-w-[190px] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+          >
+            {children}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
 }
 
 export default function JobDetailPage() {
@@ -830,26 +875,63 @@ export default function JobDetailPage() {
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          {/* Display-only title. customer_name is edited in the Customer & Vehicle section;
-              wiring the title to the same shared `editing.field` too rendered TWO autoFocus
-              inputs, whose focus race blurred the field and dropped it out of edit mode. */}
-          <EditableTitle
-            value={job.customer_name || ''}
-            onEdit={() => {}}
-            isEditing={false}
-            draftValue={draftValue}
-            setDraftValue={setDraftValue}
-            onSave={() => {}}
-            onCancel={() => {}}
-            readOnly
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Display-only title. customer_name is edited in the Customer & Vehicle section;
+                wiring the title to the same shared `editing.field` too rendered TWO autoFocus
+                inputs, whose focus race blurred the field and dropped it out of edit mode. */}
+            <EditableTitle
+              value={job.customer_name || ''}
+              onEdit={() => {}}
+              isEditing={false}
+              draftValue={draftValue}
+              setDraftValue={setDraftValue}
+              onSave={() => {}}
+              onCancel={() => {}}
+              readOnly
+            />
+
+            {/* Job STATUS lives by the title — it's a state indicator, not an action, so it
+                no longer competes with the action buttons on the right. */}
+            {job.job_status === 'Completed' ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                <Check className="h-3.5 w-3.5" />
+                Completed
+              </span>
+            ) : job.job_status === 'Canceled' ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                <Archive className="h-3.5 w-3.5" />
+                Archived
+              </span>
+            ) : job.assigned_account_id ? (
+              job.accepted_at ? (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700"
+                  title="The provider accepted; the customer was emailed their match."
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  Provider accepted
+                </span>
+              ) : (
+                <span
+                  className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700"
+                  title="Waiting for the provider to accept the job request in Rex. Reassign if it's past the deadline."
+                >
+                  Awaiting provider acceptance
+                </span>
+              )
+            ) : (
+              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+                {job.job_status || 'New'}
+              </span>
+            )}
+          </div>
 
           <p className="mt-1 text-sm text-slate-500">
             Job detail, photos, invoice, insurance submission, and payment tracking.
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Printable job assignment sheet — available to every viewer (a shop prints
               their assigned job to work it on paper), not just admins. Opens inline so
               the browser's PDF viewer can print it directly. */}
@@ -862,6 +944,7 @@ export default function JobDetailPage() {
             Print Job
           </a>
 
+          {/* ONE primary next-step, state-dependent: create the invoice, then submit it. */}
           {!invoice && !isReadOnly ? (
             <button
               onClick={() => void generateInvoice()}
@@ -872,64 +955,19 @@ export default function JobDetailPage() {
             </button>
           ) : null}
 
-          {invoice ? (
-            <>
-              <Link
-                href={`/invoices/${invoice.id}`}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Open Invoice
-              </Link>
-
-              <Link
-                href={`/api/invoices/${invoice.id}/pdf`}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Open PDF
-              </Link>
-
-              {!isReadOnly ? (
-                <button
-                  type="button"
-                  disabled={working}
-                  onClick={() => void submitToInsurance()}
-                  className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
-                >
-                  Submit to Insurance
-                </button>
-              ) : null}
-            </>
+          {invoice && !isReadOnly ? (
+            <button
+              type="button"
+              disabled={working}
+              onClick={() => void submitToInsurance()}
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+            >
+              Submit to Insurance
+            </button>
           ) : null}
 
-          {/* REX-01: the provider self-accepts in Rex — this is a read-only status, not an
-              admin action. Accepted => customer was emailed their match. */}
-          {job.assigned_account_id &&
-          job.job_status !== 'Completed' &&
-          job.job_status !== 'Canceled' ? (
-            job.accepted_at ? (
-              <span
-                className="inline-flex items-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700"
-                title="The provider accepted; the customer was emailed their match."
-              >
-                <Check className="h-4 w-4" />
-                Provider accepted
-              </span>
-            ) : (
-              <span
-                className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700"
-                title="Waiting for the provider to accept the job request in Rex. Reassign if it's past the deadline."
-              >
-                Awaiting provider acceptance
-              </span>
-            )
-          ) : null}
-
-          {job.job_status === 'Completed' ? (
-            <span className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700">
-              <Check className="h-4 w-4" />
-              Completed
-            </span>
-          ) : !isReadOnly ? (
+          {/* Finish the job. (Completed / Archived now read as the status badge by the title.) */}
+          {!isReadOnly && job.job_status !== 'Completed' && job.job_status !== 'Canceled' ? (
             <button
               type="button"
               disabled={working}
@@ -940,22 +978,33 @@ export default function JobDetailPage() {
             </button>
           ) : null}
 
-          {job.job_status === 'Canceled' ? (
-            <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600">
-              <Archive className="h-4 w-4" />
-              Archived
-            </span>
-          ) : !isReadOnly && job.job_status !== 'Completed' ? (
-            <button
-              type="button"
-              disabled={working}
-              onClick={() => void archiveJob()}
-              title="Close this job as Canceled — a kept record, no fee. For jobs that never moved forward."
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-            >
-              <Archive className="h-4 w-4" />
-              Archive
-            </button>
+          {/* Secondary / utility actions tucked into an overflow menu to keep the row clean. */}
+          {invoice ||
+          (!isReadOnly && job.job_status !== 'Completed' && job.job_status !== 'Canceled') ? (
+            <OverflowMenu>
+              {invoice ? (
+                <Link href={`/invoices/${invoice.id}`} className={MENU_ITEM}>
+                  Open Invoice
+                </Link>
+              ) : null}
+              {invoice ? (
+                <Link href={`/api/invoices/${invoice.id}/pdf`} className={MENU_ITEM}>
+                  Open PDF
+                </Link>
+              ) : null}
+              {!isReadOnly && job.job_status !== 'Completed' && job.job_status !== 'Canceled' ? (
+                <button
+                  type="button"
+                  disabled={working}
+                  onClick={() => void archiveJob()}
+                  title="Close this job as Canceled — a kept record, no fee. For jobs that never moved forward."
+                  className={MENU_ITEM}
+                >
+                  <Archive className="h-4 w-4" />
+                  Archive
+                </button>
+              ) : null}
+            </OverflowMenu>
           ) : null}
         </div>
       </div>
