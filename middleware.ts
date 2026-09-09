@@ -46,7 +46,15 @@ export async function middleware(req: NextRequest) {
     (route) => path === route || path.startsWith(`${route}/`)
   );
 
-  if (!user && !isPublicRoute) {
+  // Scheduled jobs (Vercel Cron) and server-to-server callers authenticate with the
+  // CRON_SECRET bearer, not a user session — let those through so the crons can actually
+  // reach their routes (each route re-checks the secret). Without this the middleware would
+  // redirect the cron to /login and the job would never run.
+  const cronSecret = process.env.CRON_SECRET;
+  const isCron =
+    !!cronSecret && (req.headers.get('authorization') || '') === `Bearer ${cronSecret}`;
+
+  if (!user && !isPublicRoute && !isCron) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
