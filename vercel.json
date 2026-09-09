@@ -7,6 +7,10 @@
     {
       "path": "/api/billing/auto-charge",
       "schedule": "0 8 5 * *"
+    },
+    {
+      "path": "/api/jobs/acceptance-sweep",
+      "schedule": "0 * * * *"
     }
   ]
 }

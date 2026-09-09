@@ -319,12 +319,17 @@ export default function JobDetailPage() {
 
     // REX-01: reassigning makes it a fresh job REQUEST for the new provider — reset the
     // acceptance state (24h window) and clear the match-email flag so the new provider must
-    // accept and the customer is re-notified of the new match on their accept.
+    // accept and the customer is re-notified of the new match on their accept. The job also
+    // drops back to New (it's pending the new provider's acceptance again — status advances to
+    // In Progress only when they accept), and the admin-reassign alert guard is cleared so a
+    // fresh non-acceptance episode re-notifies the admin.
     const acceptanceReset = {
       acceptance_status: 'pending',
       acceptance_deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       accepted_at: null,
       matched_email_sent_at: null,
+      job_status: 'New',
+      admin_reassign_notified_at: null,
     };
 
     setWorking(true);
@@ -349,6 +354,7 @@ export default function JobDetailPage() {
       assigned_account_name: account.account_name,
       platform_fee_bps: feeBps,
       accepted_at: null,
+      job_status: 'New',
     });
     // Email the new provider the job request (customer hidden, 24h urgency). Fire-and-forget.
     void fetch(`/api/jobs/${job.id}/notify-assigned`, { method: 'POST' }).catch(() => {});
@@ -386,17 +392,21 @@ export default function JobDetailPage() {
 
     const previousStatus = job.job_status;
 
-    // A job can't be completed without naming the technician who did the repair — it
-    // flows onto the invoice. Gate BEFORE the write so the status change is blocked.
-    // Covers the Mark Complete button and both status dropdowns (all route through here).
-    if (
-      field === 'job_status' &&
-      value === 'Completed' &&
-      previousStatus !== 'Completed' &&
-      !String(job.tech_name || '').trim()
-    ) {
-      toast.error('Enter the technician name before marking this job complete.');
-      return;
+    // A job can't be completed until the repair is actually done — an after photo is in, or
+    // the repair was submitted from Rex — AND the technician who did it is named (flows onto
+    // the invoice). Gate BEFORE the write so the status change is blocked. Covers the Mark
+    // Complete button AND the status dropdown (all completion routes through here).
+    if (field === 'job_status' && value === 'Completed' && previousStatus !== 'Completed') {
+      if (!repairDone) {
+        toast.error(
+          "Can't complete yet — the technician hasn't uploaded the after photo / finished the repair.",
+        );
+        return;
+      }
+      if (!String(job.tech_name || '').trim()) {
+        toast.error('Enter the technician name before marking this job complete.');
+        return;
+      }
     }
 
     const { error } = await supabase
@@ -698,7 +708,12 @@ export default function JobDetailPage() {
 
   async function markComplete() {
     if (isReadOnly) return;
-
+    if (!repairDone) {
+      toast.error(
+        "Can't complete yet — the technician hasn't uploaded the after photo / finished the repair.",
+      );
+      return;
+    }
     await updateJobField('job_status', 'Completed');
     await loadPage();
   }
@@ -742,9 +757,11 @@ export default function JobDetailPage() {
     const newPaid = Number((currentPaid + amountToCharge).toFixed(2));
     const newOutstanding = Number(Math.max(invoiceTotal - newPaid, 0).toFixed(2));
     const paymentStatus = newOutstanding <= 0 ? 'Paid' : 'Partial Payment';
-    // Never block collecting money — but auto-complete only when the technician is named
-    // (completion requires it). A paid-in-full job without a tech waits for Mark Complete.
-    const canComplete = newOutstanding <= 0 && !!String(job.tech_name || '').trim();
+    // Never block collecting money — but auto-complete only when the technician is named AND
+    // the repair is actually done (after photo / submitted). A paid-in-full job that isn't
+    // finished stays open until the work + proof are in.
+    const canComplete =
+      newOutstanding <= 0 && !!String(job.tech_name || '').trim() && repairDone;
 
     await supabase
       .from('invoices')
@@ -818,6 +835,15 @@ export default function JobDetailPage() {
   const beforePhotos = photos.filter((photo) => photo.type === 'before');
   const afterPhotos = photos.filter((photo) => photo.type === 'after');
   const latestEvent = events[0];
+
+  // A job can only be completed once the technician has actually finished the repair — i.e.
+  // an after photo has been uploaded, or the repair was submitted from Rex (which advances the
+  // job to Submitted and mirrors the after photo) / already scored. This blocks an admin from
+  // overriding a job to Completed before the work + proof are in.
+  const repairDone =
+    afterPhotos.length > 0 ||
+    job?.job_status === 'Submitted' ||
+    typeof job?.repair_score === 'number';
 
   // A job can be handed to a different provider at any point mid-job — only a Completed or
   // Canceled job is locked (closed, billed records; reassigning would misattribute the
@@ -966,13 +992,20 @@ export default function JobDetailPage() {
             </button>
           ) : null}
 
-          {/* Finish the job. (Completed / Archived now read as the status badge by the title.) */}
+          {/* Finish the job. (Completed / Archived now read as the status badge by the title.)
+              Disabled until the repair is done — an after photo is in, or the repair was
+              submitted from Rex — so an admin can't complete a job before the work + proof. */}
           {!isReadOnly && job.job_status !== 'Completed' && job.job_status !== 'Canceled' ? (
             <button
               type="button"
-              disabled={working}
+              disabled={working || !repairDone}
               onClick={() => void markComplete()}
-              className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+              title={
+                repairDone
+                  ? undefined
+                  : "Waiting on the technician's after photo / completed repair"
+              }
+              className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Mark Complete
             </button>
