@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { createAdminClient } from '@/lib/supabase';
 import { sendEmail } from '@/lib/email';
 import { buildJobRequestEmail } from '@/lib/matched-email';
+import { billingBlocksRouting } from '@/lib/billing';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -53,11 +54,21 @@ export async function POST(_request: Request, context: RouteContext) {
 
     const { data: account } = await admin
       .from('accounts')
-      .select('account_name, company_email')
+      // Keep this on ONE line: Supabase infers the row type from the select string as a
+      // literal, and concatenation widens it to `string` (every field becomes an error).
+      // eslint-disable-next-line prettier/prettier
+      .select('account_name, company_email, billing_profile_type, billing_enabled, corporate_invoice_approved, billing_past_due')
       .eq('id', job.assigned_account_id)
       .maybeSingle();
     if (!account?.company_email) {
       return NextResponse.json({ emailed: false, reason: 'no provider email' });
+    }
+    // REX-14 — don't invite a provider to a job they can't be billed for. The same gate
+    // already filters the picker; enforcing it here too means an un-onboarded shop never
+    // even learns the job exists (they'd be blocked at accept anyway). Advisory while
+    // NEXT_PUBLIC_BILLING_GATE_ENFORCED is off, so beta routing is unaffected.
+    if (billingBlocksRouting(account)) {
+      return NextResponse.json({ emailed: false, reason: 'provider not billing-ready' });
     }
 
     const vehicle = [job.vehicle_year, job.vehicle_make, job.vehicle_model]
