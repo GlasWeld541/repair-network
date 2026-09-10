@@ -11,7 +11,22 @@ import ProviderPickerModal from '@/components/provider-picker';
 import { useToast, useConfirm } from '@/components/ui/notifications';
 import { DetailPageSkeleton } from '@/components/ui/skeleton';
 
-const JOB_STATUSES = ['New', 'In Progress', 'Submitted', 'Completed', 'Canceled'];
+// REX-12 job lifecycle (agreed with Derek 2026-09-10). Mirrors the constants in Rex's
+// backend/app/routers/repairs.py — job_status is free text in Postgres, so these two lists
+// are the only definition; keep them in sync.
+//   New -> Accepted (provider accepted) -> In Progress (tech started) -> Submitted -> Completed
+// 'Not Repairable' is the off-ramp when the tech finds the damage needs a replacement: a
+// distinct status rather than a silent return to New, so the admin sees why it came back
+// (and the reason is a data point carriers care about).
+const JOB_STATUSES = [
+  'New',
+  'Accepted',
+  'In Progress',
+  'Submitted',
+  'Not Repairable',
+  'Completed',
+  'Canceled',
+];
 const DAMAGE_TYPES = ['Combo Break', 'Bullseye', 'Star Break', 'Crack', 'Pit', 'Other'];
 const SERVICE_TYPES = ['repair', 'replacement', 'unknown'];
 const PAYMENT_PATHS = ['unknown', 'cash', 'insurance'];

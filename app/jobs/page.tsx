@@ -67,7 +67,9 @@ type ViewMode =
   | 'custom';
 
 // Work-status buckets (job_status), distinct from the receivables views above.
-const ONGOING_STATUSES = ['New', 'In Progress', 'Submitted'];
+// REX-12: 'Accepted' and 'Not Repairable' are both still live work — a returned-as-
+// not-repairable job needs the admin to re-route it, so it must not drop out of view.
+const ONGOING_STATUSES = ['New', 'Accepted', 'In Progress', 'Submitted', 'Not Repairable'];
 
 type SortKey =
   | 'date'
@@ -789,7 +791,9 @@ function SortHeader({
 
 const STATUS_STYLES: Record<string, string> = {
   New: 'bg-slate-100 text-slate-700 ring-slate-200',
+  Accepted: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
   'In Progress': 'bg-blue-50 text-blue-700 ring-blue-200',
+  'Not Repairable': 'bg-orange-50 text-orange-700 ring-orange-200',
   Submitted: 'bg-amber-50 text-amber-700 ring-amber-200',
   Completed: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
   Canceled: 'bg-rose-50 text-rose-700 ring-rose-200',
