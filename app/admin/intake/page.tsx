@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Eye, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { billingBlocksRouting } from '@/lib/billing';
@@ -141,26 +141,27 @@ function timeAgo(iso: string | null | undefined): string {
   return d < 30 ? `${d}d ago` : new Date(iso).toLocaleDateString();
 }
 
-/** True when an ISO timestamp falls on the viewer's local calendar day. */
-function isToday(iso: string | null | undefined): boolean {
-  if (!iso) return false;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return false;
-  const now = new Date();
-  return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  );
-}
-
 const PAGE_SIZE = 8;
-// REX-19 — how many intakes to pull per load. The queue is filtered and paginated in the
-// browser, so this is the real ceiling on what an admin can see in one sitting. It sits under
-// PostgREST's own 1000-row cap deliberately: an explicit, newest-first slice is honest, where
-// an unbounded fetch would silently drop rows once the table passes 1000. Raise it, or move
-// the queue filter server-side, when intake volume makes the oldest entries matter.
-const INTAKE_FETCH_LIMIT = 500;
+
+// REX-19 — the header counters. These are exact DB counts rather than `array.length` over a
+// fetched page, so they keep describing the WHOLE table now the queue is paginated in the
+// database. Counting a page would silently turn "Total Intakes" into "intakes on this page".
+type QueueCounts = {
+  total: number;
+  needsReview: number;
+  today: number;
+  new: number;
+  consumer: number;
+  agent: number;
+};
+const EMPTY_COUNTS: QueueCounts = {
+  total: 0,
+  needsReview: 0,
+  today: 0,
+  new: 0,
+  consumer: 0,
+  agent: 0,
+};
 
 export default function AdminConsumerIntakePage() {
   const toast = useToast();
@@ -181,6 +182,10 @@ export default function AdminConsumerIntakePage() {
   const [page, setPage] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [queueFilter, setQueueFilter] = useState<'all' | 'today' | 'new'>('all');
+  const [counts, setCounts] = useState<QueueCounts>(EMPTY_COUNTS);
+  // Rows matching the active filter across the whole table — drives pagination, and is what
+  // the "N shown" label means now that a page is all we hold in memory.
+  const [filteredTotal, setFilteredTotal] = useState(0);
 
   const isDemo = role === 'demo';
 
@@ -193,9 +198,11 @@ export default function AdminConsumerIntakePage() {
     });
   }
 
+  // Page and filter are resolved in the database now, so a change to either needs a refetch.
   useEffect(() => {
     void load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, queueFilter]);
 
   async function load() {
     setLoading(true);
@@ -226,15 +233,34 @@ export default function AdminConsumerIntakePage() {
 
     setRole(roleData.role);
 
-    const [{ data: intakeRows }, { data: accountRows }, { data: jobRows }] = await Promise.all([
-      supabase
-        .from('consumer_intakes')
-        .select('*')
-        // REX-19: newest first and capped. This queue grows 1:1 with claim volume, and
-        // PostgREST silently truncates at 1000 anyway — so take an explicit, ordered slice
-        // rather than an unbounded fetch that would quietly start losing rows.
+    // REX-19 — the queue is filtered, counted and paginated in the DATABASE now. It used to
+    // pull every intake and do all three in the browser, which stops being correct the moment
+    // the table passes PostgREST's 1000-row cap. Local midnight is resolved here and sent as
+    // an instant, so "today" still means the admin's own local calendar day, as before.
+    const startOfLocalDay = (() => {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      return d.toISOString();
+    })();
+
+    let queueQuery = supabase.from('consumer_intakes').select('*', { count: 'exact' });
+    if (queueFilter === 'today') queueQuery = queueQuery.gte('created_at', startOfLocalDay);
+    else if (queueFilter === 'new') queueQuery = queueQuery.eq('intake_status', 'new');
+
+    const [
+      { data: intakeRows, count: matchedCount },
+      { data: accountRows },
+      { data: jobRows },
+      totalRes,
+      needsReviewRes,
+      todayRes,
+      newRes,
+      consumerRes,
+      agentRes,
+    ] = await Promise.all([
+      queueQuery
         .order('created_at', { ascending: false })
-        .limit(INTAKE_FETCH_LIMIT),
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1),
       supabase
         .from('accounts')
         // Only active accounts are assignable — scope server-side so we don't fetch (and
@@ -246,11 +272,44 @@ export default function AdminConsumerIntakePage() {
         .from('jobs')
         .select('assigned_account_id, job_status, repair_score, repair_score_status')
         .not('assigned_account_id', 'is', null),
+      // Header counters. `head: true` means these cost a count and transfer no rows, so they
+      // can describe the whole table cheaply while the list itself stays one page.
+      supabase.from('consumer_intakes').select('*', { count: 'exact', head: true }),
+      supabase
+        .from('consumer_intakes')
+        .select('*', { count: 'exact', head: true })
+        .is('assigned_job_id', null)
+        .neq('intake_status', 'not_serviceable'),
+      supabase
+        .from('consumer_intakes')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', startOfLocalDay),
+      supabase
+        .from('consumer_intakes')
+        .select('*', { count: 'exact', head: true })
+        .eq('intake_status', 'new'),
+      supabase
+        .from('consumer_intakes')
+        .select('*', { count: 'exact', head: true })
+        .eq('lead_type', 'consumer'),
+      supabase
+        .from('consumer_intakes')
+        .select('*', { count: 'exact', head: true })
+        .eq('lead_type', 'agent'),
     ]);
 
-    // REX-19: photos used to be fetched whole-table and unfiltered — every consumer photo
-    // ever taken, on every load, just to look up a handful by intake id. Scope them to the
-    // intakes we actually loaded. Skipped entirely when there are no intakes.
+    setCounts({
+      total: totalRes.count ?? 0,
+      needsReview: needsReviewRes.count ?? 0,
+      today: todayRes.count ?? 0,
+      new: newRes.count ?? 0,
+      consumer: consumerRes.count ?? 0,
+      agent: agentRes.count ?? 0,
+    });
+    setFilteredTotal(matchedCount ?? 0);
+
+    // Photos for just this page of intakes. This used to be a whole-table, unfiltered fetch
+    // of every consumer photo ever taken, on every load, to look up a handful by intake id.
     const intakeIds = ((intakeRows as Intake[]) || []).map((intake) => intake.id);
     const { data: photoRows } = intakeIds.length
       ? await supabase
@@ -291,6 +350,12 @@ export default function AdminConsumerIntakePage() {
     Object.entries(scoreAgg).forEach(([accountId, agg]) => {
       ratings[accountId] = { avg: agg.sum / agg.count, count: agg.count };
     });
+
+    // If rows were assigned/resolved while we sat on a later page, that page can come back
+    // empty even though matches remain. Drop to the first page rather than show a blank list.
+    if (page > 0 && ((intakeRows as Intake[]) || []).length === 0 && (matchedCount ?? 0) > 0) {
+      setPage(0);
+    }
 
     setIntakes((intakeRows as Intake[]) || []);
     setAccounts((accountRows as Account[]) || []);
@@ -635,26 +700,6 @@ export default function AdminConsumerIntakePage() {
     await load();
   }
 
-  const needsReview = useMemo(
-    () => intakes.filter((intake) => !intake.assigned_job_id && intake.intake_status !== 'not_serviceable'),
-    [intakes]
-  );
-
-  const todayCount = useMemo(
-    () => intakes.filter((intake) => isToday(intake.created_at)).length,
-    [intakes]
-  );
-  const newCount = useMemo(
-    () => intakes.filter((intake) => intake.intake_status === 'new').length,
-    [intakes]
-  );
-
-  const filteredIntakes = useMemo(() => {
-    if (queueFilter === 'today') return intakes.filter((intake) => isToday(intake.created_at));
-    if (queueFilter === 'new') return intakes.filter((intake) => intake.intake_status === 'new');
-    return intakes;
-  }, [intakes, queueFilter]);
-
   const openIntake = openPickerId ? intakes.find((i) => i.id === openPickerId) || null : null;
   const openTriage = openIntake
     ? getSelected(openIntake, 'triage_result') || 'needs_review'
@@ -664,9 +709,10 @@ export default function AdminConsumerIntakePage() {
     return <ListPageSkeleton withFilters columns={7} rows={8} minWidth={1100} />;
   }
 
-  const totalPages = Math.max(1, Math.ceil(filteredIntakes.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
   const pageSafe = Math.min(page, totalPages - 1);
-  const pagedIntakes = filteredIntakes.slice(pageSafe * PAGE_SIZE, (pageSafe + 1) * PAGE_SIZE);
+  // The database already returned exactly this page — no client-side slicing left to do.
+  const pagedIntakes = intakes;
 
   return (
     <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">
@@ -694,23 +740,23 @@ export default function AdminConsumerIntakePage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Metric label="Needs Review" value={String(needsReview.length)} tone="amber" />
-        <Metric label="Total Intakes" value={String(intakes.length)} />
-        <Metric label="Consumer" value={String(intakes.filter((row) => row.lead_type === 'consumer').length)} tone="brand" />
-        <Metric label="Agent" value={String(intakes.filter((row) => row.lead_type === 'agent').length)} tone="green" />
+        <Metric label="Needs Review" value={String(counts.needsReview)} tone="amber" />
+        <Metric label="Total Intakes" value={String(counts.total)} />
+        <Metric label="Consumer" value={String(counts.consumer)} tone="brand" />
+        <Metric label="Agent" value={String(counts.agent)} tone="green" />
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold text-slate-900">Triage Queue</h2>
-            <span className="text-sm text-slate-500">{filteredIntakes.length} shown</span>
+            <span className="text-sm text-slate-500">{filteredTotal} shown</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {([
-              { key: 'all', label: 'All', count: intakes.length },
-              { key: 'today', label: 'Today', count: todayCount },
-              { key: 'new', label: 'New', count: newCount },
+              { key: 'all', label: 'All', count: counts.total },
+              { key: 'today', label: 'Today', count: counts.today },
+              { key: 'new', label: 'New', count: counts.new },
             ] as const).map((chip) => (
               <button
                 key={chip.key}
@@ -1000,7 +1046,7 @@ export default function AdminConsumerIntakePage() {
         {totalPages > 1 ? (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-3 text-sm">
             <span className="text-slate-500">
-              Page {pageSafe + 1} of {totalPages} · showing {pagedIntakes.length} of {filteredIntakes.length}
+              Page {pageSafe + 1} of {totalPages} · showing {pagedIntakes.length} of {filteredTotal}
             </span>
             <div className="flex gap-2">
               <button
