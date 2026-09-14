@@ -155,6 +155,12 @@ function isToday(iso: string | null | undefined): boolean {
 }
 
 const PAGE_SIZE = 8;
+// REX-19 — how many intakes to pull per load. The queue is filtered and paginated in the
+// browser, so this is the real ceiling on what an admin can see in one sitting. It sits under
+// PostgREST's own 1000-row cap deliberately: an explicit, newest-first slice is honest, where
+// an unbounded fetch would silently drop rows once the table passes 1000. Raise it, or move
+// the queue filter server-side, when intake volume makes the oldest entries matter.
+const INTAKE_FETCH_LIMIT = 500;
 
 export default function AdminConsumerIntakePage() {
   const toast = useToast();
@@ -220,28 +226,39 @@ export default function AdminConsumerIntakePage() {
 
     setRole(roleData.role);
 
-    const [{ data: intakeRows }, { data: accountRows }, { data: photoRows }, { data: jobRows }] =
-      await Promise.all([
-        supabase
-          .from('consumer_intakes')
-          .select('*')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('accounts')
-          // Only active accounts are assignable — scope server-side so we don't fetch (and
-          // cap at 1000 of) the thousands of inactive candidate accounts the picker discards.
-          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, offers_financing, csi_score, csi_count, billing_profile_type, billing_enabled, corporate_invoice_approved, billing_past_due')
-          .eq('active', true)
-          .order('account_name'),
-        supabase
+    const [{ data: intakeRows }, { data: accountRows }, { data: jobRows }] = await Promise.all([
+      supabase
+        .from('consumer_intakes')
+        .select('*')
+        // REX-19: newest first and capped. This queue grows 1:1 with claim volume, and
+        // PostgREST silently truncates at 1000 anyway — so take an explicit, ordered slice
+        // rather than an unbounded fetch that would quietly start losing rows.
+        .order('created_at', { ascending: false })
+        .limit(INTAKE_FETCH_LIMIT),
+      supabase
+        .from('accounts')
+        // Only active accounts are assignable — scope server-side so we don't fetch (and
+        // cap at 1000 of) the thousands of inactive candidate accounts the picker discards.
+        .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, offers_financing, csi_score, csi_count, billing_profile_type, billing_enabled, corporate_invoice_approved, billing_past_due')
+        .eq('active', true)
+        .order('account_name'),
+      supabase
+        .from('jobs')
+        .select('assigned_account_id, job_status, repair_score, repair_score_status')
+        .not('assigned_account_id', 'is', null),
+    ]);
+
+    // REX-19: photos used to be fetched whole-table and unfiltered — every consumer photo
+    // ever taken, on every load, just to look up a handful by intake id. Scope them to the
+    // intakes we actually loaded. Skipped entirely when there are no intakes.
+    const intakeIds = ((intakeRows as Intake[]) || []).map((intake) => intake.id);
+    const { data: photoRows } = intakeIds.length
+      ? await supabase
           .from('consumer_intake_photos')
           .select('*')
-          .order('created_at', { ascending: true }),
-        supabase
-          .from('jobs')
-          .select('assigned_account_id, job_status, repair_score, repair_score_status')
-          .not('assigned_account_id', 'is', null),
-      ]);
+          .in('consumer_intake_id', intakeIds)
+          .order('created_at', { ascending: true })
+      : { data: [] as Photo[] };
 
     // Count providers currently busy on a job (anything not finished/canceled) so the
     // picker can exclude them by default. In the same pass, roll up each provider's Rex
