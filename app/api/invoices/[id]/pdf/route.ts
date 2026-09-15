@@ -148,7 +148,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
     text('INVOICE', 450, 730, 22, true);
     text(`Invoice #: ${clean(invoice.invoice_number)}`, 410, 708, 10);
-    text(`Date: ${new Date(invoice.created_at).toLocaleDateString()}`, 410, 692, 10);
+    text(`Date: ${new Date(invoice.created_at).toLocaleDateString('en-US')}`, 410, 692, 10);
 
     horizontal(670);
 

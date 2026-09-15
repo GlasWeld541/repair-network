@@ -1163,7 +1163,7 @@ export default function JobDetailPage() {
                       </button>
                       <span className="text-xs text-slate-400">
                         {job.customer_satisfaction_requested_at
-                          ? `Sent ${new Date(job.customer_satisfaction_requested_at).toLocaleDateString()} · emails the customer a 1–5 link`
+                          ? `Sent ${new Date(job.customer_satisfaction_requested_at).toLocaleDateString('en-US')} · emails the customer a 1–5 link`
                           : 'Emails the customer a 1–5 rating link (auto-sends on completion)'}
                       </span>
                     </div>

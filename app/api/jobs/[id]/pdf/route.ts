@@ -173,7 +173,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
     const jobShort = String(id).slice(0, 8).toUpperCase();
     const created = job.created_at
-      ? new Date(job.created_at).toLocaleDateString()
+      ? new Date(job.created_at).toLocaleDateString('en-US')
       : '—';
     const vehicle =
       safe([job.vehicle_year, job.vehicle_make, job.vehicle_model].filter(Boolean).join(' ')) ||

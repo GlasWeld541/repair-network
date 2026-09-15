@@ -138,7 +138,7 @@ function timeAgo(iso: string | null | undefined): string {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
-  return d < 30 ? `${d}d ago` : new Date(iso).toLocaleDateString();
+  return d < 30 ? `${d}d ago` : new Date(iso).toLocaleDateString('en-US');
 }
 
 const PAGE_SIZE = 8;

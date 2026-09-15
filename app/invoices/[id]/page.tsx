@@ -249,7 +249,7 @@ export default function InvoicePage() {
               </div>
 
               <div className="mt-1 text-sm text-slate-500">
-                {new Date(invoice.created_at).toLocaleDateString()}
+                {new Date(invoice.created_at).toLocaleDateString('en-US')}
               </div>
             </div>
           </div>
