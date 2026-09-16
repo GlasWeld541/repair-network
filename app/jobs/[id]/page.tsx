@@ -118,6 +118,8 @@ export default function JobDetailPage() {
   const [invoice, setInvoice] = useState<any>(null);
   const [photos, setPhotos] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
+  // Status / acceptance / provider changes recorded by the job_history trigger.
+  const [history, setHistory] = useState<JobHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [scoring, setScoring] = useState(false);
@@ -242,42 +244,41 @@ export default function JobDetailPage() {
     // picker can flag over-loaded shops). Shops/carriers never reassign, so skip the fetch.
     if (roleData.role === 'admin') {
       const [{ data: accountRows }, { data: jobRows }] = await Promise.all([
+        // Active providers only, filtered by the database. This used to fetch all ~4,200
+        // accounts and drop inactive ones in the browser — but PostgREST stops at 1,000 rows, so
+        // the cut happened first and 88 of the 102 active providers never reached the
+        // reassignment picker at all.
         supabase
           .from('accounts')
-          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, repair_platform_fee_bps, replacement_platform_fee_bps, csi_score, csi_count, billing_profile_type, billing_enabled, corporate_invoice_approved, billing_past_due')
+          .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, repair_platform_fee_bps, replacement_platform_fee_bps, csi_score, csi_count, repair_score_avg, repair_score_count, billing_profile_type, billing_enabled, corporate_invoice_approved, billing_past_due')
+          .eq('active', true)
           .order('account_name'),
+        // Open jobs only, for the busy count. Repair-score averages now come pre-computed on the
+        // account row (sql/provider_repair_score_rollup.sql) instead of from every job ever.
         supabase
           .from('jobs')
-          .select('assigned_account_id, job_status, repair_score, repair_score_status')
-          .not('assigned_account_id', 'is', null),
+          .select('assigned_account_id, job_status')
+          .not('assigned_account_id', 'is', null)
+          .or('job_status.is.null,job_status.not.in.("Completed","Canceled")'),
       ]);
 
       const counts: Record<string, number> = {};
-      // Only ADMIN-APPROVED scores count toward a provider's average (matches the intake
-      // triage aggregate + the tech-ratings model).
-      const scoreAgg: Record<string, { sum: number; count: number }> = {};
       (
-        (jobRows as {
-          assigned_account_id: string | null;
-          job_status: string | null;
-          repair_score: number | null;
-          repair_score_status: string | null;
-        }[]) || []
+        (jobRows as { assigned_account_id: string | null; job_status: string | null }[]) || []
       ).forEach((j) => {
         if (!j.assigned_account_id) return;
         const st = j.job_status || 'New';
         if (st !== 'Completed' && st !== 'Canceled') {
           counts[j.assigned_account_id] = (counts[j.assigned_account_id] || 0) + 1;
         }
-        if (j.repair_score_status === 'approved' && typeof j.repair_score === 'number') {
-          const agg = (scoreAgg[j.assigned_account_id] ??= { sum: 0, count: 0 });
-          agg.sum += j.repair_score;
-          agg.count += 1;
-        }
       });
+      // Only ADMIN-APPROVED scores count; the database applies that rule when it averages.
       const ratings: Record<string, { avg: number; count: number }> = {};
-      for (const [accountId, agg] of Object.entries(scoreAgg)) {
-        if (agg.count > 0) ratings[accountId] = { avg: agg.sum / agg.count, count: agg.count };
+      for (const a of (accountRows as any[]) || []) {
+        const n = a.repair_score_count ?? 0;
+        if (n > 0 && a.repair_score_avg != null) {
+          ratings[a.id] = { avg: Number(a.repair_score_avg), count: n };
+        }
       }
       setAccounts((accountRows as any[]) || []);
       setActiveCounts(counts);
@@ -297,8 +298,17 @@ export default function JobDetailPage() {
       eventData = data || [];
     }
 
+    // Visible to anyone who can see this job (RLS on job_history defers to the job's own).
+    const { data: historyRows } = await supabase
+      .from('job_history')
+      .select('id, changed_at, field, from_value, to_value, actor, note')
+      .eq('job_id', id)
+      .order('changed_at', { ascending: false })
+      .limit(50);
+
     setJob(jobData);
     setInvoice(invoiceData);
+    setHistory((historyRows as JobHistoryRow[]) || []);
     setPhotos(photoData || []);
     setEvents(eventData);
     setLoading(false);
@@ -1506,6 +1516,10 @@ export default function JobDetailPage() {
         </div>
       </div>
 
+      <Section title="Job history">
+        <JobHistory rows={history} />
+      </Section>
+
       <Section title="Photos">
         <div className="grid gap-6 lg:grid-cols-2">
           <PhotoColumn title="Before" photos={beforePhotos} />
@@ -2152,5 +2166,65 @@ function PhotoColumn({
         ) : null}
       </div>
     </div>
+  );
+}
+
+type JobHistoryRow = {
+  id: number;
+  changed_at: string;
+  field: 'created' | 'job_status' | 'acceptance_status' | 'assigned_provider';
+  from_value: string | null;
+  to_value: string | null;
+  actor: string;
+  note: string | null;
+};
+
+const HISTORY_LABEL: Record<JobHistoryRow['field'], string> = {
+  created: 'Job created',
+  job_status: 'Status',
+  acceptance_status: 'Provider response',
+  assigned_provider: 'Provider',
+};
+
+// What changed on a job, when, and by whom — newest first. Answers "when was this accepted",
+// "who reassigned it" and "how long did it sit", which the job's current status alone can't.
+function JobHistory({ rows }: { rows: JobHistoryRow[] }) {
+  if (!rows.length) {
+    return <p className="text-sm text-slate-500">No changes recorded yet.</p>;
+  }
+  return (
+    <ol className="space-y-3">
+      {rows.map((row) => {
+        const when = new Date(row.changed_at).toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        });
+        const change =
+          row.field === 'created'
+            ? row.to_value
+              ? `Created as ${row.to_value}`
+              : 'Created'
+            : row.from_value
+              ? `${row.from_value} → ${row.to_value ?? '(none)'}`
+              : (row.to_value ?? '(none)');
+        return (
+          <li key={row.id} className="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <div className="text-sm text-slate-900">
+                <span className="font-semibold">{HISTORY_LABEL[row.field] ?? row.field}:</span>{' '}
+                {change}
+              </div>
+              <div className="text-xs tabular-nums text-slate-500">{when}</div>
+            </div>
+            <div className="mt-0.5 text-xs text-slate-500">
+              {row.note ? row.note : `by ${row.actor}`}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

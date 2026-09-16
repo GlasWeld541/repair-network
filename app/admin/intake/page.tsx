@@ -71,6 +71,10 @@ type Account = {
   // Rolling Customer Satisfaction Index (avg of rated jobs) + how many ratings it's based on.
   csi_score: number | null;
   csi_count: number | null;
+  // Rolling average of ADMIN-APPROVED Rex repair scores, kept current by a trigger
+  // (sql/provider_repair_score_rollup.sql).
+  repair_score_avg: number | string | null;
+  repair_score_count: number | null;
   // REX-03 billing readiness (drives the routing gate + the picker badge).
   billing_profile_type: string | null;
   billing_enabled: boolean | null;
@@ -265,13 +269,18 @@ export default function AdminConsumerIntakePage() {
         .from('accounts')
         // Only active accounts are assignable — scope server-side so we don't fetch (and
         // cap at 1000 of) the thousands of inactive candidate accounts the picker discards.
-        .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, offers_financing, csi_score, csi_count, billing_profile_type, billing_enabled, corporate_invoice_approved, billing_past_due')
+        .select('id, account_name, city, state, postal_code, latitude, longitude, company_phone, company_email, glasweld_certified, uses_onyx, uses_zoom_injector, repair_only, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled, active, provider_type, offers_financing, csi_score, csi_count, repair_score_avg, repair_score_count, billing_profile_type, billing_enabled, corporate_invoice_approved, billing_past_due')
         .eq('active', true)
         .order('account_name'),
+      // Only jobs still in progress: this now feeds just the "provider is busy" count. It used to
+      // pull every job ever assigned to anyone (to average repair scores in the browser), which
+      // grows with every claim and silently truncates at 1,000 rows. Scores now come from the
+      // account row above. A null status counts as open, matching the busy rule below.
       supabase
         .from('jobs')
-        .select('assigned_account_id, job_status, repair_score, repair_score_status')
-        .not('assigned_account_id', 'is', null),
+        .select('assigned_account_id, job_status')
+        .not('assigned_account_id', 'is', null)
+        .or('job_status.is.null,job_status.not.in.("Completed","Canceled")'),
       // Header counters. `head: true` means these cost a count and transfer no rows, so they
       // can describe the whole table cheaply while the list itself stays one page.
       supabase.from('consumer_intakes').select('*', { count: 'exact', head: true }),
@@ -320,35 +329,27 @@ export default function AdminConsumerIntakePage() {
       : { data: [] as Photo[] };
 
     // Count providers currently busy on a job (anything not finished/canceled) so the
-    // picker can exclude them by default. In the same pass, roll up each provider's Rex
-    // repair scores — only ADMIN-APPROVED scores count (matching the tech-ratings model), so
-    // a pending/rejected score never inflates a provider's rating.
+    // picker can exclude them by default. The query already returns only open jobs; the
+    // status check stays as a guard in case it is ever widened.
     const counts: Record<string, number> = {};
-    const scoreAgg: Record<string, { sum: number; count: number }> = {};
     (
-      (jobRows as {
-        assigned_account_id: string | null;
-        job_status: string | null;
-        repair_score: number | null;
-        repair_score_status: string | null;
-      }[]) || []
+      (jobRows as { assigned_account_id: string | null; job_status: string | null }[]) || []
     ).forEach((job) => {
       if (!job.assigned_account_id) return;
       const status = job.job_status || 'New';
       if (status !== 'Completed' && status !== 'Canceled') {
         counts[job.assigned_account_id] = (counts[job.assigned_account_id] || 0) + 1;
       }
-      if (job.repair_score_status === 'approved' && typeof job.repair_score === 'number') {
-        const agg = scoreAgg[job.assigned_account_id] || { sum: 0, count: 0 };
-        agg.sum += job.repair_score;
-        agg.count += 1;
-        scoreAgg[job.assigned_account_id] = agg;
-      }
     });
 
+    // Each provider's approved Rex repair score now arrives pre-averaged on the account row.
+    // Same rule as before (only ADMIN-APPROVED scores count), just computed in the database.
     const ratings: Record<string, { avg: number; count: number }> = {};
-    Object.entries(scoreAgg).forEach(([accountId, agg]) => {
-      ratings[accountId] = { avg: agg.sum / agg.count, count: agg.count };
+    ((accountRows as Account[]) || []).forEach((account) => {
+      const count = account.repair_score_count ?? 0;
+      if (count > 0 && account.repair_score_avg != null) {
+        ratings[account.id] = { avg: Number(account.repair_score_avg), count };
+      }
     });
 
     // If rows were assigned/resolved while we sat on a later page, that page can come back
