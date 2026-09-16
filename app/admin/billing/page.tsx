@@ -6,6 +6,7 @@ import { Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/notifications';
 import { ListPageSkeleton } from '@/components/ui/skeleton';
+import GlasWeldRevenue from '@/components/glasweld-revenue';
 
 type BillingEvent = {
   id: string;
@@ -284,6 +285,10 @@ export default function AdminBillingPage() {
         <Metric label="Waived" value={moneyFromCents(totals.waived)} />
         <Metric label="Methods" value={String(paymentMethods.length)} tone="brand" />
       </div>
+
+      {/* GlasWeld's own earnings. The metrics above are all-time collection status per event;
+          this is the time-based reconciliation view Derek asked for on the 2026-09-15 call. */}
+      <GlasWeldRevenue />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
