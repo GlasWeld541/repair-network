@@ -44,6 +44,7 @@ type AccountRow = {
   // REX-03 billing profile: how this shop settles the GlasWeld fee. A shop must have a ready
   // profile before it can receive routed jobs (see lib/billing).
   billing_profile_type: string | null;
+  subscription_tier: string | null;
   ap_billing_email: string | null;
   billing_contact_name: string | null;
   corporate_invoice_approved: boolean | null;
@@ -293,7 +294,7 @@ export default function AccountDetailPage() {
     const { data: accountData, error: accountError } = await supabase
       .from('accounts')
       .select(
-        'id, account_name, street, city, state, postal_code, company_phone, company_email, claim_routing_enabled, claim_routing_paused_reason, claim_capacity_daily, claim_capacity_weekly, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes, consumer_repair_enabled, consumer_replacement_enabled, agent_referral_enabled, consumer_routing_notes, repair_platform_fee_bps, replacement_platform_fee_bps, offers_financing, financing_provider, billing_profile_type, ap_billing_email, billing_contact_name, corporate_invoice_approved, billing_past_due'
+        'id, account_name, street, city, state, postal_code, company_phone, company_email, claim_routing_enabled, claim_routing_paused_reason, claim_capacity_daily, claim_capacity_weekly, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes, consumer_repair_enabled, consumer_replacement_enabled, agent_referral_enabled, consumer_routing_notes, repair_platform_fee_bps, replacement_platform_fee_bps, offers_financing, financing_provider, billing_profile_type, ap_billing_email, billing_contact_name, corporate_invoice_approved, billing_past_due, subscription_tier'
       )
       .eq('id', id)
       .single();
@@ -1237,6 +1238,37 @@ export default function AccountDetailPage() {
 
           {/* REX-03: billing profile — how this shop settles the GlasWeld fee. A shop needs a
               ready profile to receive routed jobs. */}
+          {/* Free vs Pro (Derek, 2026-09-15 call). Free providers still receive jobs and pay the
+              per-job fee; Pro adds Rex coaching + certification in the Rex app. Set by hand until
+              Braintree subscriptions drive it. */}
+          <div className="mb-5 rounded-xl border border-slate-200 bg-white px-4 py-4">
+            <div className="mb-1 flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold text-slate-900">Subscription</div>
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  account.subscription_tier === 'pro'
+                    ? 'bg-brand-50 text-brand-700'
+                    : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {account.subscription_tier === 'pro' ? 'Pro' : 'Free'}
+              </span>
+            </div>
+            <p className="mb-3 text-xs text-slate-500">
+              Free receives and completes jobs and pays the per-job fee. Pro adds Rex coaching and
+              certification.
+            </p>
+            <select
+              value={account.subscription_tier === 'pro' ? 'pro' : 'free'}
+              onChange={(e) => void updateBillingSetting('subscription_tier', e.target.value)}
+              disabled={isReadOnly || currentRole !== 'admin'}
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm md:w-64"
+            >
+              <option value="free">Free — jobs only</option>
+              <option value="pro">Pro — adds Rex coaching + certification</option>
+            </select>
+          </div>
+
           {(() => {
             const bs = billingStanding(account);
             return (
