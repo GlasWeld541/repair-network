@@ -29,3 +29,23 @@ end $$;
 
 comment on column network.accounts.subscription_tier is
   'free | pro. Pro adds Rex coaching + certification. Jobs and fees are unaffected.';
+
+-- GlasWeld's own team and test logins have independent-tech provider accounts (so they can see the
+-- provider experience), which means they would default to free like everyone else. Enforcement ships
+-- switched off (PROVIDER_PLAN_GATING_ENABLED on the Rex backend), but set them to Pro now so turning
+-- it on later can never lock the team out of Rex coaching or certification.
+--
+-- Deliberately narrow: independent-tech accounts only. The shop account behind test@glasweld.com
+-- ("Test Windshield Repair Co.") stays free on purpose, as the account for demoing the locked state.
+update network.accounts
+   set subscription_tier = 'pro'
+ where provider_type = 'independent_tech'
+   and active
+   and (
+     lower(company_email) like '%@glasweld.com'
+     or lower(company_email) in (
+       'nayabkhanvict@yopmail.com',
+       'nayabkhanvict1@gmail.com',
+       'nayabkhanvict2@gmail.com'
+     )
+   );
