@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 import { sendEmail } from '@/lib/email';
 import { buildReassignNeededEmail } from '@/lib/matched-email';
+import { recordNotification } from '@/lib/notify';
 
 // REX-01 admin alert sweep. Emails the ops inbox about jobs that need a NEW provider —
 // the assigned provider DECLINED, or the 24h acceptance window LAPSED without an accept —
@@ -99,6 +100,20 @@ async function runSweep(request: Request) {
       jobUrl: `${origin}/jobs/${job.id}`,
     });
     const res = await sendEmail({ to: notifyTo, subject, html });
+    // Recorded whether or not the email lands: this is the admin's queue of jobs that need
+    // re-routing, and it must not go silent just because Resend is down.
+    await recordNotification({
+      eventType: reason === 'declined' ? 'Provider Declined' : 'Acceptance Window Expired',
+      audience: 'admin',
+      subject:
+        reason === 'declined'
+          ? `${(job.assigned_account_name as string) || 'A provider'} declined a job`
+          : 'A job request expired with no response',
+      body: [vehicleOf(job), areaOf(job)].filter(Boolean).join(' — ') || 'Needs re-routing.',
+      jobId: String(job.id),
+      recipientEmail: notifyTo,
+      metadata: { reason, prior_provider: job.assigned_account_name ?? null },
+    });
     if (res.ok) {
       await admin
         .from('jobs')

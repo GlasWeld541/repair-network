@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
+import { NotificationBell } from '@/components/notification-bell';
 import { supabase } from '@/lib/supabase';
 
 type StateOption = {
@@ -267,8 +268,12 @@ export default function Header() {
             </Link>
           </div>
 
-          {/* Search stays inline on wide screens; nav + logout live in the drawer. */}
-          {searchForm('hidden items-center gap-3 xl:flex')}
+          <div className="flex items-center gap-3">
+            {/* Search stays inline on wide screens; nav + logout live in the drawer. */}
+            {searchForm('hidden items-center gap-3 xl:flex')}
+            {/* The bell stays visible at every width — a missed job request is the whole point. */}
+            <NotificationBell />
+          </div>
         </div>
       </div>
 

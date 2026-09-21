@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase';
 import { sendEmail } from '@/lib/email';
 import { buildJobRequestEmail } from '@/lib/matched-email';
 import { billingBlocksRouting } from '@/lib/billing';
+import { recordNotification } from '@/lib/notify';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -93,6 +94,17 @@ export async function POST(_request: Request, context: RouteContext) {
       serviceType: job.service_type,
     });
     const result = await sendEmail({ to: account.company_email, subject, html });
+    // The provider's own notification list — so a shop that misses the email still sees the
+    // request waiting for them. Customer identity stays out of it, same as the email.
+    await recordNotification({
+      eventType: 'Job Request',
+      audience: 'account',
+      subject: `New ${job.service_type || 'repair'} request${area ? ` in ${area}` : ''}`,
+      body: [vehicle, damage].filter(Boolean).join(' — ') || 'A job is waiting for your response.',
+      jobId: String(job.id),
+      accountId: String(job.assigned_account_id),
+      recipientEmail: account.company_email,
+    });
     return NextResponse.json({ emailed: !!result.ok });
   } catch {
     // Never block the assignment on a notification failure.
