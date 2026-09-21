@@ -90,7 +90,32 @@ async function runSweep(request: Request) {
   }
 
   let notified = 0;
+  let alreadyClaimed = 0;
   for (const { job, reason } of queue) {
+    // CLAIM FIRST, then notify. The candidate rows were read before any of this loop ran, so
+    // two overlapping sweeps (a slow Resend call, a manual run beside the cron tick, a platform
+    // retry) both see the same unstamped jobs. Stamping inside a `is null` predicate makes the
+    // claim atomic in the database: exactly one run gets the row back, the other gets nothing
+    // and skips. Without this the admin is emailed once per overlapping run.
+    const { data: claimed, error: claimError } = await admin
+      .from('jobs')
+      .update({ admin_reassign_notified_at: nowIso })
+      .eq('id', job.id as string)
+      .is('admin_reassign_notified_at', null)
+      .select('id');
+    if (claimError) {
+      console.warn('acceptance-sweep: claim failed', job.id, claimError.message);
+      continue;
+    }
+    if (!claimed?.length) {
+      alreadyClaimed += 1;
+      continue;
+    }
+
+    // Past the claim the job is stamped, so this notification happens exactly once whatever
+    // happens next. That is deliberately at-most-once rather than at-least-once: re-sending a
+    // re-routing alert every hour until an email finally lands is worse than missing one, and
+    // the in-app notification below is the catch-up surface if the email does not arrive.
     const { subject, html } = buildReassignNeededEmail({
       reason,
       priorProvider: (job.assigned_account_name as string) || null,
@@ -112,21 +137,16 @@ async function runSweep(request: Request) {
       body: [vehicleOf(job), areaOf(job)].filter(Boolean).join(' — ') || 'Needs re-routing.',
       jobId: String(job.id),
       recipientEmail: notifyTo,
-      metadata: { reason, prior_provider: job.assigned_account_name ?? null },
+      metadata: { reason, prior_provider: job.assigned_account_name ?? null, emailed: res.ok },
     });
-    if (res.ok) {
-      await admin
-        .from('jobs')
-        .update({ admin_reassign_notified_at: nowIso })
-        .eq('id', job.id as string);
-      notified += 1;
-    }
+    if (res.ok) notified += 1;
   }
 
   return NextResponse.json({
     success: true,
     candidates: queue.length,
     notified,
+    alreadyClaimed,
   });
 }
 

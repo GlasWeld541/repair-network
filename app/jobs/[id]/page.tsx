@@ -229,10 +229,17 @@ export default function JobDetailPage() {
       .eq('id', id)
       .maybeSingle();
 
+    // Oldest-first + limit(1) rather than a bare .maybeSingle(): if this job somehow carries
+    // two invoices (possible before sql/invoice_one_per_job.sql), .maybeSingle() errors with
+    // "multiple rows returned" and returns null, which hid the entire invoice and payment
+    // section so nobody could collect money on the job. Showing the original invoice is a far
+    // better failure than showing none.
     const { data: invoiceData } = await supabase
       .from('invoices')
       .select('*')
       .eq('job_id', id)
+      .order('created_at', { ascending: true })
+      .limit(1)
       .maybeSingle();
 
     const { data: photoData } = await supabase
@@ -551,6 +558,9 @@ export default function JobDetailPage() {
 
     if (percentageFeeCents <= 0) return;
 
+    // Only move the job's fee back to 'pending' while it still IS pending. This function re-runs
+    // on any re-completion (see the note below), and without the predicate a re-run reverts a fee
+    // that has already been invoiced or paid.
     await supabase
       .from('jobs')
       .update({
@@ -558,11 +568,32 @@ export default function JobDetailPage() {
         platform_fee_cents: percentageFeeCents,
         platform_fee_status: 'pending',
       })
-      .eq('id', completedJob.id);
+      .eq('id', completedJob.id)
+      .or('platform_fee_status.is.null,platform_fee_status.eq.pending');
 
+    const billingKey = `${eventType}:${completedJob.id}`;
+    const eventMetadata = {
+      customer_name: completedJob.customer_name,
+      invoice_amount: invoiceAmount,
+      assigned_account_name: completedJob.assigned_account_name,
+      intake_origin: completedJob.intake_origin || 'admin',
+      service_type: serviceType,
+      payment_path: completedJob.payment_path || 'unknown',
+      payment_method: completedJob.payment_method || null,
+      platform_fee_bps: percentageBps,
+    };
+
+    // This runs again on every re-completion: the transition guard reads client state that is
+    // stale until setJob commits, Mark Complete is not disabled while in flight, and Pay Full
+    // Balance auto-completes down the same path. billing_key is UNIQUE so a duplicate ROW was
+    // never possible, but the old upsert's UPDATE branch re-sent status:'pending' plus a freshly
+    // computed amount_cents — so a re-completion silently un-invoiced (or un-paid) a fee that the
+    // monthly run or an admin had already advanced, and re-priced it after a price edit.
+    //
+    // So: insert once, never update on conflict, and amend separately while still pending.
     const { error } = await supabase.from('billing_events').upsert(
       {
-        billing_key: `${eventType}:${completedJob.id}`,
+        billing_key: billingKey,
         account_id: completedJob.assigned_account_id,
         job_id: completedJob.id,
         invoice_id: invoice?.id ?? null,
@@ -571,22 +602,29 @@ export default function JobDetailPage() {
         amount_cents: percentageFeeCents,
         status: 'pending',
         created_by_email: userEmail,
-        metadata: {
-          customer_name: completedJob.customer_name,
-          invoice_amount: invoiceAmount,
-          assigned_account_name: completedJob.assigned_account_name,
-          intake_origin: completedJob.intake_origin || 'admin',
-          service_type: serviceType,
-          payment_path: completedJob.payment_path || 'unknown',
-          payment_method: completedJob.payment_method || null,
-          platform_fee_bps: percentageBps,
-        },
+        metadata: eventMetadata,
       },
-      { onConflict: 'billing_key' }
+      { onConflict: 'billing_key', ignoreDuplicates: true }
     );
 
     if (error) {
       console.warn('Completed job billing event was not recorded.', error.message);
+    }
+
+    // Keep an as-yet-unbilled fee in step with the current price. The status predicate runs in
+    // the database, so an already-invoiced or paid fee is untouched no matter what re-runs this.
+    const { error: amendError } = await supabase
+      .from('billing_events')
+      .update({
+        amount_cents: percentageFeeCents,
+        invoice_id: invoice?.id ?? null,
+        metadata: eventMetadata,
+      })
+      .eq('billing_key', billingKey)
+      .eq('status', 'pending');
+
+    if (amendError) {
+      console.warn('Pending billing event was not amended.', amendError.message);
     }
   }
 
@@ -681,6 +719,29 @@ export default function JobDetailPage() {
       .single();
 
     if (error) {
+      // A job carries at most one invoice (sql/invoice_one_per_job.sql). The button is driven by
+      // client state loaded at page load, so a second admin, a second tab, or a retry after an
+      // ambiguous failure can all reach this insert on a job that already has one. The database
+      // now rejects that; recover by loading the invoice that does exist rather than telling the
+      // admin it failed. Duplicates used to break the reader's .maybeSingle(), which hid the
+      // whole payment section and invited yet another duplicate.
+      const alreadyExists =
+        error.code === '23505' || /duplicate key|unique constraint/i.test(error.message || '');
+      if (alreadyExists) {
+        const { data: existing } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('job_id', job.id)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (existing) {
+          setInvoice(existing);
+          toast.success('This job already had an invoice. Opened it instead.');
+          setWorking(false);
+          return;
+        }
+      }
       toast.error('Could not generate invoice.');
       setWorking(false);
       return;
