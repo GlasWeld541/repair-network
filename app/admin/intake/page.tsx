@@ -1073,6 +1073,10 @@ export default function AdminConsumerIntakePage() {
 
       {openIntake ? (
         <ProviderPickerModal
+          // Keyed per intake so switching straight from one intake's picker to another's
+          // remounts it with a clean search box and sort mode, rather than inheriting the
+          // previous intake's controls.
+          key={openIntake.id}
           open
           onClose={() => setOpenPickerId(null)}
           customerLocation={

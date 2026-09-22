@@ -98,6 +98,17 @@ export default function ProviderPickerModal({
     [accounts, ratings],
   );
 
+  // Reset the transient controls every time the modal opens. The component stays mounted
+  // between openings (it only returns null while closed), so without this the next intake
+  // inherits the previous one's search text, sort mode and busy toggle, which reads as the
+  // picker "showing another list" before settling.
+  useEffect(() => {
+    if (!open) return;
+    setSearch('');
+    setShowBusy(false);
+    setSortMode('best');
+  }, [open]);
+
   // Close on Escape while open.
   useEffect(() => {
     if (!open) return;
@@ -189,6 +200,11 @@ export default function ProviderPickerModal({
     ({ a, active }) => active >= BUSY_THRESHOLD && a.id !== selectedId,
   ).length;
 
+  // Providers with no address on file cannot be given a distance, so they sort last behind
+  // every geocoded one. That is the right order, but with ~100 providers it reads as "my
+  // provider is missing", so say so out loud and make them reachable by name search.
+  const noLocation = ranked.filter(({ a }) => a.latitude == null || a.longitude == null).length;
+
   const sortLabel =
     sortMode === 'rated'
       ? 'Top rated first (Rex repair score)'
@@ -267,7 +283,15 @@ export default function ProviderPickerModal({
 
         {/* List */}
         <div className="flex-1 space-y-2 overflow-y-auto px-5 py-3">
-          {visible.map(({ a, dist, active, rating, ratingCount, csi, csiCount }) => {
+          {/* While the customer's address is still being geocoded there is no origin yet, so the
+              list would rank by region and then visibly re-order the moment coordinates land.
+              Hold the list back rather than show an order that is about to change. */}
+          {geocoding ? (
+            <div className="py-10 text-center text-sm text-slate-500">
+              Locating the customer to rank providers by distance…
+            </div>
+          ) : null}
+          {geocoding ? null : visible.map(({ a, dist, active, rating, ratingCount, csi, csiCount }) => {
             const selected = a.id === selectedId;
             const badges = certBadges(a);
             const bill = billingStanding(a);
@@ -372,9 +396,13 @@ export default function ProviderPickerModal({
             );
           })}
 
-          {!visible.length ? (
+          {!geocoding && !visible.length ? (
             <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
-              No matching providers.
+              {term
+                ? `No provider matches "${search.trim()}".`
+                : accounts.length === 0
+                  ? 'No provider is eligible for this job. A replacement job only offers providers with replacement enabled on their account.'
+                  : 'No matching providers.'}
             </div>
           ) : null}
         </div>
@@ -390,7 +418,12 @@ export default function ProviderPickerModal({
               {showBusy ? 'Hide busy providers' : `Show ${hiddenBusy} busy provider${hiddenBusy === 1 ? '' : 's'}`}
             </button>
           ) : (
-            <span className="text-xs text-slate-400">{visible.length} shown</span>
+            <span className="text-xs text-slate-400">
+              {visible.length} shown
+              {noLocation > 0 && !term
+                ? ` · ${noLocation} with no address on file, listed last`
+                : ''}
+            </span>
           )}
           <button
             type="button"
