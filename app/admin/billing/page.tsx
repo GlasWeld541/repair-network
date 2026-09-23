@@ -80,7 +80,8 @@ function statusClass(status: string) {
 
 function gatewayLabel(value: string | null | undefined) {
   if (value === 'preferred_processor') return 'Preferred Processor';
-  if (value === 'stripe') return 'Stripe';
+  if (value === 'braintree') return 'Braintree';
+    if (value === 'stripe') return 'Stripe';
   if (value === 'square') return 'Square';
   if (value === 'other') return 'Other';
   return 'Manual';

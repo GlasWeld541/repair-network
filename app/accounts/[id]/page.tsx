@@ -105,6 +105,7 @@ type EditingTarget =
 const GATEWAY_OPTIONS = [
   { value: 'manual', label: 'Manual / Not Integrated' },
   { value: 'preferred_processor', label: 'Preferred Processor' },
+  { value: 'braintree', label: 'Braintree' },
   { value: 'stripe', label: 'Stripe' },
   { value: 'square', label: 'Square' },
   { value: 'other', label: 'Other' },
