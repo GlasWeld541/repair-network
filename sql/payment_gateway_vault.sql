@@ -53,3 +53,23 @@ create index if not exists billing_events_invoiced_period_idx
 create unique index if not exists account_payment_methods_one_default_idx
   on network.account_payment_methods (account_id)
   where is_default and status = 'active';
+
+-- 5. Audit trail of Braintree webhooks (app/api/payments/webhook). Every VERIFIED notification is
+--    recorded with what it did, so "why did this fee go back to outstanding" has an answer.
+create table if not exists network.payment_webhook_events (
+  id             uuid primary key default gen_random_uuid(),
+  kind           text not null,
+  transaction_id text,
+  outcome        text,
+  received_at    timestamptz not null default now()
+);
+
+create index if not exists payment_webhook_events_txn_idx
+  on network.payment_webhook_events (transaction_id)
+  where transaction_id is not null;
+
+alter table network.payment_webhook_events enable row level security;
+-- Written by the service role only; admins may read it.
+drop policy if exists payment_webhook_events_admin_read on network.payment_webhook_events;
+create policy payment_webhook_events_admin_read on network.payment_webhook_events
+  for select using ((select network.is_glasweld_user()));

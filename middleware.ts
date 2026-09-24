@@ -40,6 +40,9 @@ export async function middleware(req: NextRequest) {
     // protected — it's called from inside the authed app.)
     '/rate',
     '/api/rate',
+    // Braintree's webhook. Braintree cannot log in; the route verifies Braintree's signature on
+    // every request instead, and rejects anything unsigned or altered with a 403.
+    '/api/payments/webhook',
   ];
 
   const isPublicRoute = publicRoutes.some(

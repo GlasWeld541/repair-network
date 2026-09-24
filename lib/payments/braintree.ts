@@ -205,3 +205,47 @@ export class BraintreeGatewayAdapter implements PaymentGateway {
     });
   }
 }
+
+export type ParsedWebhook = {
+  kind: string;
+  transactionId: string | null;
+  disputeReason: string | null;
+};
+
+/** Thrown when a webhook's signature does not verify: it did not come from Braintree. */
+export class InvalidWebhookSignature extends Error {}
+
+/**
+ * Verify and read a Braintree webhook. Verification is what makes it safe to leave the webhook
+ * route open without a login: a forged or tampered payload fails here. Checked against the
+ * sandbox with Braintree's own sample notifications, including a tampered payload and a forged
+ * signature, both of which are rejected.
+ */
+export async function parseBraintreeWebhook(signature: string, payload: string): Promise<ParsedWebhook> {
+  const gw = makeGateway() as unknown as {
+    webhookNotification: { parse(sig: string, payload: string): Promise<Record<string, any>> };
+  };
+  let n: Record<string, any>;
+  try {
+    n = await gw.webhookNotification.parse(signature, payload);
+  } catch (e) {
+    const type = (e as { type?: string }).type;
+    if (type === 'invalidSignatureError' || type === 'invalidChallengeError') {
+      throw new InvalidWebhookSignature('Webhook signature did not verify.');
+    }
+    throw e;
+  }
+  return {
+    kind: String(n.kind),
+    // A settlement event carries the transaction; a dispute carries it on the dispute.
+    transactionId: n.transaction?.id ?? n.dispute?.transaction?.id ?? null,
+    disputeReason: n.dispute?.reason ?? null,
+  };
+}
+
+/** Whether Braintree credentials are present, without building a gateway. */
+export function braintreeConfigured(): boolean {
+  return Boolean(
+    process.env.BRAINTREE_MERCHANT_ID && process.env.BRAINTREE_PUBLIC_KEY && process.env.BRAINTREE_PRIVATE_KEY,
+  );
+}
