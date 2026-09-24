@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/notifications';
 import { ListPageSkeleton } from '@/components/ui/skeleton';
 import GlasWeldRevenue from '@/components/glasweld-revenue';
+import PaymentProblems from '@/components/payment-problems';
 
 type BillingEvent = {
   id: string;
@@ -286,6 +287,9 @@ export default function AdminBillingPage() {
         <Metric label="Waived" value={moneyFromCents(totals.waived)} />
         <Metric label="Methods" value={String(paymentMethods.length)} tone="brand" />
       </div>
+
+      {/* Failed payments first: they are the only thing on this page that needs someone to act. */}
+      <PaymentProblems readOnly={isReadOnly} />
 
       {/* GlasWeld's own earnings. The metrics above are all-time collection status per event;
           this is the time-based reconciliation view Derek asked for on the 2026-09-15 call. */}
