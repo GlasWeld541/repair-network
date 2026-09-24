@@ -12,6 +12,10 @@ import { DetailPageSkeleton } from '@/components/ui/skeleton';
 type AccountRow = {
   id: string;
   account_name: string;
+  active: boolean | null;
+  provider_type: string | null;
+  latitude: number | null;
+  longitude: number | null;
   street: string | null;
   city: string | null;
   state: string | null;
@@ -101,6 +105,9 @@ type EditingTarget =
   | { type: 'account'; field: keyof AccountRow }
   | { type: 'contact'; id: string; field: keyof ContactRow }
   | null;
+
+// Editing any of these re-locates the provider (see app/api/accounts/[id]/locate).
+const ADDRESS_FIELDS = ['street', 'city', 'state', 'postal_code'];
 
 const GATEWAY_OPTIONS = [
   { value: 'manual', label: 'Manual / Not Integrated' },
@@ -295,7 +302,7 @@ export default function AccountDetailPage() {
     const { data: accountData, error: accountError } = await supabase
       .from('accounts')
       .select(
-        'id, account_name, street, city, state, postal_code, company_phone, company_email, claim_routing_enabled, claim_routing_paused_reason, claim_capacity_daily, claim_capacity_weekly, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes, consumer_repair_enabled, consumer_replacement_enabled, agent_referral_enabled, consumer_routing_notes, repair_platform_fee_bps, replacement_platform_fee_bps, offers_financing, financing_provider, billing_profile_type, ap_billing_email, billing_contact_name, corporate_invoice_approved, billing_past_due, subscription_tier'
+        'id, account_name, active, provider_type, latitude, longitude, street, city, state, postal_code, company_phone, company_email, claim_routing_enabled, claim_routing_paused_reason, claim_capacity_daily, claim_capacity_weekly, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, billing_terms_notes, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, payment_gateway_notes, consumer_repair_enabled, consumer_replacement_enabled, agent_referral_enabled, consumer_routing_notes, repair_platform_fee_bps, replacement_platform_fee_bps, offers_financing, financing_provider, billing_profile_type, ap_billing_email, billing_contact_name, corporate_invoice_approved, billing_past_due, subscription_tier'
       )
       .eq('id', id)
       .single();
@@ -365,6 +372,41 @@ export default function AccountDetailPage() {
     return role.access_status || 'Active';
   }
 
+  // Network membership (Shiloh, 2026-09-23): whether someone is in the network used to be two
+  // unrelated fields, `active` and `provider_type`, only changeable through bulk actions on the list.
+  // This puts it in one place on the account itself.
+  async function setMembership(inNetwork: boolean) {
+    if (isReadOnly || currentRole !== 'admin' || !account) return;
+    if (!inNetwork) {
+      const ok = await confirm({
+        title: `Remove ${account.account_name} from the network?`,
+        message:
+          'They will no longer be offered new jobs or appear when assigning a provider. Their history, invoices and jobs are kept, and you can add them back at any time.',
+        confirmLabel: 'Remove from network',
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+    const { error } = await supabase.from('accounts').update({ active: inNetwork }).eq('id', id);
+    if (error) {
+      toast.error(`Could not update membership: ${error.message}`);
+      return;
+    }
+    setAccount((c) => (c ? { ...c, active: inNetwork } : c));
+    toast.success(inNetwork ? 'Added back to the network.' : 'Removed from the network.');
+  }
+
+  async function setProviderType(type: string) {
+    if (isReadOnly || currentRole !== 'admin') return;
+    const { error } = await supabase.from('accounts').update({ provider_type: type }).eq('id', id);
+    if (error) {
+      toast.error(`Could not update type: ${error.message}`);
+      return;
+    }
+    setAccount((c) => (c ? { ...c, provider_type: type } : c));
+    flashSaved();
+  }
+
   async function saveAccountField(field: keyof AccountRow) {
     if (isReadOnly) return;
 
@@ -375,6 +417,19 @@ export default function AccountDetailPage() {
 
     setEditing(null);
     flashSaved();
+
+    // An address change must re-locate the provider, or they stay unrankable by distance however
+    // good the address is. Best-effort: a failure leaves the saved address and says so.
+    if (ADDRESS_FIELDS.includes(field as string)) {
+      try {
+        const res = await fetch(`/api/accounts/${id}/locate`, { method: 'POST' });
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json.routable) toast.success('Address located. This provider can now be matched by distance.');
+        else if (res.ok && json.addressGiven) toast.info('Saved, but that address could not be located. Check it so this provider can be matched by distance.');
+      } catch {
+        toast.error('Address saved, but it could not be located right now.');
+      }
+    }
     await load();
   }
 
@@ -965,6 +1020,84 @@ export default function AccountDetailPage() {
           </button>
         )}
       </div>
+
+      {(() => {
+        const inNetwork = account.active !== false;
+        const located = account.latitude != null && account.longitude != null;
+        const canEdit = !isReadOnly && currentRole === 'admin';
+        return (
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">Network membership</h2>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  Whether this provider can be offered jobs, and whether they can be matched by location.
+                </p>
+              </div>
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                  inNetwork ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                {inNetwork ? 'In network' : 'Not in network'}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <div>
+                <div className="mb-1 text-xs font-medium text-slate-600">Membership</div>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => void setMembership(!inNetwork)}
+                    className={`h-10 w-full rounded-lg border px-3 text-sm font-medium ${
+                      inNetwork
+                        ? 'border-rose-200 text-rose-700 hover:bg-rose-50'
+                        : 'border-brand-200 text-brand-700 hover:bg-brand-50'
+                    }`}
+                  >
+                    {inNetwork ? 'Remove from network' : 'Add to network'}
+                  </button>
+                ) : (
+                  <div className="text-sm text-slate-700">{inNetwork ? 'In network' : 'Not in network'}</div>
+                )}
+              </div>
+
+              <div>
+                <div className="mb-1 text-xs font-medium text-slate-600">Provider type</div>
+                <select
+                  value={account.provider_type === 'independent_tech' ? 'independent_tech' : 'shop'}
+                  onChange={(e) => void setProviderType(e.target.value)}
+                  disabled={!canEdit}
+                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm disabled:bg-slate-50"
+                >
+                  <option value="shop">Shop</option>
+                  <option value="independent_tech">Independent tech</option>
+                </select>
+              </div>
+
+              <div>
+                <div className="mb-1 text-xs font-medium text-slate-600">Location matching</div>
+                <div
+                  className={`flex h-10 items-center rounded-lg px-3 text-sm font-medium ${
+                    located ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'
+                  }`}
+                >
+                  {located ? 'Matched by location' : 'No address on file'}
+                </div>
+              </div>
+            </div>
+
+            {!located && inNetwork ? (
+              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
+                Without an address this provider will not come up in location-based matching, so they
+                will not be suggested as a nearby provider when assigning a job. Add their street, city,
+                state or ZIP under Account Info below and they will be located automatically.
+              </p>
+            ) : null}
+          </div>
+        );
+      })()}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
         <h2 className="mb-4 text-lg font-semibold">Account Info</h2>

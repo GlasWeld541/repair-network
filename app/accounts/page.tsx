@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { Suspense, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { EnrollProviderModal } from '@/components/enroll-provider-modal';
 import { supabase } from '@/lib/supabase';
 import { useToast, useConfirm } from '@/components/ui/notifications';
 import { distanceMiles } from '@/lib/geo';
@@ -75,6 +76,9 @@ function AccountsPageContent() {
   const selectable = !isReadOnly && role !== 'shop';
 
   const toast = useToast();
+  const router = useRouter();
+  // Network enrollment is manual now (Shiloh decides who joins), so admins add a tech here.
+  const [enrollOpen, setEnrollOpen] = useState(false);
   const confirm = useConfirm();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -437,7 +441,24 @@ function AccountsPageContent() {
           <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
             View Only
           </div>
+        ) : role === 'admin' ? (
+          <button
+            type="button"
+            onClick={() => setEnrollOpen(true)}
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            Add independent tech
+          </button>
         ) : null}
+        <EnrollProviderModal
+          open={enrollOpen}
+          onClose={() => setEnrollOpen(false)}
+          onCreated={(id) => {
+            setEnrollOpen(false);
+            // Land on the new account so the admin can finish it (address, billing, plan).
+            router.push(`/accounts/${id}`);
+          }}
+        />
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
@@ -703,6 +724,14 @@ function AccountsPageContent() {
                     {account.provider_type === 'independent_tech' ? (
                       <span className="shrink-0 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700">
                         Ind. tech
+                      </span>
+                    ) : null}
+                    {account.active && (account.latitude == null || account.longitude == null) ? (
+                      <span
+                        title="No address on file, so this provider cannot be matched by location and will not be suggested as a nearby provider."
+                        className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+                      >
+                        No address
                       </span>
                     ) : null}
                   </div>
