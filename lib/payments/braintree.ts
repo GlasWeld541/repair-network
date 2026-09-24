@@ -82,6 +82,21 @@ function describeMethod(pm: Record<string, unknown>): VaultedMethod {
   };
 }
 
+/**
+ * Braintree transaction statuses that mean the money was (or is being) collected. Anything else,
+ * processor_declined, gateway_rejected, failed, voided, settlement_declined, authorization_expired,
+ * is a charge that did not happen and must not count as one.
+ */
+const SUCCESSFUL_STATUSES = new Set([
+  'authorizing',
+  'authorized',
+  'submitted_for_settlement',
+  'settling',
+  'settlement_pending',
+  'settlement_confirmed',
+  'settled',
+]);
+
 export class BraintreeGatewayAdapter implements PaymentGateway {
   readonly name = 'braintree' as const;
   private gw: BraintreeGatewayLike | null = null;
@@ -192,15 +207,23 @@ export class BraintreeGatewayAdapter implements PaymentGateway {
     }
   }
 
-  /** Find a transaction previously charged under this idempotency key, if any. */
+  /**
+   * Find a SUCCESSFUL transaction previously charged under this idempotency key, if any.
+   *
+   * Braintree's search by orderId returns every transaction under that key, declined ones
+   * included. The first version returned whatever it found, so retrying a fee whose first attempt
+   * was declined "found" the decline and reported it as paid: confirmed in the sandbox, where a
+   * retry returned the original processor_declined transaction as success. Only a transaction that
+   * actually moved money may stand in for a new charge; a failed one means charge again.
+   */
   private findByOrderId(orderId: string): Promise<{ id: string } | null> {
     return new Promise((resolve, reject) => {
-      const found: { id: string }[] = [];
+      const found: { id: string; status: string }[] = [];
       const stream = this.client().transaction.search((s) => {
         s.orderId().is(orderId);
       });
-      stream.on('data', (t: { id: string }) => found.push(t));
-      stream.on('end', () => resolve(found[0] ?? null));
+      stream.on('data', (t: { id: string; status: string }) => found.push(t));
+      stream.on('end', () => resolve(found.find((t) => SUCCESSFUL_STATUSES.has(t.status)) ?? null));
       stream.on('error', reject);
     });
   }
