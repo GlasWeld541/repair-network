@@ -97,6 +97,32 @@ export default function PaymentProblems({ readOnly }: { readOnly: boolean }) {
     void load();
   }, [load]);
 
+  // Retry a fee now, e.g. after the provider has updated their card. Goes through the same charge
+  // path as the monthly run, so it can never charge a fee twice.
+  async function chargeNow(p: Problem) {
+    setBusy(p.id);
+    try {
+      const res = await fetch('/api/billing/charge-fee', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ billingEventId: p.id, trigger: 'manual' }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) toast.error(out.error || 'Could not charge that fee.');
+      else if (out.kind === 'paid') toast.success(`Charged ${money(out.amountCents)}.`);
+      else if (out.kind === 'already_paid') toast.info('That fee was already paid.');
+      else if (out.kind === 'no_method') toast.error('Still no card on file for this provider.');
+      else if (out.kind === 'declined') toast.error(`Declined again: ${out.message}`);
+      else if (out.kind === 'retry_later') toast.info(`The processor could not be reached: ${out.message}`);
+      else if (out.kind === 'not_chargeable') toast.info(out.reason);
+    } catch {
+      toast.error('Could not reach the server.');
+    } finally {
+      setBusy(null);
+      await load();
+    }
+  }
+
   async function dismiss(p: Problem) {
     const ok = await confirm({
       title: 'Clear this payment problem?',
@@ -187,14 +213,26 @@ export default function PaymentProblems({ readOnly }: { readOnly: boolean }) {
                     </td>
                     <td className="px-3 py-3 text-right">
                       {!readOnly ? (
-                        <button
-                          type="button"
-                          onClick={() => void dismiss(p)}
-                          disabled={busy === p.id}
-                          className="rounded-lg px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
-                        >
-                          Clear
-                        </button>
+                        <div className="flex justify-end gap-1">
+                          {p.status !== 'paid' ? (
+                            <button
+                              type="button"
+                              onClick={() => void chargeNow(p)}
+                              disabled={busy === p.id}
+                              className="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                            >
+                              {busy === p.id ? 'Charging…' : 'Charge now'}
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => void dismiss(p)}
+                            disabled={busy === p.id}
+                            className="rounded-lg px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                          >
+                            Clear
+                          </button>
+                        </div>
                       ) : null}
                     </td>
                   </tr>

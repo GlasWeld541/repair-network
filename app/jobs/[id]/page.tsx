@@ -626,6 +626,34 @@ export default function JobDetailPage() {
     if (amendError) {
       console.warn('Pending billing event was not amended.', amendError.message);
     }
+
+    // Pay-per-job providers are charged the moment the job completes (billing ticket: small shops,
+    // no collections department). The server decides whether this account is pay-per-job and
+    // whether billing is switched on, and charges through the same path as the monthly run, so
+    // re-completing a job can never charge twice. Quiet when there is nothing to do.
+    await chargeOnCompletion(completedJob.id);
+  }
+
+  async function chargeOnCompletion(jobId: string) {
+    try {
+      const res = await fetch('/api/billing/charge-fee', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId, trigger: 'completion' }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (out.kind === 'paid') {
+        toast.success(`Fee of ${money(out.amountCents / 100)} charged to the provider's card.`);
+      } else if (out.kind === 'declined') {
+        toast.error(`The fee could not be charged: ${out.message}. It is listed under Payment problems.`);
+      } else if (out.kind === 'no_method') {
+        toast.info('This provider has no card on file, so the fee was not charged. It is listed under Payment problems.');
+      } else if (out.kind === 'retry_later') {
+        toast.info('The payment processor could not be reached, so the fee was not charged yet. Try Charge now from Billing.');
+      }
+    } catch {
+      // Completing the job must never fail because of billing. The fee is recorded either way.
+    }
   }
 
   async function saveDraftField(field: string) {
