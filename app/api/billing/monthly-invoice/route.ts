@@ -34,6 +34,10 @@ async function runMonthlyInvoice(request: Request) {
   const { periodStart, periodEnd } = previousMonthRange();
   const invoicedAt = new Date().toISOString();
 
+  // Invoice EVERY fee still pending from before this month, not just last month's. The run used to
+  // look only at [periodStart, periodEnd), so a fee missed in its own month (a run that failed, or
+  // a fee recorded late) was stranded as pending for good: Eco Car Cafe's fee from 2026-07-07 was
+  // still pending in late September. Anything before this month that is still pending is owed.
   const { data, error } = await admin
     .from('billing_events')
     .update({
@@ -41,7 +45,6 @@ async function runMonthlyInvoice(request: Request) {
       invoiced_at: invoicedAt,
     })
     .eq('status', 'pending')
-    .gte('occurred_at', periodStart)
     .lt('occurred_at', periodEnd)
     .select('id, account_id, amount_cents');
 
