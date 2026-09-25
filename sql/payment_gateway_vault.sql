@@ -69,6 +69,12 @@ create index if not exists payment_webhook_events_txn_idx
   where transaction_id is not null;
 
 alter table network.payment_webhook_events enable row level security;
+
+-- A new table in the network schema gets NO grants by default. Without these the webhook's audit
+-- insert was refused with permission denied and, being best-effort, dropped silently: caught
+-- 2026-09-25 when a live signed notification returned 200 and left the table empty.
+grant select, insert on network.payment_webhook_events to service_role;
+grant select on network.payment_webhook_events to authenticated;
 -- Written by the service role only; admins may read it.
 drop policy if exists payment_webhook_events_admin_read on network.payment_webhook_events;
 create policy payment_webhook_events_admin_read on network.payment_webhook_events
