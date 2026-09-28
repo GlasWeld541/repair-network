@@ -28,9 +28,15 @@ export type WebhookPlan = {
   /** Only an update that reverts a paid fee needs the "still paid" guard on the write. */
   requirePaid: boolean;
   alert: { subject: string; body: string } | null;
+  /**
+   * What the PROVIDER is told in their Rex bell, when it is theirs to act on. Only for outcomes
+   * that leave the fee owed again: a dispute being opened or won needs nothing from them (they
+   * raised the dispute, or it was resolved their way).
+   */
+  providerAlert: { subject: string; body: string } | null;
 };
 
-const NOTHING: WebhookPlan = { update: null, requirePaid: false, alert: null };
+const NOTHING: WebhookPlan = { update: null, requirePaid: false, alert: null, providerAlert: null };
 
 const RETURNED = 'The bank returned this payment after it first appeared to succeed.';
 const DISPUTE_LOST = 'The card holder won a dispute and the payment was taken back.';
@@ -52,6 +58,10 @@ export function planWebhook(
           subject: 'A fee payment was returned by the bank',
           body: 'It had been marked paid. It is back to outstanding and needs following up.',
         },
+        providerAlert: {
+          subject: 'Your bank returned a GlasWeld fee payment',
+          body: 'The fee is outstanding again. Update your payment method in Billing so it can be charged again.',
+        },
       };
 
     case 'dispute_opened': {
@@ -61,6 +71,7 @@ export function planWebhook(
         update: { charge_error: note },
         requirePaid: false,
         alert: { subject: 'A fee payment was disputed', body: note },
+        providerAlert: null,
       };
     }
 
@@ -73,6 +84,10 @@ export function planWebhook(
           subject: 'A disputed fee payment was taken back',
           body: 'The card holder won the dispute. The fee is back to outstanding.',
         },
+        providerAlert: {
+          subject: 'A disputed GlasWeld fee is outstanding again',
+          body: 'The payment was taken back after the dispute. The fee is still owed; you can pay it from Billing.',
+        },
       };
 
     case 'dispute_won':
@@ -81,6 +96,7 @@ export function planWebhook(
         update: { charge_error: null },
         requirePaid: false,
         alert: { subject: 'A disputed fee payment was upheld', body: 'GlasWeld keeps the payment.' },
+        providerAlert: null,
       };
 
     // 'check' (Braintree's test ping), 'transaction_settled', and anything we don't act on yet.

@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   if (event.transactionId) {
     const { data: fee } = await admin
       .from('billing_events')
-      .select('id, job_id, status, charge_error')
+      .select('id, account_id, job_id, status, charge_error')
       .eq('gateway_transaction_id', event.transactionId)
       .maybeSingle();
 
@@ -84,6 +84,17 @@ export async function POST(request: Request) {
               body: plan.alert.body,
               jobId: fee.job_id ?? null,
               metadata: { kind: event.kind, transaction_id: event.transactionId },
+            });
+          }
+          if (plan.providerAlert) {
+            // The provider's own bell. "Payment" event types open Billing in Rex.
+            await recordNotification({
+              eventType: 'Payment Problem',
+              audience: 'account',
+              accountId: fee.account_id,
+              subject: plan.providerAlert.subject,
+              body: plan.providerAlert.body,
+              jobId: fee.job_id ?? null,
             });
           }
         }

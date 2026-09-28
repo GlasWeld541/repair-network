@@ -1,4 +1,5 @@
 import type { createAdminClient } from '@/lib/supabase';
+import { recordNotification } from '@/lib/notify';
 import { feeChargeKey } from './index';
 import type { PaymentGateway } from './types';
 
@@ -40,7 +41,7 @@ export async function chargeFee(
 ): Promise<ChargeFeeOutcome> {
   const { data: fee } = await admin
     .from('billing_events')
-    .select('id, account_id, amount_cents, status')
+    .select('id, account_id, job_id, amount_cents, status')
     .eq('id', billingEventId)
     .maybeSingle();
   if (!fee) return { kind: 'not_chargeable', reason: 'Fee not found.' };
@@ -56,7 +57,7 @@ export async function chargeFee(
   const now = new Date().toISOString();
   const { data: method } = await admin
     .from('account_payment_methods')
-    .select('external_payment_method_id, gateway_customer_id')
+    .select('external_payment_method_id, gateway_customer_id, card_brand, bank_name, last4')
     .eq('account_id', fee.account_id)
     .eq('status', 'active')
     .eq('is_default', true)
@@ -68,6 +69,8 @@ export async function chargeFee(
       .from('billing_events')
       .update({ charge_error: NO_METHOD, charge_attempted_at: now })
       .eq('id', fee.id);
+    await tellProvider(fee, 'Payment Problem', 'Add a payment method',
+      `A GlasWeld fee of ${dollars(fee.amount_cents)} could not be charged because there is no payment method on file. Add one in Billing.`);
     return { kind: 'no_method' };
   }
 
@@ -96,6 +99,9 @@ export async function chargeFee(
       // idempotency key is what stops the next attempt charging it again.
       console.error('chargeFee: charged but not recorded', fee.id, result.transactionId, error.message);
     }
+    const method_label = `${method.card_brand || method.bank_name || 'card'} ending ${method.last4 || '????'}`;
+    await tellProvider(fee, 'Payment Charged', `GlasWeld fee of ${dollars(fee.amount_cents)} charged`,
+      `Charged to your ${method_label}.`);
     return { kind: 'paid', transactionId: result.transactionId, amountCents: result.amountCents };
   }
 
@@ -104,7 +110,35 @@ export async function chargeFee(
       .from('billing_events')
       .update({ charge_error: result.message, charge_attempted_at: now })
       .eq('id', fee.id);
+    await tellProvider(fee, 'Payment Problem', 'Your GlasWeld fee payment was declined',
+      `${result.message} Update your payment method in Billing so it can be charged again.`);
     return { kind: 'declined', message: result.message };
   }
   return { kind: 'retry_later', message: result.message };
+}
+
+const dollars = (cents: number) =>
+  (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
+/**
+ * The provider's own notification (their Rex bell), alongside the admin view. Until now only admins
+ * heard about a payment; the provider, the one person who can fix a card, found out only if they
+ * happened to open Billing. The event type starts with "Payment" so the Rex bell opens Billing
+ * rather than the job. A temporary gateway fault tells nobody: it is retried, not the provider's
+ * problem. Best-effort, like every notification: it can never affect the charge itself.
+ */
+async function tellProvider(
+  fee: { account_id: string; job_id: string | null },
+  eventType: 'Payment Charged' | 'Payment Problem',
+  subject: string,
+  body: string,
+) {
+  await recordNotification({
+    eventType,
+    audience: 'account',
+    accountId: fee.account_id,
+    jobId: fee.job_id,
+    subject,
+    body,
+  });
 }
