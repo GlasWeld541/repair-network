@@ -9,6 +9,8 @@ import { ListPageSkeleton } from '@/components/ui/skeleton';
 import GlasWeldRevenue from '@/components/glasweld-revenue';
 import PaymentProblems from '@/components/payment-problems';
 
+const GATEWAY_PAGE_SIZE = 50;
+
 type BillingEvent = {
   id: string;
   billing_key: string;
@@ -98,6 +100,8 @@ export default function AdminBillingPage() {
   const [statusFilter, setStatusFilter] = useState('pending');
   const [accountFilter, setAccountFilter] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [gatewaySearch, setGatewaySearch] = useState('');
+  const [gatewayPage, setGatewayPage] = useState(0);
 
   const isReadOnly = role === 'demo';
 
@@ -134,13 +138,8 @@ export default function AdminBillingPage() {
 
     setRole(roleData.role);
 
-    const [{ data: accountRows }, { data: eventRows }, { data: paymentMethodRows }] = await Promise.all([
-      supabase
-        .from('accounts')
-        .select(
-          'id, account_name, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled'
-        )
-        .order('account_name'),
+    const [accountRows, { data: eventRows }, { data: paymentMethodRows }] = await Promise.all([
+      loadAllAccounts(),
       supabase
         .from('billing_events')
         .select('*')
@@ -155,10 +154,34 @@ export default function AdminBillingPage() {
         .order('created_at', { ascending: false }),
     ]);
 
-    setAccounts((accountRows as AccountBilling[]) || []);
+    setAccounts(accountRows);
     setEvents((eventRows as BillingEvent[]) || []);
     setPaymentMethods((paymentMethodRows as PaymentMethodSummary[]) || []);
     setLoading(false);
+  }
+
+  // Every account, paged past Supabase's 1000-row response cap. With the imported cohort there
+  // are thousands, and a single query silently returned only the first 1000 alphabetically, so
+  // any fee from an account after that showed "Unknown account" and the account was missing
+  // from the gateway table. Ordered by name, then id, so pages never overlap or skip.
+  async function loadAllAccounts(): Promise<AccountBilling[]> {
+    const PAGE = 1000;
+    const rows: AccountBilling[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase
+        .from('accounts')
+        .select(
+          'id, account_name, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled'
+        )
+        .order('account_name')
+        .order('id')
+        .range(from, from + PAGE - 1);
+      if (error) break;
+      const page = (data as AccountBilling[] | null) ?? [];
+      rows.push(...page);
+      if (page.length < PAGE) break;
+    }
+    return rows;
   }
 
   function accountName(accountId: string) {
@@ -198,6 +221,25 @@ export default function AdminBillingPage() {
           account.payment_gateway_provider !== 'manual'
       ),
     [accounts]
+  );
+
+  // The usage filter only needs accounts that actually have fees, not every account on file.
+  const accountsWithEvents = useMemo(() => {
+    const ids = new Set(events.map((event) => event.account_id));
+    return accounts.filter((account) => ids.has(account.id));
+  }, [accounts, events]);
+
+  const matchingGatewayAccounts = useMemo(() => {
+    const q = gatewaySearch.trim().toLowerCase();
+    if (!q) return accounts;
+    return accounts.filter((account) => (account.account_name || '').toLowerCase().includes(q));
+  }, [accounts, gatewaySearch]);
+
+  const gatewayPageCount = Math.max(1, Math.ceil(matchingGatewayAccounts.length / GATEWAY_PAGE_SIZE));
+  const safeGatewayPage = Math.min(gatewayPage, gatewayPageCount - 1);
+  const pagedGatewayAccounts = matchingGatewayAccounts.slice(
+    safeGatewayPage * GATEWAY_PAGE_SIZE,
+    (safeGatewayPage + 1) * GATEWAY_PAGE_SIZE
   );
 
   function defaultPaymentMethod(accountId: string) {
@@ -311,7 +353,7 @@ export default function AdminBillingPage() {
               className="h-10 min-w-[220px]"
             >
               <option value="">All accounts</option>
-              {accounts.map((account) => (
+              {accountsWithEvents.map((account) => (
                 <option key={account.id} value={account.id}>
                   {account.account_name || 'Unnamed Account'}
                 </option>
@@ -453,6 +495,24 @@ export default function AdminBillingPage() {
           Use each account page to edit terms. This view is for monitoring gateway readiness and negotiated revenue share.
         </p>
 
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <input
+            value={gatewaySearch}
+            onChange={(e) => {
+              setGatewaySearch(e.target.value);
+              setGatewayPage(0);
+            }}
+            placeholder="Search accounts…"
+            aria-label="Search accounts"
+            className="h-10 w-full max-w-sm"
+          />
+          <span className="text-sm text-slate-500">
+            {matchingGatewayAccounts.length
+              ? `${matchingGatewayAccounts.length.toLocaleString()} account${matchingGatewayAccounts.length === 1 ? '' : 's'} · showing ${(safeGatewayPage * GATEWAY_PAGE_SIZE + 1).toLocaleString()}–${Math.min((safeGatewayPage + 1) * GATEWAY_PAGE_SIZE, matchingGatewayAccounts.length).toLocaleString()}`
+              : 'No accounts match.'}
+          </span>
+        </div>
+
         <div className="mt-5 overflow-x-auto">
           <table className="min-w-[1350px] text-sm">
             <thead className="bg-slate-50 text-left text-slate-500">
@@ -472,7 +532,7 @@ export default function AdminBillingPage() {
             </thead>
 
             <tbody>
-              {accounts.map((account) => {
+              {pagedGatewayAccounts.map((account) => {
                 const defaultMethod = defaultPaymentMethod(account.id);
                 const activeMethodCount = paymentMethodCount(account.id);
 
@@ -517,6 +577,30 @@ export default function AdminBillingPage() {
             </tbody>
           </table>
         </div>
+
+        {gatewayPageCount > 1 ? (
+          <div className="mt-4 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setGatewayPage((p) => Math.max(0, p - 1))}
+              disabled={safeGatewayPage === 0}
+              className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+            >
+              ← Previous
+            </button>
+            <span className="text-sm text-slate-500">
+              Page {safeGatewayPage + 1} of {gatewayPageCount.toLocaleString()}
+            </span>
+            <button
+              type="button"
+              onClick={() => setGatewayPage((p) => (p + 1 < gatewayPageCount ? p + 1 : p))}
+              disabled={safeGatewayPage + 1 >= gatewayPageCount}
+              className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+            >
+              Next →
+            </button>
+          </div>
+        ) : null}
 
         {gatewayAccounts.length ? (
           <div className="mt-4 text-xs text-slate-500">
