@@ -36,6 +36,9 @@ type BraintreeGatewayLike = {
     }>;
     delete(token: string): Promise<unknown>;
   };
+  clientToken: {
+    generate(args: Record<string, unknown>): Promise<{ success: boolean; clientToken?: string; message?: string }>;
+  };
   transaction: {
     sale(args: Record<string, unknown>): Promise<{
       success: boolean;
@@ -145,6 +148,14 @@ export class BraintreeGatewayAdapter implements PaymentGateway {
       throw new Error(`braintree: could not save that payment method (${res.message || 'unknown error'})`);
     }
     return describeMethod(res.paymentMethod);
+  }
+
+  async clientToken(customerId: string): Promise<string> {
+    const res = await this.client().clientToken.generate({ customerId });
+    if (!res.success || !res.clientToken) {
+      throw new Error(`braintree: could not start the card form (${res.message || 'unknown error'})`);
+    }
+    return res.clientToken;
   }
 
   async charge(req: ChargeRequest): Promise<ChargeResult> {

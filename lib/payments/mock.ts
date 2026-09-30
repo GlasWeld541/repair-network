@@ -46,6 +46,10 @@ export class MockGateway implements PaymentGateway {
     return method;
   }
 
+  async clientToken(customerId: string): Promise<string> {
+    return `mock_client_token_${customerId}`;
+  }
+
   async charge(req: ChargeRequest): Promise<ChargeResult> {
     const prior = this.charges.get(req.idempotencyKey);
     if (prior) return { ok: true, transactionId: prior.transactionId, amountCents: prior.amountCents };

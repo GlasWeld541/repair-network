@@ -65,6 +65,12 @@ export interface PaymentGateway {
    */
   vaultFromNonce(args: { customerId: string; nonce: string; makeDefault?: boolean }): Promise<VaultedMethod>;
 
+  /**
+   * A short-lived token that lets the processor's own card form run in a browser for this
+   * customer. The card is entered into that form and never reaches our servers.
+   */
+  clientToken(customerId: string): Promise<string>;
+
   charge(req: ChargeRequest): Promise<ChargeResult>;
 
   /** Remove an instrument from the vault. Best-effort; a failure here is not fatal. */

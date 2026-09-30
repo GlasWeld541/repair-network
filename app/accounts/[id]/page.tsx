@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { billingStanding, BILLING_PROFILE_LABELS } from '@/lib/billing';
 import { useToast, useConfirm } from '@/components/ui/notifications';
 import { DetailPageSkeleton } from '@/components/ui/skeleton';
+import AdminCardForm from '@/components/admin-card-form';
 
 type AccountRow = {
   id: string;
@@ -1765,10 +1766,18 @@ export default function AccountDetailPage() {
               ) : null}
             </div>
 
+            {currentRole === 'admin' && !isReadOnly ? (
+              <AdminCardForm accountId={id} onSaved={() => void load()} />
+            ) : null}
+
             <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <h4 className="mb-3 text-sm font-semibold text-slate-900">
-                Add Payment Method
+              <h4 className="text-sm font-semibold text-slate-900">
+                Record a payment method manually
               </h4>
+              <p className="mb-3 mt-0.5 text-xs text-slate-500">
+                For reference only. A method recorded here has no Braintree token, so fees can&apos;t be
+                charged to it. Use Add a card securely above for a card GlasWeld should charge.
+              </p>
 
               <div className="grid gap-3 md:grid-cols-3">
                 <label className="grid gap-1">
