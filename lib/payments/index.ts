@@ -72,6 +72,12 @@ export function __setPaymentGatewayForTests(gateway: PaymentGateway | null | und
  * Keyed on the billing event, because that is the thing being paid for: one billing event can be
  * charged exactly once, no matter how many times the cron runs or is retried.
  */
-export function feeChargeKey(billingEventId: string): string {
-  return `billing_event:${billingEventId}`;
+export function feeChargeKey(billingEventId: string, reversedTransactionId?: string | null): string {
+  // After a payment on this fee was taken back (a lost dispute, a bank return) the fee is owed
+  // again, but Braintree still reports that original payment as settled. Reusing the plain key
+  // would find it and count the fee paid without collecting anything. So a retry after a reversal
+  // gets its own key, tied to the reversed payment: still one charge however often it's clicked,
+  // and a later reversal of the retry moves the key on again.
+  const base = `billing_event:${billingEventId}`;
+  return reversedTransactionId ? `${base}:after:${reversedTransactionId}` : base;
 }

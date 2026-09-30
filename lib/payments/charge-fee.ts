@@ -41,7 +41,7 @@ export async function chargeFee(
 ): Promise<ChargeFeeOutcome> {
   const { data: fee } = await admin
     .from('billing_events')
-    .select('id, account_id, job_id, amount_cents, status')
+    .select('id, account_id, job_id, amount_cents, status, gateway_transaction_id')
     .eq('id', billingEventId)
     .maybeSingle();
   if (!fee) return { kind: 'not_chargeable', reason: 'Fee not found.' };
@@ -78,7 +78,9 @@ export async function chargeFee(
     customerId: method.gateway_customer_id,
     token: method.external_payment_method_id,
     amountCents: fee.amount_cents,
-    idempotencyKey: feeChargeKey(fee.id),
+    // A fee that is owed yet already carries a transaction id was paid and then reversed; see
+    // feeChargeKey for why the retry must not reuse the original key.
+    idempotencyKey: feeChargeKey(fee.id, fee.gateway_transaction_id),
     description: 'GlasWeld referral fee',
   });
 
