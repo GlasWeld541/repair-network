@@ -116,6 +116,8 @@ export default function JobDetailPage() {
   const [role, setRole] = useState<string | null>(null);
   const [job, setJob] = useState<any>(null);
   const [invoice, setInvoice] = useState<any>(null);
+  // GlasWeld's fee for this job and whether it was collected (null until there is one).
+  const [fee, setFee] = useState<JobFee | null>(null);
   const [photos, setPhotos] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   // Status / acceptance / provider changes recorded by the job_history trigger.
@@ -315,6 +317,7 @@ export default function JobDetailPage() {
 
     setJob(jobData);
     setInvoice(invoiceData);
+    void loadFee();
     setHistory((historyRows as JobHistoryRow[]) || []);
     setPhotos(photoData || []);
     setEvents(eventData);
@@ -634,6 +637,17 @@ export default function JobDetailPage() {
     await chargeOnCompletion(completedJob.id);
   }
 
+  // The fee row for this job, keyed the way recordCompletedJobBillingEvent writes it. RLS decides
+  // who can read it (admins can); anyone else simply sees no fee status.
+  async function loadFee() {
+    const { data } = await supabase
+      .from('billing_events')
+      .select('status, amount_cents, charge_error, gateway_transaction_id, paid_at')
+      .eq('billing_key', `platform_revenue_share:${id}`)
+      .maybeSingle();
+    setFee((data as JobFee | null) ?? null);
+  }
+
   async function chargeOnCompletion(jobId: string) {
     try {
       const res = await fetch('/api/billing/charge-fee', {
@@ -654,6 +668,7 @@ export default function JobDetailPage() {
     } catch {
       // Completing the job must never fail because of billing. The fee is recorded either way.
     }
+    void loadFee();
   }
 
   async function saveDraftField(field: string) {
@@ -1509,6 +1524,7 @@ export default function JobDetailPage() {
                     : `${(Number(job.platform_fee_bps || 0) / 100).toFixed(2)}%`
                 }
               />
+              {fee ? <Quick label="Fee Status" value={feeStatusLabel(fee)} /> : null}
               <Quick
                 label="Last Activity"
                 value={
@@ -2116,6 +2132,27 @@ function Info({
       </div>
     </div>
   );
+}
+
+type JobFee = {
+  status: string;
+  amount_cents: number | null;
+  charge_error: string | null;
+  gateway_transaction_id: string | null;
+  paid_at: string | null;
+};
+
+/** One line on whether GlasWeld's fee for this job was collected, and if not, why. */
+function feeStatusLabel(fee: JobFee): string {
+  const amount = ((fee.amount_cents || 0) / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  if (fee.status === 'paid') {
+    const on = fee.paid_at ? ` on ${new Date(fee.paid_at).toLocaleDateString('en-US')}` : '';
+    return `${amount} collected${on}${fee.gateway_transaction_id ? ` (ref ${fee.gateway_transaction_id})` : ''}`;
+  }
+  if (fee.status === 'waived') return `${amount} waived`;
+  if (fee.status === 'void') return 'No fee (voided)';
+  if (fee.charge_error) return `${amount} not collected: ${fee.charge_error}`;
+  return `${amount} due`;
 }
 
 function Quick({
