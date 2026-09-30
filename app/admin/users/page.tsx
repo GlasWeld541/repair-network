@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { loadAllAccounts } from '@/lib/load-all-accounts';
 import { useToast } from '@/components/ui/notifications';
 import { ListPageSkeleton } from '@/components/ui/skeleton';
 
@@ -132,10 +133,8 @@ export default function AdminUsersPage() {
           .from('user_roles')
           .select('*')
           .order('user_email'),
-        supabase
-          .from('accounts')
-          .select('id, account_name')
-          .order('account_name'),
+        // Every account, not just the first 1000 (see loadAllAccounts).
+        loadAllAccounts('id, account_name').then((data) => ({ data })),
         supabase
           .from('carrier_organizations')
           .select('id, organization_name')

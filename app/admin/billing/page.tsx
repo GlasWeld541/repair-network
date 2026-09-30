@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { loadAllAccounts } from '@/lib/load-all-accounts';
 import { useToast } from '@/components/ui/notifications';
 import { ListPageSkeleton } from '@/components/ui/skeleton';
 import GlasWeldRevenue from '@/components/glasweld-revenue';
@@ -139,7 +140,9 @@ export default function AdminBillingPage() {
     setRole(roleData.role);
 
     const [accountRows, { data: eventRows }, { data: paymentMethodRows }] = await Promise.all([
-      loadAllAccounts(),
+      loadAllAccounts<AccountBilling>(
+        'id, account_name, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled'
+      ),
       supabase
         .from('billing_events')
         .select('*')
@@ -158,30 +161,6 @@ export default function AdminBillingPage() {
     setEvents((eventRows as BillingEvent[]) || []);
     setPaymentMethods((paymentMethodRows as PaymentMethodSummary[]) || []);
     setLoading(false);
-  }
-
-  // Every account, paged past Supabase's 1000-row response cap. With the imported cohort there
-  // are thousands, and a single query silently returned only the first 1000 alphabetically, so
-  // any fee from an account after that showed "Unknown account" and the account was missing
-  // from the gateway table. Ordered by name, then id, so pages never overlap or skip.
-  async function loadAllAccounts(): Promise<AccountBilling[]> {
-    const PAGE = 1000;
-    const rows: AccountBilling[] = [];
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await supabase
-        .from('accounts')
-        .select(
-          'id, account_name, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled'
-        )
-        .order('account_name')
-        .order('id')
-        .range(from, from + PAGE - 1);
-      if (error) break;
-      const page = (data as AccountBilling[] | null) ?? [];
-      rows.push(...page);
-      if (page.length < PAGE) break;
-    }
-    return rows;
   }
 
   function accountName(accountId: string) {

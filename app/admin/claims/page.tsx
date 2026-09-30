@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { loadAllAccounts } from '@/lib/load-all-accounts';
 import { useToast } from '@/components/ui/notifications';
 import { ListPageSkeleton } from '@/components/ui/skeleton';
 
@@ -148,10 +149,8 @@ export default function AdminClaimsPage() {
           .from('carrier_organizations')
           .select('id, organization_name')
           .order('organization_name'),
-        supabase
-          .from('accounts')
-          .select('id, account_name')
-          .order('account_name'),
+        // Every account, not just the first 1000 (see loadAllAccounts).
+        loadAllAccounts('id, account_name').then((data) => ({ data })),
         supabase
           .from('claim_status_events')
           .select('*')
