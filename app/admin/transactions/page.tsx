@@ -238,6 +238,14 @@ export default function AdminTransactionsPage() {
           <span className="ml-auto text-sm text-slate-500">
             {rows.length} transaction{rows.length === 1 ? '' : 's'}
           </span>
+          <button
+            type="button"
+            onClick={() => downloadCsv(rows, names)}
+            disabled={rows.length === 0}
+            className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+          >
+            Export CSV
+          </button>
         </div>
 
         <div className="mt-5 overflow-x-auto">
@@ -303,6 +311,35 @@ export default function AdminTransactionsPage() {
       </section>
     </div>
   );
+}
+
+/** The filtered rows as a CSV for bookkeeping, named for the day it was exported. */
+function downloadCsv(rows: Fee[], names: Map<string, string>) {
+  const cell = (v: string | number | null | undefined) => {
+    const t = v == null ? '' : String(v);
+    return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const header = ['Date', 'Provider', 'Job ID', 'Amount (USD)', 'Outcome', 'Braintree ref', 'Detail'];
+  const lines = rows.map((f) =>
+    [
+      new Date(whenOf(f)).toISOString(),
+      names.get(f.account_id) || 'Unknown account',
+      f.job_id || '',
+      ((f.amount_cents || 0) / 100).toFixed(2),
+      OUTCOMES[outcomeOf(f)].label,
+      f.gateway_transaction_id || '',
+      f.charge_error || '',
+    ]
+      .map(cell)
+      .join(',')
+  );
+  const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `glasweld-transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function Stat({ label, value, tone }: { label: string; value: string; tone: string }) {

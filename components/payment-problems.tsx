@@ -150,7 +150,10 @@ export default function PaymentProblems({ readOnly }: { readOnly: boolean }) {
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Payment problems</h2>
           <p className="text-sm text-slate-500">
-            Fees whose payment was declined, returned by the bank, or disputed.
+            Fees whose payment was declined, returned by the bank, or disputed.{' '}
+            <Link href="/admin/transactions" className="text-brand-700 hover:underline">
+              See all transactions
+            </Link>
           </p>
         </div>
         <span
