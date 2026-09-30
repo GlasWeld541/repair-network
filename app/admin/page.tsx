@@ -119,6 +119,12 @@ export default function AdminDashboardPage() {
         'Review platform revenue share, collection status, and account payment gateway settings.',
       href: '/admin/billing',
     },
+    {
+      title: 'Transactions',
+      description:
+        'Every fee charge: what was collected, what was declined, disputed or returned, without a Braintree login.',
+      href: '/admin/transactions',
+    },
   ];
 
   return (
