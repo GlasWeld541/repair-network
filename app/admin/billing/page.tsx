@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { loadAllAccounts } from '@/lib/load-all-accounts';
+import { cardExpiryState } from '@/lib/card-expiry';
 import { useToast } from '@/components/ui/notifications';
 import { ListPageSkeleton } from '@/components/ui/skeleton';
 import GlasWeldRevenue from '@/components/glasweld-revenue';
@@ -103,6 +104,7 @@ export default function AdminBillingPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [gatewaySearch, setGatewaySearch] = useState('');
   const [gatewayPage, setGatewayPage] = useState(0);
+  const [expiringOnly, setExpiringOnly] = useState(false);
 
   const isReadOnly = role === 'demo';
 
@@ -210,9 +212,17 @@ export default function AdminBillingPage() {
 
   const matchingGatewayAccounts = useMemo(() => {
     const q = gatewaySearch.trim().toLowerCase();
-    if (!q) return accounts;
-    return accounts.filter((account) => (account.account_name || '').toLowerCase().includes(q));
-  }, [accounts, gatewaySearch]);
+    return accounts.filter((account) => {
+      if (q && !(account.account_name || '').toLowerCase().includes(q)) return false;
+      if (expiringOnly) {
+        const m = defaultPaymentMethod(account.id);
+        if (m?.method_type !== 'card' || cardExpiryState(m.exp_month, m.exp_year) === 'ok') return false;
+      }
+      return true;
+    });
+    // defaultPaymentMethod reads paymentMethods; list it so the filter follows card changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accounts, gatewaySearch, expiringOnly, paymentMethods]);
 
   const gatewayPageCount = Math.max(1, Math.ceil(matchingGatewayAccounts.length / GATEWAY_PAGE_SIZE));
   const safeGatewayPage = Math.min(gatewayPage, gatewayPageCount - 1);
@@ -485,6 +495,17 @@ export default function AdminBillingPage() {
             aria-label="Search accounts"
             className="h-10 w-full max-w-sm"
           />
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={expiringOnly}
+              onChange={(e) => {
+                setExpiringOnly(e.target.checked);
+                setGatewayPage(0);
+              }}
+            />
+            Only cards expired or expiring soon
+          </label>
           <span className="text-sm text-slate-500">
             {matchingGatewayAccounts.length
               ? `${matchingGatewayAccounts.length.toLocaleString()} account${matchingGatewayAccounts.length === 1 ? '' : 's'} · showing ${(safeGatewayPage * GATEWAY_PAGE_SIZE + 1).toLocaleString()}–${Math.min((safeGatewayPage + 1) * GATEWAY_PAGE_SIZE, matchingGatewayAccounts.length).toLocaleString()}`
@@ -535,6 +556,24 @@ export default function AdminBillingPage() {
                       <div className="text-xs text-slate-500">
                         {activeMethodCount} active
                       </div>
+                      {(() => {
+                        const state =
+                          defaultMethod?.method_type === 'card'
+                            ? cardExpiryState(defaultMethod.exp_month, defaultMethod.exp_year)
+                            : 'ok';
+                        if (state === 'ok') return null;
+                        return (
+                          <span
+                            className={`mt-1 inline-block rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                              state === 'expired'
+                                ? 'border-rose-200 bg-rose-50 text-rose-700'
+                                : 'border-amber-200 bg-amber-50 text-amber-800'
+                            }`}
+                          >
+                            {state === 'expired' ? 'Card expired' : 'Card expires soon'}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3">
                       <div>{percentFromBps(account.repair_platform_fee_bps ?? 500)}</div>
