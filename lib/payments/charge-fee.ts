@@ -1,5 +1,7 @@
 import type { createAdminClient } from '@/lib/supabase';
 import { recordNotification } from '@/lib/notify';
+import { sendEmail } from '@/lib/email';
+import { buildFeeReceiptEmail } from '@/lib/receipt-email';
 import { feeChargeKey } from './index';
 import type { PaymentGateway } from './types';
 
@@ -104,6 +106,7 @@ export async function chargeFee(
     const method_label = `${method.card_brand || method.bank_name || 'card'} ending ${method.last4 || '????'}`;
     await tellProvider(fee, 'Payment Charged', `GlasWeld fee of ${dollars(fee.amount_cents)} charged`,
       `Charged to your ${method_label}.`);
+    await emailReceipt(admin, fee, method_label, result.transactionId);
     return { kind: 'paid', transactionId: result.transactionId, amountCents: result.amountCents };
   }
 
@@ -143,4 +146,48 @@ async function tellProvider(
     subject,
     body,
   });
+}
+
+/**
+ * Email the provider a receipt for a fee that was just charged. Best-effort: a missing email
+ * address or a mail hiccup is logged and never affects the charge, which has already happened.
+ */
+async function emailReceipt(
+  admin: AdminClient,
+  fee: { account_id: string; job_id: string | null; amount_cents: number },
+  methodLabel: string,
+  transactionId: string,
+) {
+  try {
+    const { data: account } = await admin
+      .from('accounts')
+      .select('account_name, company_email')
+      .eq('id', fee.account_id)
+      .maybeSingle();
+    if (!account?.company_email) return;
+    let jobLabel: string | null = null;
+    if (fee.job_id) {
+      const { data: job } = await admin
+        .from('jobs')
+        .select('vehicle_year, vehicle_make, vehicle_model, damage_type')
+        .eq('id', fee.job_id)
+        .maybeSingle();
+      if (job) {
+        const vehicle = [job.vehicle_year, job.vehicle_make, job.vehicle_model].filter(Boolean).join(' ');
+        jobLabel = [vehicle, job.damage_type].filter(Boolean).join(' · ') || null;
+      }
+    }
+    const { subject, html } = buildFeeReceiptEmail({
+      amountCents: fee.amount_cents,
+      methodLabel,
+      jobLabel,
+      transactionId,
+      chargedAt: new Date(),
+      accountName: account.account_name,
+    });
+    const sent = await sendEmail({ to: account.company_email, subject, html });
+    if (!sent.ok && !sent.skipped) console.warn('chargeFee: receipt email failed', fee.account_id, sent.error);
+  } catch (e) {
+    console.warn('chargeFee: receipt email threw', e instanceof Error ? e.message : e);
+  }
 }
