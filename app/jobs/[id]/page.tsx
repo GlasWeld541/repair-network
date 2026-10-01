@@ -33,6 +33,9 @@ const PAYMENT_PATHS = ['unknown', 'cash', 'insurance'];
 // Reporting only — how the customer actually paid. Distinct from payment_path (which drives
 // the customer-owes math). Optional; the platform fee is ALWAYS the full invoice total.
 const PAYMENT_METHODS = ['cash', 'card', 'insurance', 'financing'];
+// Roadmap v2.7: which of the four ways the job was billed (sql/job_billing_path.sql). Recording
+// only for now; Omega, direct-insurer and TPA hand-offs are built once carriers pick the paths.
+const BILLING_PATHS = ['cash', 'omega', 'direct_insurer', 'tpa'];
 // Customer Satisfaction (CSI) rating for this job, 1-5. Interim admin entry until the
 // customer-facing collection flow (at completion) is finalized; setting it rolls the shop's
 // rolling CSI up via the network.jobs trigger, feeding provider ranking.
@@ -584,6 +587,7 @@ export default function JobDetailPage() {
       service_type: serviceType,
       payment_path: completedJob.payment_path || 'unknown',
       payment_method: completedJob.payment_method || null,
+      billing_path: completedJob.billing_path || null,
       platform_fee_bps: percentageBps,
     };
 
@@ -1263,6 +1267,13 @@ export default function JobDetailPage() {
                 value={job.payment_path || 'unknown'}
                 options={PAYMENT_PATHS}
                 onSave={(value) => void updateJobField('payment_path', value)}
+                readOnly={isReadOnly}
+              />
+              <EditableSelect
+                label="Billing Path (cash · Omega · direct insurer · TPA)"
+                value={job.billing_path || ''}
+                options={BILLING_PATHS}
+                onSave={(value) => void updateJobField('billing_path', value || null)}
                 readOnly={isReadOnly}
               />
               <EditableSelect
