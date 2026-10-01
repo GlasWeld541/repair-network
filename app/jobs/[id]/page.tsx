@@ -118,6 +118,7 @@ export default function JobDetailPage() {
   const [invoice, setInvoice] = useState<any>(null);
   // GlasWeld's fee for this job and whether it was collected (null until there is one).
   const [fee, setFee] = useState<JobFee | null>(null);
+  const [chargingFee, setChargingFee] = useState(false);
   const [photos, setPhotos] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   // Status / acceptance / provider changes recorded by the job_history trigger.
@@ -646,6 +647,38 @@ export default function JobDetailPage() {
       .eq('billing_key', `platform_revenue_share:${id}`)
       .maybeSingle();
     setFee((data as JobFee | null) ?? null);
+  }
+
+  // An admin retrying this job's fee from the job itself (e.g. after the provider updated their
+  // card), instead of finding it under Billing. Same charge path as Billing's "Charge now".
+  async function chargeFeeNow() {
+    if (isReadOnly || !fee) return;
+    const ok = await confirm({
+      title: 'Charge this fee now?',
+      message: `This charges ${((fee.amount_cents || 0) / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })} to the provider's default card on file.`,
+      confirmLabel: 'Charge',
+    });
+    if (!ok) return;
+    setChargingFee(true);
+    try {
+      const res = await fetch('/api/billing/charge-fee', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId: id, trigger: 'manual' }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (out.kind === 'paid') toast.success(`Fee of ${money(out.amountCents / 100)} charged to the provider's card.`);
+      else if (out.kind === 'already_paid') toast.info('This fee was already paid.');
+      else if (out.kind === 'declined') toast.error(`The card was declined: ${out.message}`);
+      else if (out.kind === 'no_method') toast.info('This provider has no card on file. Add one on their account page.');
+      else if (out.kind === 'retry_later') toast.info('The payment processor could not be reached. Try again shortly.');
+      else toast.error(out.error || out.reason || 'The fee could not be charged.');
+    } catch {
+      toast.error('The fee could not be charged.');
+    } finally {
+      setChargingFee(false);
+      void loadFee();
+    }
   }
 
   async function chargeOnCompletion(jobId: string) {
@@ -1525,6 +1558,16 @@ export default function JobDetailPage() {
                 }
               />
               {fee ? <Quick label="Fee Status" value={feeStatusLabel(fee)} /> : null}
+              {fee && !isReadOnly && ['pending', 'invoiced'].includes(fee.status) ? (
+                <button
+                  type="button"
+                  onClick={() => void chargeFeeNow()}
+                  disabled={chargingFee}
+                  className="h-9 rounded-lg border border-brand-300 bg-white px-3 text-sm font-semibold text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+                >
+                  {chargingFee ? 'Charging…' : 'Charge fee now'}
+                </button>
+              ) : null}
               <Quick
                 label="Last Activity"
                 value={
