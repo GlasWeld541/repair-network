@@ -24,25 +24,59 @@ export type NotifyArgs = {
   metadata?: Record<string, unknown>;
 };
 
+function rowFor(args: NotifyArgs) {
+  return {
+    event_type: args.eventType,
+    audience: args.audience,
+    subject: args.subject,
+    body: args.body ?? null,
+    job_id: args.jobId ?? null,
+    account_id: args.accountId ?? null,
+    recipient_email: args.recipientEmail ?? null,
+    // 'sent' because the email goes out in the same breath; the row is the record of it, not a
+    // queue item waiting to be delivered.
+    status: 'sent',
+    sent_at: new Date().toISOString(),
+    metadata: args.metadata ?? {},
+  };
+}
+
 export async function recordNotification(args: NotifyArgs): Promise<void> {
   try {
     const admin = createAdminClient();
-    const { error } = await admin.from('notification_events').insert({
-      event_type: args.eventType,
-      audience: args.audience,
-      subject: args.subject,
-      body: args.body ?? null,
-      job_id: args.jobId ?? null,
-      account_id: args.accountId ?? null,
-      recipient_email: args.recipientEmail ?? null,
-      // 'sent' because the email went out in the same breath; the row is the record of it, not a
-      // queue item waiting to be delivered.
-      status: 'sent',
-      sent_at: new Date().toISOString(),
-      metadata: args.metadata ?? {},
-    });
+    const { error } = await admin.from('notification_events').insert(rowFor(args));
     if (error) console.warn('notification insert failed', error.message);
   } catch (e) {
     console.warn('notification insert threw', e instanceof Error ? e.message : e);
+  }
+}
+
+/**
+ * Claim a once-only event by recording its notification BEFORE sending the email (REX-19).
+ *
+ * `dedupeKey` names the event (e.g. one job request to one provider for one assignment). The
+ * unique index on notification_events.dedupe_key (sql/notification_dedupe_key.sql) makes the
+ * claim atomic: of two overlapping calls, exactly one inserts the row and gets 'claimed'; the
+ * other gets 'duplicate' and must not send. 'error' means the claim itself failed (e.g. the
+ * migration is not applied); callers send anyway, since a notification must never be lost to a
+ * bookkeeping failure — the same best-effort stance as recordNotification.
+ */
+export async function claimNotification(
+  args: NotifyArgs & { dedupeKey: string },
+): Promise<'claimed' | 'duplicate' | 'error'> {
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from('notification_events')
+      .upsert({ ...rowFor(args), dedupe_key: args.dedupeKey }, { onConflict: 'dedupe_key', ignoreDuplicates: true })
+      .select('id');
+    if (error) {
+      console.warn('notification claim failed', error.message);
+      return 'error';
+    }
+    return data && data.length ? 'claimed' : 'duplicate';
+  } catch (e) {
+    console.warn('notification claim threw', e instanceof Error ? e.message : e);
+    return 'error';
   }
 }

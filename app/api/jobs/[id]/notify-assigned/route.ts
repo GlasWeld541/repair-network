@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase';
 import { sendEmail } from '@/lib/email';
 import { buildJobRequestEmail } from '@/lib/matched-email';
 import { billingBlocksRouting } from '@/lib/billing';
-import { recordNotification } from '@/lib/notify';
+import { claimNotification, recordNotification } from '@/lib/notify';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -93,18 +93,32 @@ export async function POST(_request: Request, context: RouteContext) {
       damage,
       serviceType: job.service_type,
     });
-    const result = await sendEmail({ to: account.company_email, subject, html });
-    // The provider's own notification list — so a shop that misses the email still sees the
-    // request waiting for them. Customer identity stays out of it, same as the email.
-    await recordNotification({
+    // Claim the request BEFORE emailing (REX-19): a double click on assign, or a retried request,
+    // would otherwise send the provider the same request twice.
+    // One request per job, per provider, per assignment: reassigning sets a new acceptance
+    // deadline, so a genuine re-send (or re-assigning back to the same provider) gets a new key.
+    // The row is the provider's in-app copy of the request, so a shop that misses the email still
+    // sees it waiting. Customer identity stays out of it, same as the email.
+    const notification = {
       eventType: 'Job Request',
-      audience: 'account',
+      audience: 'account' as const,
       subject: `New ${job.service_type || 'repair'} request${area ? ` in ${area}` : ''}`,
       body: [vehicle, damage].filter(Boolean).join(' — ') || 'A job is waiting for your response.',
       jobId: String(job.id),
       accountId: String(job.assigned_account_id),
       recipientEmail: account.company_email,
+    };
+    const claim = await claimNotification({
+      ...notification,
+      dedupeKey: `job_request:${job.id}:${job.assigned_account_id}:${job.acceptance_deadline ?? ''}`,
     });
+    if (claim === 'duplicate') {
+      return NextResponse.json({ emailed: false, reason: 'already notified' });
+    }
+    const result = await sendEmail({ to: account.company_email, subject, html });
+    // The claim failed for a reason other than a duplicate (e.g. the dedupe migration is not
+    // applied yet): still leave the in-app record, as before.
+    if (claim === 'error') await recordNotification(notification);
     return NextResponse.json({ emailed: !!result.ok });
   } catch {
     // Never block the assignment on a notification failure.

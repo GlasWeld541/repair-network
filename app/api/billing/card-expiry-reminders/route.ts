@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 import { cardExpiryState } from '@/lib/card-expiry';
-import { recordNotification } from '@/lib/notify';
+import { claimNotification, recordNotification } from '@/lib/notify';
 
 /**
  * Daily: remind a provider in their Rex bell when the default card GlasWeld charges is about to
@@ -66,15 +66,26 @@ export async function GET(request: Request) {
 
     const card = `${m.card_brand || 'card'} ending ${m.last4 || '????'}`;
     const when = `${String(m.exp_month).padStart(2, '0')}/${String(m.exp_year).slice(-2)}`;
-    await recordNotification({
+    // The check above keeps the reminder to one per card every few days; the dedupe key makes
+    // it hold even when two runs overlap (a manual run beside the cron tick, a platform retry).
+    // Same window as the check: one key per card, per state, per REMIND_EVERY_DAYS period.
+    const period = Math.floor(Date.now() / (REMIND_EVERY_DAYS * 24 * 60 * 60 * 1000));
+    const reminder = {
       eventType,
-      audience: 'account',
+      audience: 'account' as const,
       accountId: m.account_id,
       subject:
         state === 'expired' ? `Your ${card} has expired` : `Your ${card} expires ${when}`,
       body: 'Add a new card in Billing so GlasWeld fees keep going through.',
       metadata: { payment_method_id: m.id, exp: when },
-    });
+    };
+    const claim = await claimNotification({ ...reminder, dedupeKey: `card_expiry:${m.id}:${state}:${period}` });
+    if (claim === 'duplicate') {
+      skipped += 1;
+      continue;
+    }
+    // The claim itself failed (e.g. the dedupe migration is not applied yet): remind as before.
+    if (claim === 'error') await recordNotification(reminder);
     reminded += 1;
   }
   return NextResponse.json({ reminded, skipped });
