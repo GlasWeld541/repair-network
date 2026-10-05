@@ -12,6 +12,8 @@ export default function AdminDashboardPage() {
   const [role, setRole] = useState<string | null>(null);
   // Count of brand-new (untriaged) consumer/agent leads, shown as a badge on the Intake card.
   const [newLeadCount, setNewLeadCount] = useState(0);
+  // Rex repair scores still waiting for an admin, shown as a badge on the Repair scores card.
+  const [pendingScoreCount, setPendingScoreCount] = useState(0);
 
   useEffect(() => {
     async function checkAccess() {
@@ -56,6 +58,13 @@ export default function AdminDashboardPage() {
         .select('*', { count: 'exact', head: true })
         .eq('intake_status', 'new');
       setNewLeadCount(count || 0);
+
+      const { count: scoreCount } = await supabase
+        .from('jobs')
+        .select('id', { count: 'exact', head: true })
+        .not('repair_score', 'is', null)
+        .or('repair_score_status.is.null,repair_score_status.eq.pending');
+      setPendingScoreCount(scoreCount || 0);
     }
 
     void checkAccess();
@@ -124,6 +133,13 @@ export default function AdminDashboardPage() {
       description:
         'Every fee charge: what was collected, what was declined, disputed or returned, without a Braintree login.',
       href: '/admin/transactions',
+    },
+    {
+      title: 'Repair scores',
+      description:
+        "Approve or reject Rex's repair scores. Approved scores make up each provider's repair rating.",
+      href: '/admin/scores',
+      badge: pendingScoreCount,
     },
   ];
 
