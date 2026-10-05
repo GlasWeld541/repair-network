@@ -233,6 +233,9 @@ export default function ProviderPickerModal({
               {customerLocation ? `Customer: ${customerLocation} · ` : ''}
               {sortLabel}
             </p>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Repair ★ = average approved Rex repair score (out of 10) · CSI = customer rating (out of 5)
+            </p>
           </div>
           <button
             type="button"
@@ -353,7 +356,15 @@ export default function ProviderPickerModal({
                         className="whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-200"
                         title={`Average Rex repair score across ${ratingCount} approved repair${ratingCount === 1 ? '' : 's'}`}
                       >
-                        ★ {rating.toFixed(1)} · {ratingCount}
+                        Repair ★ {rating.toFixed(1)} · {ratingCount}
+                      </span>
+                    ) : null}
+                    {csi == null && rating == null ? (
+                      <span
+                        className="whitespace-nowrap rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-400 ring-1 ring-inset ring-slate-200"
+                        title="No approved Rex repair scores or customer ratings yet. Scores appear here once a repair score is approved on a job or a customer rates a completed job."
+                      >
+                        Not rated yet
                       </span>
                     ) : null}
                     {dist != null ? (

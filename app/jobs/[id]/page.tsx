@@ -1017,6 +1017,10 @@ export default function JobDetailPage() {
   // shops/carriers.
   const reassignBlocked = job.job_status === 'Completed' || job.job_status === 'Canceled';
   const canReassign = !isReadOnly && !reassignBlocked;
+  // The assigned provider's rolled-up scores (admin view only: accounts load for admins).
+  const assignedAccount = job.assigned_account_id
+    ? accounts.find((a) => a.id === job.assigned_account_id) ?? null
+    : null;
   // A repair-only shop can't take a replacement (and vice-versa); mirror the intake filter.
   const eligibleProviders = accounts.filter((a) => {
     if (a.active === false) return false;
@@ -1242,6 +1246,26 @@ export default function JobDetailPage() {
                     </button>
                   ) : null}
                 </div>
+                {assignedAccount ? (
+                  <div
+                    className="mt-1 flex flex-wrap items-center gap-1.5"
+                    title="Repair ★ = average approved Rex repair score (out of 10). CSI = average customer rating (out of 5)."
+                  >
+                    {(assignedAccount.repair_score_count ?? 0) > 0 && assignedAccount.repair_score_avg != null ? (
+                      <span className="whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-200">
+                        Repair ★ {Number(assignedAccount.repair_score_avg).toFixed(1)} · {assignedAccount.repair_score_count}
+                      </span>
+                    ) : null}
+                    {(assignedAccount.csi_count ?? 0) > 0 && assignedAccount.csi_score != null ? (
+                      <span className="whitespace-nowrap rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700 ring-1 ring-inset ring-sky-200">
+                        CSI {Number(assignedAccount.csi_score).toFixed(1)} · {assignedAccount.csi_count}
+                      </span>
+                    ) : null}
+                    {!((assignedAccount.repair_score_count ?? 0) > 0) && !((assignedAccount.csi_count ?? 0) > 0) ? (
+                      <span className="text-xs text-slate-400">Not rated yet</span>
+                    ) : null}
+                  </div>
+                ) : null}
                 {!isReadOnly && reassignBlocked ? (
                   <div className="mt-0.5 text-xs text-slate-400">
                     Locked — {(job.job_status || '').toLowerCase()} jobs can't be reassigned.
