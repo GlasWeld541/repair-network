@@ -632,6 +632,13 @@ export default function AdminConsumerIntakePage() {
 
     if (jobError || !job?.id) {
       setBusyId(null);
+      // One job per request (sql/jobs_one_per_intake.sql): someone else, or another tab, got there
+      // first. Reload so this card shows the job that already exists.
+      if (jobError?.code === '23505') {
+        toast.info('A job already exists for this request. Refreshing.');
+        await load();
+        return;
+      }
       toast.error(`Could not create job: ${jobError?.message || 'Unknown error'}`);
       return;
     }
