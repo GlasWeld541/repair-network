@@ -259,6 +259,22 @@ export default function ProviderPickerModal({
             className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
             autoFocus
           />
+          {/* Busy providers (3+ open jobs) stay out of the list unless asked for. The control sits
+              up here with search and sort, where it is seen, rather than in the footer. */}
+          <label
+            className={`flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+              showBusy ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-slate-300 text-slate-600'
+            }`}
+            title={`Providers with ${BUSY_THRESHOLD} or more open jobs are hidden unless this is on`}
+          >
+            <input
+              type="checkbox"
+              checked={showBusy}
+              onChange={(e) => setShowBusy(e.target.checked)}
+              className="h-4 w-4 accent-amber-600"
+            />
+            Show busy{hiddenBusy > 0 ? ` (${hiddenBusy})` : ''}
+          </label>
           {origin || hasRatings ? (
             <div className="flex shrink-0 rounded-lg border border-slate-300 p-0.5 text-sm">
               {(
@@ -420,22 +436,11 @@ export default function ProviderPickerModal({
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-5 py-3">
-          {hiddenBusy > 0 ? (
-            <button
-              type="button"
-              onClick={() => setShowBusy((v) => !v)}
-              className="text-xs font-medium text-slate-600 hover:text-slate-900"
-            >
-              {showBusy ? 'Hide busy providers' : `Show ${hiddenBusy} busy provider${hiddenBusy === 1 ? '' : 's'}`}
-            </button>
-          ) : (
-            <span className="text-xs text-slate-400">
-              {visible.length} shown
-              {noLocation > 0 && !term
-                ? ` · ${noLocation} with no address on file, listed last`
-                : ''}
-            </span>
-          )}
+          <span className="text-xs text-slate-400">
+            {visible.length} shown
+            {!showBusy && hiddenBusy > 0 ? ` · ${hiddenBusy} busy hidden` : ''}
+            {noLocation > 0 && !term ? ` · ${noLocation} with no address on file, listed last` : ''}
+          </span>
           <button
             type="button"
             onClick={onClose}
