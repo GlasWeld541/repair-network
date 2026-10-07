@@ -7,6 +7,11 @@ import { useRef, useState } from 'react';
  * photo is stacked on top and revealed from the left up to the handle position via
  * clip-path (both images are full-size + object-cover, so nothing squishes). Drag the
  * handle on the image or use the range slider below. No external dependency.
+ *
+ * Touch: `touch-action: pan-y` hands horizontal drags to the slider while a vertical swipe still
+ * scrolls the page. Without it a phone treats a sideways drag as a scroll, cancels the pointer,
+ * and the handle never moves. The drag is tracked with pointer capture on the container itself
+ * (the images are pointer-events-none), so a finger that wanders off the photo keeps dragging.
  */
 export default function BeforeAfterSlider({
   beforeUrl,
@@ -21,6 +26,7 @@ export default function BeforeAfterSlider({
 }) {
   const [pos, setPos] = useState(50);
   const containerRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
 
   function moveToClientX(clientX: number) {
     const el = containerRef.current;
@@ -36,12 +42,20 @@ export default function BeforeAfterSlider({
       <div
         ref={containerRef}
         className="relative aspect-[4/3] w-full cursor-ew-resize select-none overflow-hidden rounded-xl border border-slate-200 bg-slate-100"
+        style={{ touchAction: 'pan-y' }}
         onPointerDown={(e) => {
-          (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+          dragging.current = true;
+          e.currentTarget.setPointerCapture?.(e.pointerId);
           moveToClientX(e.clientX);
         }}
         onPointerMove={(e) => {
-          if (e.buttons === 1) moveToClientX(e.clientX);
+          if (dragging.current) moveToClientX(e.clientX);
+        }}
+        onPointerUp={() => {
+          dragging.current = false;
+        }}
+        onPointerCancel={() => {
+          dragging.current = false;
         }}
       >
         {/* After = base layer */}
@@ -72,7 +86,7 @@ export default function BeforeAfterSlider({
         {/* Handle */}
         <div className="pointer-events-none absolute inset-y-0" style={{ left: `${pos}%` }}>
           <div className="absolute inset-y-0 -ml-px w-0.5 bg-white shadow-[0_0_0_1px_rgba(15,23,42,0.25)]" />
-          <div className="absolute top-1/2 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500 shadow-soft">
+          <div className="absolute top-1/2 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500 shadow-soft sm:h-8 sm:w-8">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="15 18 9 12 15 6" />
               <polyline points="9 18 15 12 9 6" transform="translate(6 0)" />
@@ -88,7 +102,7 @@ export default function BeforeAfterSlider({
         value={pos}
         onChange={(e) => setPos(Number(e.target.value))}
         aria-label="Reveal before versus after"
-        className="mt-3 w-full accent-brand-600"
+        className="mt-3 h-8 w-full accent-brand-600 sm:h-auto"
       />
     </div>
   );
