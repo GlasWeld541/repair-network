@@ -52,25 +52,104 @@ const OUTCOMES: Record<Outcome, { label: string; tone: string }> = {
   pending: { label: 'Pending', tone: 'border-slate-200 bg-slate-50 text-slate-600' },
 };
 
-type Range = 'this_month' | 'last_month' | '90d' | 'all';
+type Range = 'this_month' | 'last_month' | 'this_quarter' | 'this_year' | '90d' | 'all' | 'custom';
 const RANGES: { value: Range; label: string }[] = [
   { value: 'this_month', label: 'This month' },
   { value: 'last_month', label: 'Last month' },
+  { value: 'this_quarter', label: 'This quarter' },
+  { value: 'this_year', label: 'This year' },
   { value: '90d', label: 'Last 90 days' },
   { value: 'all', label: 'All time' },
+  { value: 'custom', label: 'Custom range' },
 ];
 
-function inRange(iso: string, range: Range): boolean {
-  if (range === 'all') return true;
-  const t = new Date(iso).getTime();
+type Bounds = { start: Date; end: Date } | null; // [start, end); null = all time
+
+/** The period a range covers. Custom dates are whole days, both ends included. */
+function boundsOf(range: Range, from: string, to: string): Bounds {
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-  if (range === 'this_month') return t >= startOfMonth;
-  if (range === 'last_month') {
-    const startOfLast = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
-    return t >= startOfLast && t < startOfMonth;
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  switch (range) {
+    case 'this_month':
+      return { start: new Date(y, m, 1), end: new Date(y, m + 1, 1) };
+    case 'last_month':
+      return { start: new Date(y, m - 1, 1), end: new Date(y, m, 1) };
+    case 'this_quarter': {
+      const q = Math.floor(m / 3) * 3;
+      return { start: new Date(y, q, 1), end: new Date(y, q + 3, 1) };
+    }
+    case 'this_year':
+      return { start: new Date(y, 0, 1), end: new Date(y + 1, 0, 1) };
+    case '90d':
+      return { start: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000), end: new Date(now.getTime() + 1) };
+    case 'custom': {
+      if (!from || !to) return null;
+      const start = new Date(`${from}T00:00:00`);
+      const end = new Date(`${to}T00:00:00`);
+      end.setDate(end.getDate() + 1);
+      return end > start ? { start, end } : null;
+    }
+    default:
+      return null;
   }
-  return t >= now.getTime() - 90 * 24 * 60 * 60 * 1000;
+}
+
+/** The same-length period just before, to compare against: last month for this month, last
+ *  quarter for this quarter, last year for this year, the preceding days for a custom range. */
+function previousOf(range: Range, b: Bounds): Bounds {
+  if (!b) return null;
+  const { start, end } = b;
+  if (range === 'this_month' || range === 'last_month')
+    return { start: new Date(start.getFullYear(), start.getMonth() - 1, 1), end: start };
+  if (range === 'this_quarter')
+    return { start: new Date(start.getFullYear(), start.getMonth() - 3, 1), end: start };
+  if (range === 'this_year') return { start: new Date(start.getFullYear() - 1, 0, 1), end: start };
+  return { start: new Date(start.getTime() - (end.getTime() - start.getTime())), end: start };
+}
+
+const PREVIOUS_LABEL: Record<Range, string> = {
+  this_month: 'last month',
+  last_month: 'the month before',
+  this_quarter: 'last quarter',
+  this_year: 'last year',
+  '90d': 'the 90 days before',
+  all: '',
+  custom: 'the same length before',
+};
+
+function inBounds(iso: string, b: Bounds): boolean {
+  if (!b) return true;
+  const t = new Date(iso).getTime();
+  return t >= b.start.getTime() && t < b.end.getTime();
+}
+
+type Billed = { cents: number; count: number };
+
+/** Every fee recorded in a period (whatever happened to it since), the "total billed" figure
+ *  for reconciliation. Voided and waived fees were never owed, so they don't count. Paged,
+ *  because PostgREST stops at 1,000 rows and a busy month will pass that. */
+async function billedIn(b: Bounds, accountId: string): Promise<Billed> {
+  let cents = 0;
+  let count = 0;
+  for (let from = 0; ; from += 1000) {
+    let q = supabase
+      .from('billing_events')
+      .select('amount_cents')
+      .not('status', 'in', '("void","waived")')
+      .order('id')
+      .range(from, from + 999);
+    if (b) q = q.gte('occurred_at', b.start.toISOString()).lt('occurred_at', b.end.toISOString());
+    if (accountId) q = q.eq('account_id', accountId);
+    const { data, error } = await q;
+    if (error || !data) break;
+    for (const r of data as { amount_cents: number | null }[]) {
+      cents += r.amount_cents || 0;
+      count += 1;
+    }
+    if (data.length < 1000) break;
+  }
+  return { cents, count };
 }
 
 const money = (cents: number | null | undefined) =>
@@ -95,6 +174,10 @@ export default function AdminTransactionsPage() {
   const [accountFilter, setAccountFilter] = useState('');
   const [outcomeFilter, setOutcomeFilter] = useState<Outcome | 'all' | 'problems'>('all');
   const [range, setRange] = useState<Range>('this_month');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [billed, setBilled] = useState<{ now: Billed; before: Billed | null } | null>(null);
+  const bounds = useMemo(() => boundsOf(range, customFrom, customTo), [range, customFrom, customTo]);
 
   useEffect(() => {
     void load();
@@ -150,13 +233,13 @@ export default function AdminTransactionsPage() {
   const rows = useMemo(
     () =>
       fees.filter((f) => {
-        if (!inRange(whenOf(f), range)) return false;
+        if (!inBounds(whenOf(f), bounds)) return false;
         if (accountFilter && f.account_id !== accountFilter) return false;
         const o = outcomeOf(f);
         if (outcomeFilter === 'problems') return o !== 'paid' && o !== 'pending';
         return outcomeFilter === 'all' || o === outcomeFilter;
       }),
-    [fees, range, accountFilter, outcomeFilter]
+    [fees, bounds, accountFilter, outcomeFilter]
   );
 
   const totals = useMemo(() => {
@@ -173,6 +256,26 @@ export default function AdminTransactionsPage() {
     }
     return { collected, problems, atRisk };
   }, [rows]);
+
+  // Total billed for the period and the one before, recomputed when the period or provider changes.
+  // A half-filled custom range is not a period yet, so it waits for both dates.
+  useEffect(() => {
+    if (loading) return;
+    if (range === 'custom' && !bounds) {
+      setBilled(null);
+      return;
+    }
+    let cancelled = false;
+    const prev = previousOf(range, bounds);
+    void Promise.all([billedIn(bounds, accountFilter), prev ? billedIn(prev, accountFilter) : Promise.resolve(null)]).then(
+      ([now, before]) => {
+        if (!cancelled) setBilled({ now, before });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, range, bounds, accountFilter]);
 
   if (loading) {
     return <ListPageSkeleton withStats columns={7} rows={8} minWidth={1000} />;
@@ -191,7 +294,13 @@ export default function AdminTransactionsPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat
+          label="Total billed"
+          value={billed ? money(billed.now.cents) : '…'}
+          tone="text-slate-900"
+          note={billedNote(billed, PREVIOUS_LABEL[range])}
+        />
         <Stat label="Collected" value={money(totals.collected)} tone="text-emerald-700" />
         <Stat
           label="Needs attention"
@@ -210,6 +319,27 @@ export default function AdminTransactionsPage() {
               </option>
             ))}
           </select>
+          {range === 'custom' ? (
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="date"
+                value={customFrom}
+                max={customTo || undefined}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="h-10"
+                aria-label="From"
+              />
+              <span>to</span>
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom || undefined}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="h-10"
+                aria-label="To"
+              />
+            </div>
+          ) : null}
           <select
             value={outcomeFilter}
             onChange={(e) => setOutcomeFilter(e.target.value as Outcome | 'all' | 'problems')}
@@ -342,11 +472,24 @@ function downloadCsv(rows: Fee[], names: Map<string, string>) {
   URL.revokeObjectURL(url);
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone: string }) {
+/** "12 fees · up 25% on last month", or just the count when there is nothing to compare with. */
+function billedNote(billed: { now: Billed; before: Billed | null } | null, previousLabel: string): string {
+  if (!billed) return '';
+  const fees = `${billed.now.count} fee${billed.now.count === 1 ? '' : 's'}`;
+  const before = billed.before;
+  if (!before || !previousLabel) return fees;
+  if (before.cents === 0) return billed.now.cents > 0 ? `${fees} · nothing billed ${previousLabel}` : fees;
+  const pct = Math.round(((billed.now.cents - before.cents) / before.cents) * 100);
+  if (pct === 0) return `${fees} · same as ${previousLabel}`;
+  return `${fees} · ${pct > 0 ? 'up' : 'down'} ${Math.abs(pct)}% on ${previousLabel} (${money(before.cents)})`;
+}
+
+function Stat({ label, value, tone, note }: { label: string; value: string; tone: string; note?: string }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</div>
       <div className={`mt-2 text-3xl font-semibold tabular-nums ${tone}`}>{value}</div>
+      {note ? <div className="mt-1 text-xs text-slate-500">{note}</div> : null}
     </div>
   );
 }
