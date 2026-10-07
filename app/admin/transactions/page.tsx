@@ -370,7 +370,7 @@ export default function AdminTransactionsPage() {
           </span>
           <button
             type="button"
-            onClick={() => downloadCsv(rows, names)}
+            onClick={() => downloadCsv(rows, names, bounds, billed?.now ?? null, accountFilter ? names.get(accountFilter) ?? null : null)}
             disabled={rows.length === 0}
             className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
           >
@@ -444,7 +444,13 @@ export default function AdminTransactionsPage() {
 }
 
 /** The filtered rows as a CSV for bookkeeping, named for the day it was exported. */
-function downloadCsv(rows: Fee[], names: Map<string, string>) {
+function downloadCsv(
+  rows: Fee[],
+  names: Map<string, string>,
+  bounds: Bounds,
+  billed: Billed | null,
+  provider: string | null,
+) {
   const cell = (v: string | number | null | undefined) => {
     const t = v == null ? '' : String(v);
     return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
@@ -463,11 +469,29 @@ function downloadCsv(rows: Fee[], names: Map<string, string>) {
       .map(cell)
       .join(',')
   );
-  const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv' });
+  // The period and totals go at the bottom, so the file stands on its own for bookkeeping: what
+  // it covers, for whom, and what was billed versus collected in that period.
+  // Local calendar dates: the period's bounds are local midnights, and a UTC rendering would
+  // shift them a day for anyone east of UTC.
+  const day = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const period = bounds ? `${day(bounds.start)} to ${day(new Date(bounds.end.getTime() - 1))}` : 'All time';
+  const collected = rows.filter((f) => outcomeOf(f) === 'paid').reduce((n, f) => n + (f.amount_cents || 0), 0);
+  const summary = [
+    '',
+    ['Period', period].map(cell).join(','),
+    ['Provider', provider || 'All providers'].map(cell).join(','),
+    ['Total billed (USD)', billed ? (billed.cents / 100).toFixed(2) : ''].map(cell).join(','),
+    ['Fees billed', billed ? billed.count : ''].map(cell).join(','),
+    ['Collected (USD)', (collected / 100).toFixed(2)].map(cell).join(','),
+  ];
+  const blob = new Blob([[header.join(','), ...lines, ...summary].join('\n')], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `glasweld-transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = bounds
+    ? `glasweld-transactions-${day(bounds.start)}-to-${day(new Date(bounds.end.getTime() - 1))}.csv`
+    : `glasweld-transactions-all-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
