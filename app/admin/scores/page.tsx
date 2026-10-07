@@ -57,6 +57,9 @@ export default function AdminScoresPage() {
   const [photos, setPhotos] = useState<Map<string, { before?: string; after?: string }>>(new Map());
   const [names, setNames] = useState<Map<string, string>>(new Map());
   const [statusFilter, setStatusFilter] = useState<ScoreStatus | 'all'>('pending');
+  // Review one shop at a time, or the weak repairs first.
+  const [providerFilter, setProviderFilter] = useState('');
+  const [belowPassOnly, setBelowPassOnly] = useState(false);
   const [busy, setBusy] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -128,9 +131,25 @@ export default function AdminScoresPage() {
     return c;
   }, [jobs]);
 
+  const providerOf = (j: ScoredJob) =>
+    (j.assigned_account_id && names.get(j.assigned_account_id)) || j.assigned_account_name || 'Unassigned';
+
+  const providerOptions = useMemo(
+    () => [...new Set(jobs.map(providerOf))].sort((a, b) => a.localeCompare(b)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [jobs, names]
+  );
+
   const rows = useMemo(
-    () => jobs.filter((j) => statusFilter === 'all' || (j.repair_score_status || 'pending') === statusFilter),
-    [jobs, statusFilter]
+    () =>
+      jobs.filter(
+        (j) =>
+          (statusFilter === 'all' || (j.repair_score_status || 'pending') === statusFilter) &&
+          (!providerFilter || providerOf(j) === providerFilter) &&
+          (!belowPassOnly || j.repair_score < PASS_LINE)
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [jobs, statusFilter, providerFilter, belowPassOnly, names]
   );
 
   async function review(ids: string[], action: 'approve' | 'reject') {
@@ -205,6 +224,23 @@ export default function AdminScoresPage() {
             <option value="rejected">Rejected</option>
             <option value="all">All scores</option>
           </select>
+          <select value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)} className="h-10 min-w-[200px]">
+            <option value="">All providers</option>
+            {providerOptions.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={belowPassOnly}
+              onChange={(e) => setBelowPassOnly(e.target.checked)}
+              className="h-4 w-4"
+            />
+            Below pass line only
+          </label>
           <span className="ml-auto text-sm text-slate-500">
             {rows.length} score{rows.length === 1 ? '' : 's'}
           </span>
