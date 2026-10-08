@@ -15,6 +15,10 @@
     {
       "path": "/api/billing/card-expiry-reminders",
       "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/jobs/unfinished-reminders",
+      "schedule": "0 16 * * *"
     }
   ]
 }
