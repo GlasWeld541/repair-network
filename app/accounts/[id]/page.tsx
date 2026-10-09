@@ -618,8 +618,11 @@ export default function AccountDetailPage() {
       return;
     }
 
+    // contacts.account_name is NOT NULL (the column predates the account_id link), so it has to be
+    // sent with every new contact or the insert fails for every account.
     const { error } = await supabase.from('contacts').insert({
       account_id: id,
+      account_name: account?.account_name ?? '',
       full_name: newContactName.trim() || null,
       email: newContactEmail.trim().toLowerCase() || null,
       mobile: newContactPhone.trim() || null,
