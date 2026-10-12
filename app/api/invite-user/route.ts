@@ -17,8 +17,13 @@ export async function POST(req: Request) {
       db: { schema: 'network' },
     });
 
-    const { email } = await req.json();
-    const redirectTo = 'https://repair-network.vercel.app/set-password';
+    const { email, next } = await req.json();
+    // A shop login works in Rex (providers use Rex, the Network is GlasWeld's admin), so the
+    // account page asks for next=rex and the set-password page sends them on to Rex afterwards.
+    const redirectTo =
+      next === 'rex'
+        ? 'https://repair-network.vercel.app/set-password?next=rex'
+        : 'https://repair-network.vercel.app/set-password';
 
     if (!email) {
       return NextResponse.json({ error: 'Email required' }, { status: 400 });

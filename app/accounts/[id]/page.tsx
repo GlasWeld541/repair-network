@@ -720,7 +720,7 @@ export default function AccountDetailPage() {
     const res = await fetch('/api/invite-user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: contactEmail }),
+      body: JSON.stringify({ email: contactEmail, next: 'rex' }),
     });
 
     let result: { error?: string; success?: boolean } = {};

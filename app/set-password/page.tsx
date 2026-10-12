@@ -11,12 +11,16 @@ export default function SetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
+  // Shop logins are invited with ?next=rex: once the password is set they go to Rex, where
+  // providers work, instead of the Network login. Read before the URL is cleaned up below.
+  const [toRex, setToRex] = useState(false);
 
   useEffect(() => {
     async function init() {
       setError('');
 
       const url = new URL(window.location.href);
+      setToRex(url.searchParams.get('next') === 'rex');
       const code = url.searchParams.get('code');
       const hash = window.location.hash;
 
@@ -96,6 +100,11 @@ export default function SetPasswordPage() {
       return;
     }
 
+    if (toRex) {
+      toast.success('Password set. Sign in to Rex with your email and this password.');
+      window.location.href = '/rex/';
+      return;
+    }
     toast.success('Password set successfully. You can now log in.');
     window.location.href = '/login';
   }
