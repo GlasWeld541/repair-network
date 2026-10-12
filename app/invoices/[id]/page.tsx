@@ -447,6 +447,33 @@ export default function InvoicePage() {
             </div>
           ) : null}
 
+          {/* Invoices created in Rex carry the provider's own line items (10/12 call). */}
+          {Array.isArray(invoice.line_items) && invoice.line_items.length > 0 ? (
+            <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-900">Line items</h3>
+                {invoice.created_from === 'rex' ? (
+                  <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700">
+                    Created by the provider in Rex
+                  </span>
+                ) : null}
+              </div>
+              <ul className="mt-3 divide-y divide-slate-100">
+                {invoice.line_items.map((item: { description: string; amount: number }, i: number) => (
+                  <li key={i} className="flex justify-between gap-4 py-2 text-sm">
+                    <span className="text-slate-700">{item.description}</span>
+                    <span className="font-semibold tabular-nums text-slate-900">{money(item.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+              {invoice.sent_at ? (
+                <p className="mt-2 text-xs text-slate-500">
+                  Emailed to the customer {new Date(invoice.sent_at).toLocaleString('en-US')}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-6">
             <div className="grid gap-5 lg:grid-cols-3">
               <div>

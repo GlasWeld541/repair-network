@@ -214,14 +214,31 @@ export async function GET(_request: Request, context: RouteContext) {
       color: line,
     });
 
-    text('Windshield rock chip repair', descX, rowY + 56, 10, true);
-    text(`Vehicle: ${clean(invoice.vehicle)}`, descX, rowY + 43, 9);
-    text(`Technician: ${clean(invoice.tech_name)}`, descX, rowY + 30, 9);
-    text(`VIN: ${clean(invoice.vin)}`, descX, rowY + 17, 9);
-    text(`Damage: ${clean(invoice.damage_type)}`, descX, rowY + 4, 9);
+    // Invoices created in Rex carry the provider's own line items (10/12 call): up to three lines
+    // in the services box, then the vehicle. Older invoices keep the single repair line.
+    const items: { description: string; amount: number }[] = Array.isArray(invoice.line_items)
+      ? invoice.line_items
+      : [];
+    if (items.length > 0) {
+      const shown = items.slice(0, 3);
+      shown.forEach((item, i) => {
+        const y = rowY + 56 - i * 14;
+        text(clean(item.description).slice(0, 60), descX, y, 10, i === 0);
+        text('1', qtyX + 6, y, 10);
+        text(money(Number(item.amount || 0)), amountX - 8, y, 10, true);
+      });
+      if (items.length > 3) text(`+ ${items.length - 3} more (total below)`, descX, rowY + 14, 8, false, muted);
+      text(`Vehicle: ${clean(invoice.vehicle)}   VIN: ${clean(invoice.vin)}`, descX, rowY + 4, 8, false, muted);
+    } else {
+      text('Windshield rock chip repair', descX, rowY + 56, 10, true);
+      text(`Vehicle: ${clean(invoice.vehicle)}`, descX, rowY + 43, 9);
+      text(`Technician: ${clean(invoice.tech_name)}`, descX, rowY + 30, 9);
+      text(`VIN: ${clean(invoice.vin)}`, descX, rowY + 17, 9);
+      text(`Damage: ${clean(invoice.damage_type)}`, descX, rowY + 4, 9);
 
-    text('1', qtyX + 6, rowY + 35, 10);
-    text(money(total), amountX - 8, rowY + 35, 10, true);
+      text('1', qtyX + 6, rowY + 35, 10);
+      text(money(total), amountX - 8, rowY + 35, 10, true);
+    }
 
     // Notes + Totals, side by side BELOW the services table (which ends at y=318) so
     // neither box overlaps it. Equal height, aligned tops.
