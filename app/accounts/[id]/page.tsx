@@ -100,6 +100,8 @@ type UserRoleRow = {
   approved: boolean;
   access_status: string | null;
   account_id: string | null;
+  // 'owner' sees the shop's money, billing and team in Rex; 'technician' only their own work.
+  shop_role?: 'owner' | 'technician' | null;
 };
 
 type EditingTarget =
@@ -339,7 +341,7 @@ export default function AccountDetailPage() {
           .limit(5),
         supabase
           .from('user_roles')
-          .select('user_email, role, approved, access_status, account_id')
+          .select('user_email, role, approved, access_status, account_id, shop_role')
           .eq('account_id', id)
           .eq('role', 'shop'),
       ]);
@@ -699,6 +701,12 @@ export default function AccountDetailPage() {
 
     setBusyContactId(contact.id);
 
+    // A new login is the owner when the shop has no active owner yet, otherwise a technician.
+    // Re-granting or resending keeps the role the person already has.
+    const existingRole = roleForContact(contact);
+    const hasOwner = userRoles.some(
+      (r) => (r.shop_role ?? 'owner') === 'owner' && r.access_status === 'Active' && r.approved
+    );
     const { error: accessError } = await supabase.from('user_roles').upsert(
       {
         user_email: contactEmail,
@@ -707,6 +715,7 @@ export default function AccountDetailPage() {
         access_status: 'Active',
         account_id: id,
         carrier_id: null,
+        ...(existingRole ? {} : { shop_role: hasOwner ? 'technician' : 'owner' }),
       },
       { onConflict: 'user_email' }
     );
@@ -743,6 +752,25 @@ export default function AccountDetailPage() {
     }
 
     flashSaved('Access granted and invite sent');
+    await load();
+  }
+
+  async function setShopRole(contact: ContactRow, shopRole: 'owner' | 'technician') {
+    if (isReadOnly || !canManageAccess()) return;
+    const contactEmail = normalizeEmail(contact.email);
+    if (!contactEmail) return;
+    setBusyContactId(contact.id);
+    const { error } = await supabase
+      .from('user_roles')
+      .update({ shop_role: shopRole })
+      .eq('user_email', contactEmail)
+      .eq('account_id', id);
+    setBusyContactId(null);
+    if (error) {
+      toast.error(`Could not change the role: ${error.message}`);
+      return;
+    }
+    flashSaved(shopRole === 'owner' ? 'Now an owner in Rex' : 'Now a technician in Rex');
     await load();
   }
 
@@ -1983,6 +2011,19 @@ export default function AccountDetailPage() {
                   >
                     {accessStatus}
                   </span>
+                  {hasAccess ? (
+                    <select
+                      aria-label="Role in Rex"
+                      title="Owner sees the shop's dashboard, billing and team in Rex. Technician sees only their own jobs and repairs."
+                      value={roleForContact(contact)?.shop_role ?? 'owner'}
+                      disabled={isReadOnly || !canManageAccess() || busyContactId === contact.id}
+                      onChange={(e) => void setShopRole(contact, e.target.value as 'owner' | 'technician')}
+                      className="mt-2 block w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs"
+                    >
+                      <option value="owner">Owner</option>
+                      <option value="technician">Technician</option>
+                    </select>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-wrap items-center justify-end gap-2">
