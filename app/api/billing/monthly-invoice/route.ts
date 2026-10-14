@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 import { sendEmail } from '@/lib/email';
 import { buildCorporateInvoiceEmail } from '@/lib/matched-email';
+import { recordMonthlyInvoiceFees } from '@/lib/invoice-fee';
 
 function isAuthorized(request: Request) {
   const secret = process.env.CRON_SECRET;
@@ -34,6 +35,16 @@ async function runMonthlyInvoice(request: Request) {
   const { periodStart, periodEnd } = previousMonthRange();
   const invoicedAt = new Date().toISOString();
 
+  // Last month's $0.35 invoice fees, one per account, written as pending so the step below
+  // invoices them with every other fee. A failure here is reported, not fatal: the rest of the
+  // run still invoices the other fees, and a re-run picks the month up (keyed per account+month).
+  let invoiceFees: { accounts: number; invoices: number; cents: number } | { error: string };
+  try {
+    invoiceFees = await recordMonthlyInvoiceFees(admin, periodStart, periodEnd);
+  } catch (e) {
+    invoiceFees = { error: e instanceof Error ? e.message : String(e) };
+  }
+
   // Invoice EVERY fee still pending from before this month, not just last month's. The run used to
   // look only at [periodStart, periodEnd), so a fee missed in its own month (a run that failed, or
   // a fee recorded late) was stranded as pending for good: Eco Car Cafe's fee from 2026-07-07 was
@@ -46,7 +57,7 @@ async function runMonthlyInvoice(request: Request) {
     })
     .eq('status', 'pending')
     .lt('occurred_at', periodEnd)
-    .select('id, account_id, amount_cents');
+    .select('id, account_id, amount_cents, event_type');
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -67,7 +78,7 @@ async function runMonthlyInvoice(request: Request) {
       if (!ev.account_id) continue;
       const cur = byAccount.get(ev.account_id) || { cents: 0, jobs: 0 };
       cur.cents += Number(ev.amount_cents || 0);
-      cur.jobs += 1;
+      if (ev.event_type !== 'invoice_fee') cur.jobs += 1;
       byAccount.set(ev.account_id, cur);
     }
     if (byAccount.size) {
@@ -111,6 +122,7 @@ async function runMonthlyInvoice(request: Request) {
     eventCount: data?.length || 0,
     totalCents,
     corporateEmailed,
+    invoiceFees,
   });
 }
 
