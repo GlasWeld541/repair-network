@@ -1,5 +1,6 @@
 'use client';
 
+import MarkedWindshield, { type DamageMark } from '@/components/marked-windshield';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Eye, ChevronRight } from 'lucide-react';
@@ -11,6 +12,7 @@ import { ListPageSkeleton } from '@/components/ui/skeleton';
 
 type Intake = {
   id: string;
+  damage_marks?: DamageMark[] | null;
   lead_type: string;
   source: string;
   intake_status: string;
@@ -893,6 +895,14 @@ export default function AdminConsumerIntakePage() {
                     ) : null}
                   </div>
 
+                  {(() => {
+                    const shot = intakePhotos.find((p) =>
+                      (p.file_name || '').toLowerCase().startsWith('windshield')
+                    );
+                    return shot && intake.damage_marks?.length ? (
+                      <MarkedWindshield url={shot.file_url} marks={intake.damage_marks} className="mt-4" />
+                    ) : null;
+                  })()}
                   {intakePhotos.length ? (
                     <div className="mt-4 grid grid-cols-3 gap-2">
                       {intakePhotos.map((photo) => {

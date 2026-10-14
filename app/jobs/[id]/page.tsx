@@ -7,6 +7,7 @@ import { Archive, ArrowLeft, Check, ChevronDown, MoreHorizontal, Pencil } from '
 import { supabase } from '@/lib/supabase';
 import { billingBlocksRouting } from '@/lib/billing';
 import BeforeAfterSlider from '@/components/before-after-slider';
+import MarkedWindshield, { type DamageMark } from '@/components/marked-windshield';
 import ProviderPickerModal from '@/components/provider-picker';
 import { useToast, useConfirm } from '@/components/ui/notifications';
 import { DetailPageSkeleton } from '@/components/ui/skeleton';
@@ -123,6 +124,8 @@ export default function JobDetailPage() {
   const [fee, setFee] = useState<JobFee | null>(null);
   const [chargingFee, setChargingFee] = useState(false);
   const [photos, setPhotos] = useState<any[]>([]);
+  // The customer's windshield photo with the spots they marked in SmartScan (consumer jobs).
+  const [customerMarks, setCustomerMarks] = useState<{ url: string; marks: DamageMark[] } | null>(null);
   const [events, setEvents] = useState<any[]>([]);
   // Status / acceptance / provider changes recorded by the job_history trigger.
   const [history, setHistory] = useState<JobHistoryRow[]>([]);
@@ -322,6 +325,22 @@ export default function JobDetailPage() {
     setJob(jobData);
     setInvoice(invoiceData);
     void loadFee();
+    setCustomerMarks(null);
+    if (jobData?.consumer_intake_id) {
+      // Best effort: a login that can't read the intake just doesn't get the marked photo.
+      const [{ data: intakeRow }, { data: intakePhotos }] = await Promise.all([
+        supabase.from('consumer_intakes').select('damage_marks').eq('id', jobData.consumer_intake_id).maybeSingle(),
+        supabase
+          .from('consumer_intake_photos')
+          .select('file_name, file_url')
+          .eq('consumer_intake_id', jobData.consumer_intake_id),
+      ]);
+      const shot = (intakePhotos || []).find((p: { file_name: string | null }) =>
+        (p.file_name || '').toLowerCase().startsWith('windshield')
+      );
+      const marks = (intakeRow?.damage_marks as DamageMark[] | null) || [];
+      if (shot && marks.length) setCustomerMarks({ url: shot.file_url, marks });
+    }
     setHistory((historyRows as JobHistoryRow[]) || []);
     setPhotos(photoData || []);
     setEvents(eventData);
@@ -1704,6 +1723,12 @@ export default function JobDetailPage() {
       </Section>
 
       <Section title="Photos">
+        {customerMarks ? (
+          <div className="mb-6 max-w-xl">
+            <div className="mb-2 text-sm font-semibold text-slate-900">Customer&apos;s marked windshield</div>
+            <MarkedWindshield url={customerMarks.url} marks={customerMarks.marks} />
+          </div>
+        ) : null}
         <div className="grid gap-6 lg:grid-cols-2">
           <PhotoColumn title="Before" photos={beforePhotos} />
 

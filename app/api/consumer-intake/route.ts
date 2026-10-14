@@ -64,6 +64,22 @@ function safeFileName(fileName: string) {
     .toLowerCase();
 }
 
+/** Where the customer marked the damage on their windshield photo: [{x, y}] in 0..1. */
+function parseMarks(value: FormDataEntryValue | null): { x: number; y: number }[] | null {
+  if (typeof value !== 'string' || !value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return null;
+    const marks = parsed
+      .filter((m) => m && typeof m.x === 'number' && typeof m.y === 'number')
+      .slice(0, 10)
+      .map((m) => ({ x: Math.min(Math.max(m.x, 0), 1), y: Math.min(Math.max(m.y, 0), 1) }));
+    return marks.length ? marks : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
@@ -140,6 +156,7 @@ export async function POST(request: Request) {
         utm_term: payload.utm_term || null,
         gclid: payload.gclid || null,
         device: payload.device || null,
+        damage_marks: parseMarks(formData.get('damage_marks')),
         raw_payload: payload,
       })
       .select('id')
