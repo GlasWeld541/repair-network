@@ -92,6 +92,12 @@ export default function AdminDashboardPage() {
 
   const cards = [
     {
+      title: 'People',
+      description:
+        'Everyone in one list: GlasWeld staff, shop owners and technicians, independent techs. Plan, role, certification and access.',
+      href: '/admin/people',
+    },
+    {
       title: 'Access & Users',
       description:
         'Approve access requests, manage users, and assign roles.',
