@@ -21,6 +21,7 @@ type Props = { open: boolean; onClose: () => void; onCreated: (id: string) => vo
 const EMPTY = {
   providerType: 'independent_tech',
   plan: 'free',
+  certified: 'Unknown',
   accountName: '',
   contactName: '',
   email: '',
@@ -139,6 +140,18 @@ export function EnrollProviderModal({ open, onClose, onCreated }: Props) {
                 <option value="pro">Pro</option>
               </select>
             </div>
+          </div>
+          <div>
+            <label className={label} htmlFor="enroll-certified">GlasWeld certified</label>
+            <select id="enroll-certified" className={input} value={form.certified} onChange={set('certified')}>
+              <option value="Unknown">Not sure yet</option>
+              <option value="Yes">Yes, already certified</option>
+              <option value="No">No</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              Certified providers are suggested first when jobs are assigned. It also turns on when their login passes
+              the course in Rex.
+            </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>

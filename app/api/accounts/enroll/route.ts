@@ -26,6 +26,7 @@ type EnrollBody = {
   providerType?: string;
   plan?: string;
   contactName?: string;
+  certified?: string;
   email?: string;
   phone?: string;
   street?: string;
@@ -76,6 +77,9 @@ export async function POST(request: Request) {
   const providerType = body.providerType === 'shop' ? 'shop' : 'independent_tech';
   const plan = body.plan === 'pro' ? 'pro' : 'free';
   const contactName = clean(body.contactName);
+  // GlasWeld certification on the account (Yes / No / Unknown), as the Accounts list sets it. It
+  // drives the certified-first ranking when jobs are assigned.
+  const certified = ['Yes', 'No'].includes(clean(body.certified)) ? clean(body.certified) : 'Unknown';
 
   if (!accountName) {
     return NextResponse.json({ error: 'A business or tech name is required.' }, { status: 400 });
@@ -148,6 +152,7 @@ export async function POST(request: Request) {
       longitude: coords?.longitude ?? null,
       provider_type: providerType,
       subscription_tier: plan,
+      glasweld_certified: certified,
       active: true,
     })
     .select('id')

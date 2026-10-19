@@ -447,7 +447,7 @@ function AccountsPageContent() {
             onClick={() => setEnrollOpen(true)}
             className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
           >
-            Add independent tech
+            Add provider
           </button>
         ) : null}
         <EnrollProviderModal
@@ -647,7 +647,7 @@ function AccountsPageContent() {
       ) : null}
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-soft">
-        <table className="min-w-[1180px] text-sm">
+        <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
               {selectable ? (
@@ -675,24 +675,23 @@ function AccountsPageContent() {
                   />
                 </th>
               ) : null}
-              <th className="px-4 py-3">Account</th>
-              <th className="px-4 py-3">City</th>
-              <th className="px-4 py-3">State</th>
-              {showDistance ? <th className="px-4 py-3">Distance</th> : null}
-              <th className="px-4 py-3">Certified</th>
-              <th className="px-4 py-3">Insurance</th>
-              <th className="px-4 py-3">Onyx/Emerald</th>
-              <th className="px-4 py-3">Zoom</th>
-              <th className="px-4 py-3">Repair Only</th>
-              <th className="px-4 py-3">Financing</th>
-              <th className="px-4 py-3">Outreach</th>
-              <th className="px-4 py-3">Status</th>
+              <th className="px-2 py-3">Account</th>
+              <th className="px-2 py-3">Location</th>
+              {showDistance ? <th className="px-2 py-3">Distance</th> : null}
+              <th className="px-2 py-3">Certified</th>
+              <th className="px-2 py-3">Insurance</th>
+              <th className="px-2 py-3" title="Uses Onyx or Emerald resin">Onyx</th>
+              <th className="px-2 py-3" title="Uses the Zoom injector">Zoom</th>
+              <th className="px-2 py-3">Repair only</th>
+              <th className="px-2 py-3">Financing</th>
+              <th className="px-2 py-3">Outreach</th>
+              <th className="px-2 py-3">Status</th>
             </tr>
           </thead>
 
           <tbody>
             {loading ? (
-              <SkeletonRows columns={(showDistance ? 12 : 11) + (selectable ? 1 : 0)} rows={8} />
+              <SkeletonRows columns={(showDistance ? 11 : 10) + (selectable ? 1 : 0)} rows={8} />
             ) : null}
 
             {!loading && filteredAccounts.map((account) => (
@@ -713,11 +712,11 @@ function AccountsPageContent() {
                     />
                   </td>
                 ) : null}
-                <td className="px-4 py-3 font-medium">
-                  <div className="flex items-center gap-2">
+                <td className="px-2 py-3 font-medium">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <Link
                       href={`/accounts/${account.id}`}
-                      className="text-brand-700 hover:underline"
+                      className="w-full break-words text-brand-700 hover:underline"
                     >
                       {account.account_name || 'Unnamed Account'}
                     </Link>
@@ -737,16 +736,17 @@ function AccountsPageContent() {
                   </div>
                 </td>
 
-                <td className="px-4 py-3">{account.city || '—'}</td>
-                <td className="px-4 py-3">{account.state || '—'}</td>
+                <td className="px-2 py-3 text-slate-700">
+                  {[account.city, account.state].filter(Boolean).join(', ') || '—'}
+                </td>
 
                 {showDistance ? (
-                  <td className="px-4 py-3 font-medium text-slate-700">
+                  <td className="px-2 py-3 font-medium text-slate-700">
                     {account.distance != null ? `${account.distance.toFixed(1)} mi` : '—'}
                   </td>
                 ) : null}
 
-                <td className="px-4 py-3">
+                <td className="px-2 py-3">
                   <EditableCell
                     value={account.glasweld_certified || 'Unknown'}
                     options={YES_NO_UNKNOWN}
@@ -757,7 +757,7 @@ function AccountsPageContent() {
                   />
                 </td>
 
-                <td className="px-4 py-3">
+                <td className="px-2 py-3">
                   <EditableCell
                     value={account.insurance || 'Unknown'}
                     options={YES_NO_UNKNOWN}
@@ -768,7 +768,7 @@ function AccountsPageContent() {
                   />
                 </td>
 
-                <td className="px-4 py-3">
+                <td className="px-2 py-3">
                   <EditableCell
                     value={account.uses_onyx || 'Unknown'}
                     options={YES_NO_UNKNOWN}
@@ -779,7 +779,7 @@ function AccountsPageContent() {
                   />
                 </td>
 
-                <td className="px-4 py-3">
+                <td className="px-2 py-3">
                   <EditableCell
                     value={account.uses_zoom_injector || 'Unknown'}
                     options={YES_NO_UNKNOWN}
@@ -790,7 +790,7 @@ function AccountsPageContent() {
                   />
                 </td>
 
-                <td className="px-4 py-3">
+                <td className="px-2 py-3">
                   <EditableCell
                     value={account.repair_only || 'Unknown'}
                     options={YES_NO_UNKNOWN}
@@ -801,7 +801,7 @@ function AccountsPageContent() {
                   />
                 </td>
 
-                <td className="px-4 py-3">
+                <td className="px-2 py-3">
                   <EditableCell
                     value={
                       account.offers_financing === true
@@ -816,7 +816,7 @@ function AccountsPageContent() {
                   />
                 </td>
 
-                <td className="px-4 py-3">
+                <td className="px-2 py-3">
                   <EditableCell
                     value={account.outreach_status || 'Not Contacted'}
                     options={OUTREACH_OPTIONS}
@@ -827,8 +827,8 @@ function AccountsPageContent() {
                   />
                 </td>
 
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
+                <td className="px-2 py-3">
+                  <div className="flex flex-col items-start gap-1">
                     <span
                       className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
                         account.active === false
@@ -844,7 +844,7 @@ function AccountsPageContent() {
                         onClick={() =>
                           void setAccountActive(account.id, account.active === false)
                         }
-                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                        className="text-xs font-semibold text-brand-700 hover:underline"
                       >
                         {account.active === false ? 'Enable' : 'Disable'}
                       </button>
@@ -857,7 +857,7 @@ function AccountsPageContent() {
             {!loading && !filteredAccounts.length && (
               <tr>
                 <td
-                  colSpan={(showDistance ? 12 : 11) + (selectable ? 1 : 0)}
+                  colSpan={(showDistance ? 11 : 10) + (selectable ? 1 : 0)}
                   className="py-10 text-center text-slate-500"
                 >
                   {showDistance
@@ -953,7 +953,8 @@ function EditableCell({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="h-9 w-32 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900"
+      // Compact so all the columns fit in one view (global styles make a select full width).
+      className={`!h-8 ${options.length > 3 ? '!w-[124px]' : '!w-[92px]'} rounded-lg border border-slate-300 bg-white !py-0 !pl-2 !pr-6 !text-xs text-slate-900`}
     >
       {options.map((option) => (
         <option key={option}>{option}</option>
