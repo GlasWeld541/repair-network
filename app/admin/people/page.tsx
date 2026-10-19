@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { ListPageSkeleton } from '@/components/ui/skeleton';
 import { useConfirm, useToast } from '@/components/ui/notifications';
 import { EnrollProviderModal } from '@/components/enroll-provider-modal';
+import { AddStaffDialog, EditPersonDialog, ResetPasswordDialog, type EditablePerson } from '@/components/people-dialogs';
 
 /**
  * Everyone in one list (10/12 call: centralize users; Trello #262/#264). GlasWeld staff and Rex
@@ -25,6 +26,8 @@ type Person = {
   user_id: string | null;
   email: string;
   name: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   kind: 'staff' | 'provider';
   role_label: string;
   rex_role: 'admin' | 'cs_rep' | 'field_tech' | null;
@@ -37,6 +40,8 @@ type Person = {
   has_login: boolean;
   last_sign_in_at: string | null;
   certified?: boolean;
+  cert_source?: string | null;
+  cert_passed?: number;
   repairs_finished?: number;
   avg_score?: number | null;
   scored_repairs?: number;
@@ -91,6 +96,9 @@ export default function AdminPeoplePage() {
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [addingStaff, setAddingStaff] = useState(false);
+  const [editing, setEditing] = useState<EditablePerson | null>(null);
+  const [resetting, setResetting] = useState<EditablePerson | null>(null);
 
   // Network admins only (demo logins see it read-only).
   useEffect(() => {
@@ -234,13 +242,22 @@ export default function AdminPeoplePage() {
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-3xl font-semibold text-slate-900">People</h1>
           {!isReadOnly ? (
-            <button
-              type="button"
-              onClick={() => setAdding(true)}
-              className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-            >
-              Add provider
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setAddingStaff(true)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Add staff user
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdding(true)}
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+              >
+                Add provider
+              </button>
+            </div>
           ) : null}
         </div>
         <p className="mt-1 text-sm text-slate-500">
@@ -330,6 +347,24 @@ export default function AdminPeoplePage() {
                           Invited, no login yet
                         </span>
                       ) : null}
+                      {!isReadOnly && p.user_id ? (
+                        <div className="mt-1 flex gap-3 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => setEditing({ user_id: p.user_id!, email: p.email, first_name: p.first_name, last_name: p.last_name })}
+                            className="font-medium text-brand-700 hover:underline"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setResetting({ user_id: p.user_id!, email: p.email })}
+                            className="font-medium text-brand-700 hover:underline"
+                          >
+                            Reset password
+                          </button>
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-3 py-3">
                       {p.rex_role && p.user_id && !p.network_role ? (
@@ -391,6 +426,7 @@ export default function AdminPeoplePage() {
                     </td>
                     <td className="px-3 py-3">
                       {p.user_id ? (
+                        <>
                         <label className="flex items-center gap-2">
                           <input
                             type="checkbox"
@@ -403,6 +439,14 @@ export default function AdminPeoplePage() {
                             {p.certified ? 'Certified' : 'No'}
                           </span>
                         </label>
+                        {p.certified ? (
+                          <div className="mt-0.5 text-xs text-slate-500">
+                            {p.cert_source === 'manual' ? 'Granted by an admin' : 'Passed the course'}
+                          </div>
+                        ) : p.cert_passed ? (
+                          <div className="mt-0.5 text-xs text-slate-500">{p.cert_passed} of 6 modules passed</div>
+                        ) : null}
+                        </>
                       ) : (
                         <span className="text-slate-400">—</span>
                       )}
@@ -472,6 +516,25 @@ export default function AdminPeoplePage() {
           </div>
         ) : null}
       </section>
+      <AddStaffDialog
+        open={addingStaff}
+        rex={rex}
+        onClose={() => setAddingStaff(false)}
+        onCreated={() => {
+          setAddingStaff(false);
+          void load(true);
+        }}
+      />
+      <EditPersonDialog
+        person={editing}
+        rex={rex}
+        onClose={() => setEditing(null)}
+        onSaved={() => {
+          setEditing(null);
+          void load(true);
+        }}
+      />
+      <ResetPasswordDialog person={resetting} rex={rex} onClose={() => setResetting(null)} onSaved={() => setResetting(null)} />
       <EnrollProviderModal
         open={adding}
         onClose={() => setAdding(false)}
