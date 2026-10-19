@@ -1,8 +1,34 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+
+/** Only a signed-in Network admin may send invites (both callers are admin screens). */
+async function isNetworkAdmin(): Promise<boolean> {
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { db: { schema: 'network' }, cookies: { get: (name) => cookieStore.get(name)?.value } },
+  );
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user?.email) return false;
+  const { data: role } = await supabase
+    .from('user_roles')
+    .select('role, approved, access_status')
+    .eq('user_email', user.email.toLowerCase())
+    .maybeSingle();
+  return role?.role === 'admin' && role.approved === true && role.access_status === 'Active';
+}
 
 export async function POST(req: Request) {
   try {
+    if (!(await isNetworkAdmin())) {
+      return NextResponse.json({ error: 'Only an admin can send invites.' }, { status: 403 });
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
