@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { ListPageSkeleton } from '@/components/ui/skeleton';
 import { useConfirm, useToast } from '@/components/ui/notifications';
+import { EnrollProviderModal } from '@/components/enroll-provider-modal';
 
 /**
  * Everyone in one list (10/12 call: centralize users; Trello #262/#264). GlasWeld staff and Rex
@@ -89,6 +90,7 @@ export default function AdminPeoplePage() {
   const [status, setStatus] = useState<Status>('all');
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   // Network admins only (demo logins see it read-only).
   useEffect(() => {
@@ -127,11 +129,12 @@ export default function AdminPeoplePage() {
     return () => clearTimeout(t);
   }, [q]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams({ q: query, kind, status, page: String(page), page_size: String(PAGE_SIZE) });
+      if (fresh) params.set('fresh', 'true');
       setData(await rex<PeoplePage>(`/admin/people?${params}`));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load people.');
@@ -228,7 +231,18 @@ export default function AdminPeoplePage() {
         <Link href="/admin" className="text-sm text-brand-700">
           Back to Admin
         </Link>
-        <h1 className="mt-2 text-3xl font-semibold text-slate-900">People</h1>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-3xl font-semibold text-slate-900">People</h1>
+          {!isReadOnly ? (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+            >
+              Add provider
+            </button>
+          ) : null}
+        </div>
         <p className="mt-1 text-sm text-slate-500">
           Everyone who uses Rex or the Network: GlasWeld staff, shop owners and technicians, and independent techs. Change
           a provider&apos;s plan, a person&apos;s role or knowledge access, certification, or turn a login off, all from
@@ -458,6 +472,14 @@ export default function AdminPeoplePage() {
           </div>
         ) : null}
       </section>
+      <EnrollProviderModal
+        open={adding}
+        onClose={() => setAdding(false)}
+        onCreated={() => {
+          setAdding(false);
+          void load(true);
+        }}
+      />
     </div>
   );
 }

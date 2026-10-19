@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react';
 import { useToast } from '@/components/ui/notifications';
 
 /**
- * Add an independent tech to the network.
+ * Add a provider to the network in one step: the account (shop or independent tech) on its plan,
+ * the person as its owner login, and an invite to set a password and open Rex.
  *
  * Network membership used to happen automatically when a Rex login was created. Shiloh wants to
  * decide who joins, so this is now a deliberate admin action (see sql/manual_network_enrollment.sql).
@@ -17,7 +18,18 @@ import { useToast } from '@/components/ui/notifications';
 
 type Props = { open: boolean; onClose: () => void; onCreated: (id: string) => void };
 
-const EMPTY = { accountName: '', email: '', phone: '', street: '', city: '', state: '', postalCode: '' };
+const EMPTY = {
+  providerType: 'independent_tech',
+  plan: 'free',
+  accountName: '',
+  contactName: '',
+  email: '',
+  phone: '',
+  street: '',
+  city: '',
+  state: '',
+  postalCode: '',
+};
 
 export function EnrollProviderModal({ open, onClose, onCreated }: Props) {
   const toast = useToast();
@@ -44,7 +56,7 @@ export function EnrollProviderModal({ open, onClose, onCreated }: Props) {
 
   if (!open) return null;
 
-  const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const hasAddress = Boolean(form.street || form.city || form.state || form.postalCode);
@@ -66,18 +78,21 @@ export function EnrollProviderModal({ open, onClose, onCreated }: Props) {
         if (json.existingId) setExistingId(json.existingId);
         return;
       }
-      if (json.rexLoginExists === false) {
-        toast.info(
-          `${form.accountName} added. No Rex login uses ${form.email} yet, so their assigned jobs will not appear until one is created with that email.`,
-        );
+      const login = json.inviteError
+        ? `The invite email could not be sent (${json.inviteError}); resend it from the account page.`
+        : json.invited
+          ? `An invite to set a password and open Rex went to ${form.email}.`
+          : `${form.email} already has a Rex login, so they can sign in now.`;
+      if (json.inviteError) {
+        toast.error(`${form.accountName} added. ${login}`);
       } else if (!json.routable) {
         toast.info(
           json.addressGiven
-            ? `${form.accountName} added, but that address could not be located. Check it on the account page so they can be ranked by distance.`
-            : `${form.accountName} added. Add an address when you have it so they come up as a nearby provider.`,
+            ? `${form.accountName} added. ${login} That address could not be located, so check it on the account page so they can be ranked by distance.`
+            : `${form.accountName} added. ${login} Add an address when you have it so they come up as a nearby provider.`,
         );
       } else {
-        toast.success(`${form.accountName} added to the network.`);
+        toast.success(`${form.accountName} added to the network. ${login}`);
       }
       onCreated(json.id);
     } catch {
@@ -102,16 +117,42 @@ export function EnrollProviderModal({ open, onClose, onCreated }: Props) {
         className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:max-w-lg sm:rounded-2xl"
       >
         <div className="border-b border-slate-200 px-5 py-4">
-          <h3 className="text-lg font-semibold text-slate-900">Add an independent tech</h3>
+          <h3 className="text-lg font-semibold text-slate-900">Add a provider</h3>
           <p className="mt-0.5 text-sm text-slate-500">
-            Adds them to the network so jobs can be assigned to them.
+            Sets up their account and login, and emails them an invite to Rex.
           </p>
         </div>
 
         <div className="space-y-4 overflow-y-auto px-5 py-4">
-          <div>
-            <label className={label} htmlFor="enroll-name">Business or tech name</label>
-            <input id="enroll-name" className={input} value={form.accountName} onChange={set('accountName')} required autoFocus />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className={label} htmlFor="enroll-type">Provider</label>
+              <select id="enroll-type" className={input} value={form.providerType} onChange={set('providerType')}>
+                <option value="independent_tech">Independent tech</option>
+                <option value="shop">Shop</option>
+              </select>
+            </div>
+            <div>
+              <label className={label} htmlFor="enroll-plan">Plan</label>
+              <select id="enroll-plan" className={input} value={form.plan} onChange={set('plan')}>
+                <option value="free">Free</option>
+                <option value="pro">Pro</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className={label} htmlFor="enroll-name">
+                {form.providerType === 'shop' ? 'Shop name' : 'Business or tech name'}
+              </label>
+              <input id="enroll-name" className={input} value={form.accountName} onChange={set('accountName')} required autoFocus />
+            </div>
+            <div>
+              <label className={label} htmlFor="enroll-contact">
+                {form.providerType === 'shop' ? "Owner's name" : "Tech's name"} (optional)
+              </label>
+              <input id="enroll-contact" className={input} value={form.contactName} onChange={set('contactName')} />
+            </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -124,7 +165,7 @@ export function EnrollProviderModal({ open, onClose, onCreated }: Props) {
             </div>
           </div>
           <p className="-mt-2 text-xs text-slate-500">
-            Use the same email they sign into Rex with. That is how their assigned jobs reach them.
+            Their Rex login. They become the account&apos;s owner and can add technicians later on Pro.
           </p>
 
           <div className="rounded-xl border border-slate-200 p-4">
@@ -139,7 +180,7 @@ export function EnrollProviderModal({ open, onClose, onCreated }: Props) {
             </div>
             {!hasAddress ? (
               <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
-                Without an address this tech will not come up in location-based matching, so they
+                Without an address this provider will not come up in location-based matching, so they
                 will not be suggested as a nearby provider. You can add the address later from their
                 account page.
               </p>
@@ -163,7 +204,7 @@ export function EnrollProviderModal({ open, onClose, onCreated }: Props) {
             Cancel
           </button>
           <button type="submit" disabled={saving} className="rounded-lg bg-brand-600 px-5 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
-            {saving ? 'Adding…' : 'Add to network'}
+            {saving ? 'Adding…' : 'Add and send invite'}
           </button>
         </div>
       </form>

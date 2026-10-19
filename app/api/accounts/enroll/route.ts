@@ -5,7 +5,11 @@ import { createAdminClient } from '@/lib/supabase';
 import { geocodeText } from '@/lib/geocode';
 
 /**
- * Enrol an independent tech into the network (Shiloh, 2026-09-23: he decides who joins).
+ * Add a provider to the network in one step (Shiloh, 2026-09-23: he decides who joins; 10/12 call:
+ * centralize users, Trello #262): the account (shop or independent tech) on its plan, the person
+ * as a contact, their login as the account's owner, and the invite to set a password and open Rex.
+ * The login row ties the person to the account directly, so Rex no longer has to find them by
+ * matching the account's email.
  *
  * This replaces the old automatic enrollment, where any Rex field-tech login silently became a
  * provider. Admin-only, and done server-side because it needs two things the browser must not do:
@@ -19,6 +23,9 @@ import { geocodeText } from '@/lib/geocode';
 
 type EnrollBody = {
   accountName?: string;
+  providerType?: string;
+  plan?: string;
+  contactName?: string;
   email?: string;
   phone?: string;
   street?: string;
@@ -66,6 +73,9 @@ export async function POST(request: Request) {
   const city = clean(body.city);
   const state = clean(body.state).toUpperCase();
   const postalCode = clean(body.postalCode);
+  const providerType = body.providerType === 'shop' ? 'shop' : 'independent_tech';
+  const plan = body.plan === 'pro' ? 'pro' : 'free';
+  const contactName = clean(body.contactName);
 
   if (!accountName) {
     return NextResponse.json({ error: 'A business or tech name is required.' }, { status: 400 });
@@ -96,8 +106,25 @@ export async function POST(request: Request) {
     );
   }
 
-  // Without a matching Rex login the provider's assigned jobs have nowhere to show up. Worth a
-  // warning, not a refusal: the admin may be adding them before their login is created.
+  // The person's login becomes this account's owner, so it can't already belong to someone else.
+  const { data: login } = await admin
+    .from('user_roles')
+    .select('role, account_id')
+    .eq('user_email', email)
+    .maybeSingle();
+  if (login && (login.role !== 'shop' || login.account_id)) {
+    return NextResponse.json(
+      {
+        error:
+          login.role === 'shop'
+            ? `${email} already signs in for another provider.`
+            : `${email} is a GlasWeld ${login.role} login. Use a different email for the provider.`,
+        existingId: login.role === 'shop' ? login.account_id : undefined,
+      },
+      { status: 409 },
+    );
+  }
+
   let rexLoginExists: boolean | null = null;
   const { data: loginCheck, error: loginError } = await admin.rpc('rex_login_exists', { p_email: email });
   if (!loginError) rexLoginExists = loginCheck === true;
@@ -119,7 +146,8 @@ export async function POST(request: Request) {
       postal_code: postalCode || null,
       latitude: coords?.latitude ?? null,
       longitude: coords?.longitude ?? null,
-      provider_type: 'independent_tech',
+      provider_type: providerType,
+      subscription_tier: plan,
       active: true,
     })
     .select('id')
@@ -132,8 +160,59 @@ export async function POST(request: Request) {
     );
   }
 
+  // The person, and their login as the owner. Done after the account so a failure here leaves a
+  // provider the admin can finish from the account page (Contacts & Login Access), not a stray login.
+  const { error: contactError } = await admin.from('contacts').insert({
+    account_id: created.id,
+    account_name: accountName,
+    full_name: contactName || null,
+    email,
+    phone: phone || null,
+  });
+  const { error: accessError } = await admin.from('user_roles').upsert(
+    {
+      user_email: email,
+      role: 'shop',
+      approved: true,
+      access_status: 'Active',
+      account_id: created.id,
+      carrier_id: null,
+      shop_role: 'owner',
+    },
+    { onConflict: 'user_email' },
+  );
+  if (contactError || accessError) {
+    return NextResponse.json(
+      {
+        error: `The account was added, but its login could not be set up: ${(accessError || contactError)?.message}. Finish it from the account page.`,
+        existingId: created.id,
+      },
+      { status: 500 },
+    );
+  }
+
+  // Someone who already has a Rex login just signs in; everyone else gets the invite.
+  let invited = false;
+  if (rexLoginExists !== true) {
+    const { error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
+      redirectTo: 'https://repair-network.vercel.app/set-password?next=rex',
+    });
+    invited = !inviteError;
+    if (inviteError && !/already|registered|exists/i.test(inviteError.message)) {
+      return NextResponse.json({
+        id: created.id,
+        routable: Boolean(coords),
+        addressGiven: hasAddress,
+        rexLoginExists,
+        invited: false,
+        inviteError: inviteError.message,
+      });
+    }
+  }
+
   return NextResponse.json({
     id: created.id,
+    invited,
     // Routable = has coordinates, so it can be ranked by distance in the assignment list.
     routable: Boolean(coords),
     addressGiven: hasAddress,
