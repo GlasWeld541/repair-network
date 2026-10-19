@@ -10,9 +10,14 @@ import ProviderPickerModal from '@/components/provider-picker';
 import { useToast } from '@/components/ui/notifications';
 import { ListPageSkeleton } from '@/components/ui/skeleton';
 
+type SpotVerdict = { outcome: string; headline: string | null; detail: string | null; damageRead: string | null };
+
 type Intake = {
   id: string;
   damage_marks?: DamageMark[] | null;
+  // Rex's SmartScan verdict: overall + each marked spot (spot N = mark N = close-up N).
+  rex_verdict?: { overall: SpotVerdict; spots: SpotVerdict[] } | null;
+  admin_notes?: string | null;
   lead_type: string;
   source: string;
   intake_status: string;
@@ -133,6 +138,23 @@ function statusClass(status: string) {
 }
 
 // Compact relative time ("2h ago") for how fresh a lead is — no date-fns dependency.
+const VERDICT_LABELS: Record<string, string> = {
+  repairable: 'Repairable',
+  likely_repairable: 'Likely repairable',
+  needs_inspection: 'Needs inspection',
+  replacement: 'Replacement',
+};
+
+function verdictLabel(outcome: string): string {
+  return VERDICT_LABELS[outcome] || outcome.replace(/_/g, ' ');
+}
+
+function verdictClass(outcome: string): string {
+  if (outcome === 'repairable' || outcome === 'likely_repairable') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (outcome === 'replacement') return 'border-rose-200 bg-rose-50 text-rose-700';
+  return 'border-amber-200 bg-amber-50 text-amber-800';
+}
+
 function timeAgo(iso: string | null | undefined): string {
   if (!iso) return '';
   const then = new Date(iso).getTime();
@@ -188,6 +210,11 @@ export default function AdminConsumerIntakePage() {
   const [page, setPage] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [queueFilter, setQueueFilter] = useState<'all' | 'today' | 'new'>('all');
+  // Status filter and search, as the Rex admin's Customer Requests had (10/12: requests moved here).
+  const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [query, setQuery] = useState('');
+  const [notesDraft, setNotesDraft] = useState<Record<string, string>>({});
   const [counts, setCounts] = useState<QueueCounts>(EMPTY_COUNTS);
   // Rows matching the active filter across the whole table — drives pagination, and is what
   // the "N shown" label means now that a page is all we hold in memory.
@@ -208,7 +235,15 @@ export default function AdminConsumerIntakePage() {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, queueFilter]);
+  }, [page, queueFilter, statusFilter, query]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setQuery(search.trim());
+      setPage(0);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   async function load() {
     setLoading(true);
@@ -252,6 +287,16 @@ export default function AdminConsumerIntakePage() {
     let queueQuery = supabase.from('consumer_intakes').select('*', { count: 'exact' });
     if (queueFilter === 'today') queueQuery = queueQuery.gte('created_at', startOfLocalDay);
     else if (queueFilter === 'new') queueQuery = queueQuery.eq('intake_status', 'new');
+    if (statusFilter) queueQuery = queueQuery.eq('intake_status', statusFilter);
+    // Commas and brackets would break PostgREST's or() syntax; they never matter in a search.
+    const needle = query.replace(/[(),%*]/g, ' ').trim();
+    if (needle) {
+      queueQuery = queueQuery.or(
+        ['customer_name', 'customer_email', 'customer_phone', 'postal_code', 'city', 'vehicle_vin', 'vehicle_make', 'vehicle_model', 'claim_number']
+          .map((c) => `${c}.ilike.%${needle}%`)
+          .join(',')
+      );
+    }
 
     const [
       { data: intakeRows, count: matchedCount },
@@ -528,6 +573,23 @@ export default function AdminConsumerIntakePage() {
     return 0;
   }
 
+  async function saveNotes(intake: Intake) {
+    if (isDemo) return;
+    const notes = (notesDraft[intake.id] ?? intake.admin_notes ?? '').trim();
+    setBusyId(`notes-${intake.id}`);
+    const { error } = await supabase
+      .from('consumer_intakes')
+      .update({ admin_notes: notes || null })
+      .eq('id', intake.id);
+    setBusyId(null);
+    if (error) {
+      toast.error(`Could not save the note: ${error.message}`);
+      return;
+    }
+    toast.success('Note saved');
+    await load();
+  }
+
   async function saveTriage(intake: Intake) {
     if (isDemo) return;
 
@@ -791,6 +853,27 @@ export default function AdminConsumerIntakePage() {
                 </span>
               </button>
             ))}
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(0);
+              }}
+              className="h-8 w-auto rounded-full py-0 pl-3 pr-8 text-xs"
+              aria-label="Status"
+            >
+              <option value="">Any status</option>
+              <option value="new">New</option>
+              <option value="reviewing">Reviewing</option>
+              <option value="assigned">Assigned</option>
+              <option value="not_serviceable">Not serviceable</option>
+            </select>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name, phone, email, ZIP, VIN or claim #"
+              className="h-8 w-auto min-w-[240px] rounded-full py-0 text-xs"
+            />
           </div>
         </div>
 
@@ -881,10 +964,49 @@ export default function AdminConsumerIntakePage() {
                         <div>{[intake.vehicle_year, intake.vehicle_make, intake.vehicle_model].filter(Boolean).join(' ') || '-'}</div>
                       </div>
 
+                  <div className="mt-1 text-xs text-slate-500">
+                    Submitted {new Date(intake.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  </div>
+
+                  {intake.rex_verdict ? (
+                    <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Rex verdict</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${verdictClass(intake.rex_verdict.overall.outcome)}`}>
+                          {verdictLabel(intake.rex_verdict.overall.outcome)}
+                        </span>
+                      </div>
+                      {intake.rex_verdict.overall.headline ? (
+                        <div className="mt-1 font-medium text-slate-900">{intake.rex_verdict.overall.headline}</div>
+                      ) : null}
+                      {intake.rex_verdict.overall.damageRead ? (
+                        <div className="mt-1 text-slate-600">{intake.rex_verdict.overall.damageRead}</div>
+                      ) : null}
+                      {intake.rex_verdict.spots.length > 1 ? (
+                        <ol className="mt-2 space-y-1">
+                          {intake.rex_verdict.spots.map((spot, i) => (
+                            <li key={i} className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                              <span className="font-semibold text-slate-800">Spot {i + 1}</span>
+                              <span className={`rounded-full border px-2 py-0.5 ${verdictClass(spot.outcome)}`}>{verdictLabel(spot.outcome)}</span>
+                              <span>{spot.damageRead || spot.headline}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
                     <div><b>Damage:</b> {[intake.damage_location, intake.damage_size].filter(Boolean).join(' · ') || '-'}</div>
                     <div className="mt-1 whitespace-pre-wrap">{intake.damage_notes || 'No notes.'}</div>
+                    {intake.vehicle_vin ? <div className="mt-2"><b>VIN:</b> <span className="font-mono">{intake.vehicle_vin}</span></div> : null}
                     <div className="mt-2"><b>Insurance:</b> {intake.insurance_carrier || '-'}</div>
+                    {intake.policy_number || intake.claim_number ? (
+                      <div className="mt-1">
+                        {intake.policy_number ? <span><b>Policy #:</b> {intake.policy_number} </span> : null}
+                        {intake.claim_number ? <span><b>Claim #:</b> {intake.claim_number}</span> : null}
+                      </div>
+                    ) : null}
                     {intake.needs_financing ? (
                       <div className="mt-1 font-semibold text-amber-700">
                         Needs financing — provider options are filtered to shops that offer a payment plan.
@@ -907,10 +1029,14 @@ export default function AdminConsumerIntakePage() {
                     <div className="mt-4 grid grid-cols-3 gap-2">
                       {intakePhotos.map((photo) => {
                         const n = (photo.file_name || '').toLowerCase();
+                        // closeup_0 is the close-up of mark 1 on the windshield, and so on.
+                        const spot = n.match(/^closeup_(\d+)/);
                         const label = n.startsWith('adas')
                           ? 'Camera zone'
                           : n.startsWith('closeup')
-                            ? 'Close-up'
+                            ? spot && (intake.damage_marks?.length ?? 0) > 1
+                              ? `Close-up of spot ${Number(spot[1]) + 1}`
+                              : 'Close-up'
                             : n.startsWith('windshield')
                               ? 'Windshield'
                               : n.startsWith('vin')
@@ -939,6 +1065,31 @@ export default function AdminConsumerIntakePage() {
                       })}
                     </div>
                   ) : null}
+
+                  <div className="mt-4">
+                    <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor={`notes-${intake.id}`}>
+                      Team notes
+                    </label>
+                    <textarea
+                      id={`notes-${intake.id}`}
+                      rows={2}
+                      disabled={isDemo}
+                      value={notesDraft[intake.id] ?? intake.admin_notes ?? ''}
+                      onChange={(e) => setNotesDraft((d) => ({ ...d, [intake.id]: e.target.value }))}
+                      placeholder="Called them, waiting on photos, prefers mornings…"
+                      className="mt-1 text-sm"
+                    />
+                    {!isDemo && (notesDraft[intake.id] ?? intake.admin_notes ?? '') !== (intake.admin_notes ?? '') ? (
+                      <button
+                        type="button"
+                        disabled={busyId === `notes-${intake.id}`}
+                        onClick={() => void saveNotes(intake)}
+                        className="mt-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+                      >
+                        Save note
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">

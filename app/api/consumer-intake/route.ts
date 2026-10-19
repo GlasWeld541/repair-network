@@ -80,6 +80,33 @@ function parseMarks(value: FormDataEntryValue | null): { x: number; y: number }[
   }
 }
 
+type SpotVerdict = { outcome: string; headline: string | null; detail: string | null; damageRead: string | null };
+
+// Rex's SmartScan verdict: the overall read and each marked spot's, in marker order (spot N is
+// mark N and close-up N). Kept as data so the queue can show it, not only as damage_notes text.
+function parseVerdict(value: FormDataEntryValue | null): { overall: SpotVerdict; spots: SpotVerdict[] } | null {
+  if (typeof value !== 'string' || !value) return null;
+  const pick = (v: unknown): SpotVerdict | null => {
+    if (!v || typeof v !== 'object') return null;
+    const o = v as Record<string, unknown>;
+    if (typeof o.outcome !== 'string') return null;
+    const str = (k: string) => (typeof o[k] === 'string' ? String(o[k]).slice(0, 2000) : null);
+    return { outcome: o.outcome.slice(0, 40), headline: str('headline'), detail: str('detail'), damageRead: str('damageRead') };
+  };
+  try {
+    const parsed = JSON.parse(value);
+    const overall = pick(parsed?.overall);
+    if (!overall) return null;
+    const spots = (Array.isArray(parsed.spots) ? parsed.spots : [])
+      .slice(0, 10)
+      .map(pick)
+      .filter((v: SpotVerdict | null): v is SpotVerdict => !!v);
+    return { overall, spots };
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
@@ -157,6 +184,7 @@ export async function POST(request: Request) {
         gclid: payload.gclid || null,
         device: payload.device || null,
         damage_marks: parseMarks(formData.get('damage_marks')),
+        rex_verdict: parseVerdict(formData.get('rex_verdict')),
         raw_payload: payload,
       })
       .select('id')
@@ -172,7 +200,9 @@ export async function POST(request: Request) {
     const files = formData
       .getAll('photos')
       .filter((value): value is File => value instanceof File && value.size > 0)
-      .slice(0, 5);
+      // Up to 5 close-ups plus the windshield, camera-zone and VIN shots. At 5, a scan with 3+
+      // marked spots lost its windshield photo, and with it the marked windshield in the queue.
+      .slice(0, 12);
 
     for (const file of files) {
       const cleanName = safeFileName(file.name || 'damage-photo.jpg');
