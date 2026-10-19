@@ -1019,6 +1019,7 @@ export default function JobDetailPage() {
 
   const beforePhotos = photos.filter((photo) => photo.type === 'before');
   const afterPhotos = photos.filter((photo) => photo.type === 'after');
+  const vinPhotos = photos.filter((photo) => photo.type === 'vin');
   const latestEvent = events[0];
 
   // A job can only be completed once the technician has actually finished the repair — i.e.
@@ -1734,6 +1735,33 @@ export default function JobDetailPage() {
 
           <PhotoColumn title="After" photos={afterPhotos} />
         </div>
+
+        {/* Required network photo set (roadmap v2.11): VIN + outside before + outside after, set by
+            Rex at Finish. An incomplete set leaves this job out of the provider's repair score. */}
+        {job.photo_set_complete != null ? (
+          <div
+            className={`mt-6 rounded-xl border p-4 text-sm ${
+              job.photo_set_complete ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'
+            }`}
+          >
+            <div className="font-semibold">
+              {job.photo_set_complete ? 'Network photo set complete' : 'Network photo set incomplete'}
+            </div>
+            <p className="mt-1">
+              VIN {vinPhotos.length ? 'yes' : 'missing'} · Before {beforePhotos.length ? 'yes' : 'missing'} · After{' '}
+              {afterPhotos.length ? 'yes' : 'missing'}
+              {job.mileage != null ? ` · Mileage ${Number(job.mileage).toLocaleString('en-US')}` : ''}
+            </p>
+            {!job.photo_set_complete ? (
+              <p className="mt-1">This job doesn&apos;t count toward the provider&apos;s repair score or job credit.</p>
+            ) : null}
+            {vinPhotos.length ? (
+              <a href={vinPhotos[vinPhotos.length - 1].url} target="_blank" rel="noreferrer" className="mt-3 block w-40">
+                <img src={vinPhotos[vinPhotos.length - 1].url} alt="VIN" className="h-24 w-40 rounded-lg border border-slate-200 object-cover" />
+              </a>
+            ) : null}
+          </div>
+        ) : null}
 
         {beforePhotos.length && afterPhotos.length ? (
           <div className="mt-6">
