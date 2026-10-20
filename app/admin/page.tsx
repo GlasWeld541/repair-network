@@ -98,9 +98,9 @@ export default function AdminDashboardPage() {
       href: '/admin/people',
     },
     {
-      title: 'Access & Users',
+      title: 'Access Requests',
       description:
-        'Approve access requests, manage users, and assign roles.',
+        'Approve access requests, add Network admins, and give carrier or demo access.',
       href: '/admin/users',
     },
     {

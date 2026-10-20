@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { AccountSearchSelect } from '@/components/account-search-select';
@@ -67,22 +68,9 @@ export default function AdminUsersPage() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<AccessRequest[]>([]);
-  // One page of logins, fetched and searched in the database (server-side paging: there are
-  // 2,500+ logins and 4,200+ accounts, and loading them all froze this page on 10/20).
-  const [users, setUsers] = useState<UserRole[]>([]);
-  const [usersTotal, setUsersTotal] = useState(0);
-  const [usersLoading, setUsersLoading] = useState(false);
-  const [userSearch, setUserSearch] = useState('');
+  // Admins and the status counts; the full list of logins is on People.
   const [adminUsers, setAdminUsers] = useState<UserRole[]>([]);
   const [statusCounts, setStatusCounts] = useState({ active: 0, suspended: 0 });
-  const [pageAccountNames, setPageAccountNames] = useState<Map<string, string | null>>(new Map());
-  // The list holds every login (2,500+ since the shop logins were seeded), so it is searched and
-  // shown 50 at a time, and the shop / carrier pickers render only on the row being edited. Before
-  // this, every row carried a picker with all ~4,200 accounts: millions of options, which froze
-  // the browser.
-  const [userQuery, setUserQuery] = useState('');
-  const [userPage, setUserPage] = useState(0);
-  const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [carriers, setCarriers] = useState<CarrierRow[]>([]);
   const [selection, setSelection] = useState<Record<string, Record<string, string>>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -103,44 +91,9 @@ export default function AdminUsersPage() {
     void load();
   }, []);
 
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setUserQuery(userSearch.trim());
-      setUserPage(0);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [userSearch]);
 
-  useEffect(() => {
-    if (currentRole) void loadUsersPage();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentRole, userPage, userQuery]);
 
-  async function loadUsersPage() {
-    setUsersLoading(true);
-    let q = supabase.from('user_roles').select('*', { count: 'exact' });
-    // Commas and brackets would break PostgREST's or() syntax; they never matter in a search.
-    const needle = userQuery.replace(/[(),%*]/g, ' ').trim();
-    if (needle) {
-      const { data: hits } = await supabase.from('accounts').select('id').ilike('account_name', `%${needle}%`).limit(100);
-      const ids = (hits || []).map((a) => a.id);
-      q = q.or(
-        [`user_email.ilike.%${needle}%`, `role.ilike.%${needle}%`, ...(ids.length ? [`account_id.in.(${ids.join(',')})`] : [])].join(',')
-      );
-    }
-    const { data, count } = await q
-      .order('user_email')
-      .range(userPage * USERS_PER_PAGE, userPage * USERS_PER_PAGE + USERS_PER_PAGE - 1);
-    const rows = (data as UserRole[]) || [];
-    const accountIds = [...new Set(rows.map((r) => r.account_id).filter(Boolean))] as string[];
-    const { data: names } = accountIds.length
-      ? await supabase.from('accounts').select('id, account_name').in('id', accountIds)
-      : { data: [] };
-    setPageAccountNames(new Map(((names as AccountRow[]) || []).map((a) => [a.id, a.account_name])));
-    setUsers(rows);
-    setUsersTotal(count ?? rows.length);
-    setUsersLoading(false);
-  }
+
 
   async function load() {
     setLoading(true);
@@ -197,7 +150,6 @@ export default function AdminUsersPage() {
     setStatusCounts({ active: activeRes.count ?? 0, suspended: suspendedRes.count ?? 0 });
     setCarriers((carrierData as CarrierRow[]) || []);
     setLoading(false);
-    if (currentRole) void loadUsersPage();
   }
 
   function blockDemoAction() {
@@ -223,14 +175,6 @@ export default function AdminUsersPage() {
     return selection[id]?.[field] ?? fallback;
   }
 
-  function accountName(id: string | null) {
-    if (!id) return '—';
-    return pageAccountNames.get(id) || 'Unknown account';
-  }
-
-  const USERS_PER_PAGE = 50;
-  const userPages = Math.max(1, Math.ceil(usersTotal / USERS_PER_PAGE));
-  const pagedUsers = users;
 
   function carrierName(id: string | null) {
     if (!id) return '—';
@@ -691,9 +635,10 @@ export default function AdminUsersPage() {
     <div className="mx-auto max-w-[1380px] space-y-6 px-4 py-6 sm:px-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-semibold text-ink">User Access</h1>
+          <h1 className="text-3xl font-semibold text-ink">Access Requests</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Review requests, create access profiles, assign organizations, and manage access status.
+            Approve access requests, add Network admins, and give carrier or demo access. Everyone&apos;s logins are
+            managed on People.
           </p>
         </div>
 
@@ -1008,213 +953,19 @@ export default function AdminUsersPage() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
-        <div className="border-b border-slate-200 px-5 py-4">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold text-slate-900">System Users</div>
-              <div className="mt-1 text-xs text-slate-500">
-                Edit role, linked organization, and access status. {usersTotal.toLocaleString()}{' '}
-                {userQuery ? 'matching' : 'logins'}{usersLoading ? ' · Updating…' : ''}
-              </div>
-            </div>
-            <input
-              value={userSearch}
-              onChange={(e) => setUserSearch(e.target.value)}
-              placeholder="Search email, role or account"
-              className="h-9 w-auto min-w-[260px] py-1 text-sm"
-            />
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1100px] text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
-              <tr>
-                <th className="px-5 py-3 font-semibold">Email</th>
-                <th className="px-5 py-3 font-semibold">Role</th>
-                <th className="px-5 py-3 font-semibold">Linked Organization</th>
-                <th className="px-5 py-3 font-semibold">Status</th>
-                <th className="px-5 py-3 font-semibold">Edit Assignment</th>
-                <th className="px-5 py-3 text-right font-semibold">Actions</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {pagedUsers.map((user) => {
-                const selectedRole = getSelected(user.user_email, 'role', user.role);
-                const selectedAccountId = getSelected(user.user_email, 'account_id', user.account_id || '');
-                const selectedCarrierId = getSelected(user.user_email, 'carrier_id', user.carrier_id || '');
-                const status = user.access_status || 'Active';
-
-                return (
-                  <tr key={user.user_email} className="border-t border-slate-100">
-                    <td className="px-5 py-4 font-medium text-slate-900">{user.user_email}</td>
-
-                    <td className="px-5 py-4">
-                      <select
-                        value={selectedRole}
-                        onChange={(e) => updateSelection(user.user_email, 'role', e.target.value)}
-                        disabled={isDemo}
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                      >
-                        {ROLE_OPTIONS.map((role) => (
-                          <option key={role.value} value={role.value}>
-                            {role.label}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-
-                    <td className="px-5 py-4 text-slate-700">
-                      {user.role === 'shop'
-                        ? accountName(user.account_id)
-                        : user.role === 'carrier'
-                          ? carrierName(user.carrier_id)
-                          : user.role === 'demo'
-                            ? 'Demo access'
-                            : 'Admin access'}
-                    </td>
-
-                    <td className="px-5 py-4">
-                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusBadge(status)}`}>
-                        {status}
-                      </span>
-                    </td>
-
-                    <td className="px-5 py-4">
-                      {editingEmail !== user.user_email ? (
-                        <button
-                          type="button"
-                          disabled={isDemo}
-                          onClick={() => setEditingEmail(user.user_email)}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Change
-                        </button>
-                      ) : (
-                      <div className="grid gap-2">
-                        <AccountSearchSelect
-            value={selectedAccountId}
-            onChange={(id) => updateSelection(user.user_email, 'account_id', id)}
-            disabled={isDemo || selectedRole !== 'shop'}
-          />
-
-                        <select
-                          value={selectedCarrierId}
-                          onChange={(e) => updateSelection(user.user_email, 'carrier_id', e.target.value)}
-                          disabled={isDemo || selectedRole !== 'carrier'}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                        >
-                          <option value="">Select carrier</option>
-                          {carriers.map((carrier) => (
-                            <option key={carrier.id} value={carrier.id}>
-                              {carrier.organization_name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      )}
-                    </td>
-
-                    <td className="px-5 py-4">
-                      <div className="flex flex-wrap justify-end gap-2">
-                        <button
-                          type="button"
-                          disabled={isDemo || busyId === user.user_email}
-                          onClick={() => void saveUser(user)}
-                          className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Save
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={isDemo || busyId === `invite-${user.user_email}`}
-                          onClick={() => void resendInviteToUser(user)}
-                          className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {busyId === `invite-${user.user_email}` ? 'Sending...' : 'Send Invite'}
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={isDemo || busyId === `link-${user.user_email}`}
-                          onClick={() => void copySetupLinkForUser(user)}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {busyId === `link-${user.user_email}` ? 'Generating...' : 'Copy Setup Link'}
-                        </button>
-
-                        {status !== 'Active' ? (
-                          <button
-                            type="button"
-                            disabled={isDemo || busyId === user.user_email}
-                            onClick={() => void setUserStatus(user, 'Active')}
-                            className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            Reactivate
-                          </button>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              disabled={isDemo || busyId === user.user_email}
-                              onClick={() => void setUserStatus(user, 'Suspended')}
-                              className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              Suspend
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={isDemo || busyId === user.user_email}
-                              onClick={() => void setUserStatus(user, 'Revoked')}
-                              className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              Revoke
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {!users.length ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-500">No system users yet.</td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-        {userPages > 1 ? (
-          <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-sm text-slate-600">
-            <span>
-              Page {userPage + 1} of {userPages}
-            </span>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={userPage === 0}
-                onClick={() => setUserPage((n) => n - 1)}
-                className="h-9 rounded-lg border border-slate-200 px-3 disabled:opacity-40"
-              >
-                Previous
-              </button>
-              <button
-                type="button"
-                disabled={userPage >= userPages - 1}
-                onClick={() => setUserPage((n) => n + 1)}
-                className="h-9 rounded-lg border border-slate-200 px-3 disabled:opacity-40"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        ) : null}
+      {/* The full list of logins moved to People (/admin/people), which shows staff and providers
+          together with their account, plan, role, certification and access, and pages and searches
+          in the database. This page keeps what People doesn't do: access requests, Network admins,
+          and carrier / demo access. */}
+      <section className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-soft">
+        <div className="text-sm font-semibold text-slate-900">Everyone&apos;s logins</div>
+        <p className="mt-1 text-sm text-slate-500">
+          Search, edit, turn off or reset any login on{' '}
+          <Link href="/admin/people" className="font-semibold text-brand-700 hover:underline">
+            People
+          </Link>
+          . A shop&apos;s own logins are also on its account page under Contacts &amp; Login Access.
+        </p>
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
