@@ -213,11 +213,17 @@ function AccountsPageContent() {
     );
 
     if (origin) {
-      // Proximity ranks by Haversine client-side, so pull the geocoded matches (bounded) and
-      // let the memo filter by radius + sort — no server paging in this mode.
+      // Nearby: the database keeps only accounts inside a box around the origin (the radius in
+      // degrees of latitude / longitude), then the memo measures the exact distance and sorts.
+      // Before, this pulled the first 1,000 geocoded accounts of 4,200+, so nearby providers could
+      // be missing from the results.
+      const dLat = radius / 69;
+      const dLng = radius / (69 * Math.max(Math.cos((origin.latitude * Math.PI) / 180), 0.01));
       const { data } = await q
-        .not('latitude', 'is', null)
-        .not('longitude', 'is', null)
+        .gte('latitude', origin.latitude - dLat)
+        .lte('latitude', origin.latitude + dLat)
+        .gte('longitude', origin.longitude - dLng)
+        .lte('longitude', origin.longitude + dLng)
         .limit(1000);
       setAccounts((data as AccountRow[]) || []);
       setTotal((data || []).length);
