@@ -888,7 +888,7 @@ export default function AdminUsersPage() {
                   ) : null}
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="self-start rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="grid gap-3 md:grid-cols-3">
                     <select
                       value={selectedRole}
@@ -996,7 +996,7 @@ export default function AdminUsersPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="self-start rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="grid gap-3 md:grid-cols-3">
                     <select
                       value={selectedRole}

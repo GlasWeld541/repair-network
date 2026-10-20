@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -28,6 +29,10 @@ export function AccountSearchSelect({
   const [options, setOptions] = useState<Option[]>([]);
   const [searching, setSearching] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // The results list is drawn over the page (a portal, fixed to the input's position) so a card
+  // with overflow-hidden can't cut it off.
+  const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null);
 
   // The chosen account's name, looked up by id.
   useEffect(() => {
@@ -70,14 +75,31 @@ export function AccountSearchSelect({
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (boxRef.current?.contains(t) || listRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [open]);
 
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const r = boxRef.current?.getBoundingClientRect();
+      if (r) setPos({ left: r.left, top: r.bottom + 4, width: Math.max(r.width, 260) });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open]);
+
   return (
-    <div ref={boxRef} className="relative min-w-[220px]">
+    <div ref={boxRef} className="relative w-full min-w-0">
       <input
         value={open ? query : label}
         onFocus={() => {
@@ -87,10 +109,14 @@ export function AccountSearchSelect({
         onChange={(e) => setQuery(e.target.value)}
         disabled={disabled}
         placeholder={label || placeholder}
-        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
       />
-      {open && !disabled ? (
-        <div className="absolute z-20 mt-1 max-h-64 w-full min-w-[260px] overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+      {open && !disabled && pos && typeof document !== 'undefined' ? createPortal(
+        <div
+          ref={listRef}
+          style={{ position: 'fixed', left: pos.left, top: pos.top, width: pos.width }}
+          className="z-[60] max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg"
+        >
           {value ? (
             <button
               type="button"
@@ -122,7 +148,8 @@ export function AccountSearchSelect({
               ) : null}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       ) : null}
     </div>
   );
