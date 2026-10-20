@@ -26,3 +26,24 @@ export async function loadAllAccounts<T>(columns: string): Promise<T[]> {
   }
   return rows;
 }
+
+/**
+ * Names for just the accounts a page is showing, looked up by id in batches. Use this instead of
+ * loadAllAccounts when a page only needs to label its own rows: accounts keep growing (4,200+),
+ * and loading them all to name a page of rows is wasted work (10/20: growing data stays
+ * server-side).
+ */
+export async function loadAccountNames(ids: (string | null | undefined)[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter((id): id is string => !!id))];
+  const names = new Map<string, string>();
+  for (let i = 0; i < unique.length; i += 200) {
+    const { data } = await supabase
+      .from('accounts')
+      .select('id, account_name')
+      .in('id', unique.slice(i, i + 200));
+    for (const a of (data as { id: string; account_name: string | null }[] | null) ?? []) {
+      names.set(a.id, a.account_name || 'Unnamed account');
+    }
+  }
+  return names;
+}

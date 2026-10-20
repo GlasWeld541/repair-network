@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { loadAllAccounts } from '@/lib/load-all-accounts';
+import { loadAccountNames } from '@/lib/load-all-accounts';
 import { ListPageSkeleton } from '@/components/ui/skeleton';
 
 /**
@@ -207,7 +207,7 @@ export default function AdminTransactionsPage() {
 
     // Only fees something actually happened to: a charge was attempted, or it was paid through
     // the processor. Fees still waiting for their first attempt belong to Billing, not here.
-    const [{ data: feeRows }, accounts] = await Promise.all([
+    const [{ data: feeRows }] = await Promise.all([
       supabase
         .from('billing_events')
         .select(
@@ -216,10 +216,10 @@ export default function AdminTransactionsPage() {
         .or('charge_attempted_at.not.is.null,gateway_transaction_id.not.is.null')
         .order('occurred_at', { ascending: false })
         .limit(2000),
-      loadAllAccounts<{ id: string; account_name: string | null }>('id, account_name'),
     ]);
-    setFees(((feeRows as Fee[]) || []).sort((a, b) => whenOf(b).localeCompare(whenOf(a))));
-    setNames(new Map(accounts.map((a) => [a.id, a.account_name || 'Unnamed account'])));
+    const loaded = ((feeRows as Fee[]) || []).sort((a, b) => whenOf(b).localeCompare(whenOf(a)));
+    setFees(loaded);
+    setNames(await loadAccountNames(loaded.map((f) => f.account_id)));
     setLoading(false);
   }
 

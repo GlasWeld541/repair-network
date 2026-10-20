@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { loadAllAccounts } from '@/lib/load-all-accounts';
+import { loadAccountNames } from '@/lib/load-all-accounts';
 import { ListPageSkeleton } from '@/components/ui/skeleton';
 import { useConfirm, useToast } from '@/components/ui/notifications';
 
@@ -89,7 +89,7 @@ export default function AdminScoresPage() {
     }
     setIsReadOnly(roleData.role !== 'admin');
 
-    const [{ data: jobRows }, accounts] = await Promise.all([
+    const [{ data: jobRows }] = await Promise.all([
       supabase
         .from('jobs')
         .select(
@@ -98,11 +98,10 @@ export default function AdminScoresPage() {
         .not('repair_score', 'is', null)
         .order('repair_scored_at', { ascending: false, nullsFirst: false })
         .limit(1000),
-      loadAllAccounts<{ id: string; account_name: string | null }>('id, account_name'),
     ]);
     const rows = (jobRows as ScoredJob[]) || [];
     setJobs(rows);
-    setNames(new Map(accounts.map((a) => [a.id, a.account_name || 'Unnamed account'])));
+    setNames(await loadAccountNames(rows.map((j) => j.assigned_account_id)));
 
     // One before + one after thumbnail per job, so a score can be sanity-checked without opening it.
     const ids = rows.map((j) => j.id);

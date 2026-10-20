@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { loadAllAccounts } from '@/lib/load-all-accounts';
+import { loadAccountNames } from '@/lib/load-all-accounts';
+import { AccountSearchSelect } from '@/components/account-search-select';
 import { useToast } from '@/components/ui/notifications';
 import { ListPageSkeleton } from '@/components/ui/skeleton';
 
@@ -41,6 +42,8 @@ type Carrier = {
   id: string;
   organization_name: string;
 };
+
+const CLAIMS_PER_PAGE = 50;
 
 type Account = {
   id: string;
@@ -93,7 +96,13 @@ export default function AdminClaimsPage() {
   const [audits, setAudits] = useState<RoutingAudit[]>([]);
   const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
   const [carriers, setCarriers] = useState<Carrier[]>([]);
-  const [accounts, setAccounts] = useState<Account[]>([]);
+  // One page of claims at a time, with counts from the database (claims grow with every carrier
+  // submission); account names only for the claims shown, and a search picker to assign one.
+  const [accountNames, setAccountNames] = useState<Map<string, string>>(new Map());
+  const [claimPage, setClaimPage] = useState(0);
+  const [claimTotal, setClaimTotal] = useState(0);
+  const [needsReviewCount, setNeedsReviewCount] = useState(0);
+  const [pendingNotificationCount, setPendingNotificationCount] = useState(0);
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -101,7 +110,8 @@ export default function AdminClaimsPage() {
 
   useEffect(() => {
     void load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claimPage]);
 
   async function load() {
     setLoading(true);
@@ -132,48 +142,50 @@ export default function AdminClaimsPage() {
 
     setCurrentRole(roleData.role);
 
-    const [
-      { data: claimRows },
-      { data: carrierRows },
-      { data: accountRows },
-      { data: eventRows },
-      { data: auditRows },
-      { data: notificationRows },
-    ] =
-      await Promise.all([
-        supabase
-          .from('claim_intakes')
-          .select('*')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('carrier_organizations')
-          .select('id, organization_name')
-          .order('organization_name'),
-        // Every account, not just the first 1000 (see loadAllAccounts).
-        loadAllAccounts('id, account_name').then((data) => ({ data })),
-        supabase
-          .from('claim_status_events')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(500),
-        supabase
-          .from('claim_routing_audits')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(500),
-        supabase
-          .from('notification_events')
-          .select('id, event_type, audience, claim_intake_id, status, subject, created_at')
-          .order('created_at', { ascending: false })
-          .limit(100),
-      ]);
+    const from = claimPage * CLAIMS_PER_PAGE;
+    const [{ data: claimRows, count }, { data: carrierRows }, needsRes, pendingRes] = await Promise.all([
+      supabase
+        .from('claim_intakes')
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(from, from + CLAIMS_PER_PAGE - 1),
+      supabase
+        .from('carrier_organizations')
+        .select('id, organization_name')
+        .order('organization_name'),
+      supabase.from('claim_intakes').select('*', { count: 'exact', head: true }).is('assigned_job_id', null),
+      supabase
+        .from('notification_events')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending'),
+    ]);
+    const pageClaims = (claimRows as ClaimIntake[]) || [];
+    const ids = pageClaims.map((c) => c.id);
+    const [{ data: eventRows }, { data: auditRows }, names, { data: notificationRows }] = await Promise.all([
+      ids.length
+        ? supabase.from('claim_status_events').select('*').in('claim_intake_id', ids).order('created_at', { ascending: false })
+        : Promise.resolve({ data: [] }),
+      ids.length
+        ? supabase.from('claim_routing_audits').select('*').in('claim_intake_id', ids).order('created_at', { ascending: false })
+        : Promise.resolve({ data: [] }),
+      loadAccountNames(pageClaims.map((c) => c.assigned_account_id)),
+      // The latest notifications (a fixed-size list, not the whole table).
+      supabase
+        .from('notification_events')
+        .select('id, event_type, audience, claim_intake_id, status, subject, created_at')
+        .order('created_at', { ascending: false })
+        .limit(100),
+    ]);
+    setNotifications((notificationRows as NotificationEvent[]) || []);
 
-    setClaims((claimRows as ClaimIntake[]) || []);
+    setClaims(pageClaims);
+    setClaimTotal(count ?? 0);
+    setNeedsReviewCount(needsRes.count ?? 0);
+    setPendingNotificationCount(pendingRes.count ?? 0);
     setEvents((eventRows as ClaimEvent[]) || []);
     setAudits((auditRows as RoutingAudit[]) || []);
-    setNotifications((notificationRows as NotificationEvent[]) || []);
     setCarriers((carrierRows as Carrier[]) || []);
-    setAccounts((accountRows as Account[]) || []);
+    setAccountNames(names);
     setLoading(false);
   }
 
@@ -183,7 +195,7 @@ export default function AdminClaimsPage() {
 
   function accountName(accountId: string | null) {
     if (!accountId) return 'Unassigned';
-    return accounts.find((account) => account.id === accountId)?.account_name || 'Unknown account';
+    return accountNames.get(accountId) || 'Unknown account';
   }
 
   function selectedAccountForClaim(claim: ClaimIntake) {
@@ -202,7 +214,9 @@ export default function AdminClaimsPage() {
     if (isDemo) return;
 
     const accountId = selectedAccountForClaim(claim);
-    const account = accounts.find((row) => row.id === accountId);
+    const { data: account } = accountId
+      ? await supabase.from('accounts').select('id, account_name').eq('id', accountId).maybeSingle<Account>()
+      : { data: null };
 
     if (!account) {
       toast.error('Select a repair account first.');
@@ -347,10 +361,7 @@ export default function AdminClaimsPage() {
     await load();
   }
 
-  const needsReview = useMemo(
-    () => claims.filter((claim) => !claim.assigned_job_id),
-    [claims]
-  );
+  const claimPages = Math.max(1, Math.ceil(claimTotal / CLAIMS_PER_PAGE));
 
   if (loading) return <ListPageSkeleton withFilters columns={8} rows={8} minWidth={1150} />;
 
@@ -372,9 +383,9 @@ export default function AdminClaimsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Metric label="Needs Review" value={String(needsReview.length)} tone="amber" />
-        <Metric label="Total Claims" value={String(claims.length)} />
-        <Metric label="Pending Notifications" value={String(notifications.filter((event) => event.status === 'pending').length)} tone="brand" />
+        <Metric label="Needs Review" value={needsReviewCount.toLocaleString()} tone="amber" />
+        <Metric label="Total Claims" value={claimTotal.toLocaleString()} />
+        <Metric label="Pending Notifications" value={pendingNotificationCount.toLocaleString()} tone="brand" />
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
@@ -446,24 +457,17 @@ export default function AdminClaimsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
-                      <select
+                      <AccountSearchSelect
                         value={selectedAccountForClaim(claim)}
-                        onChange={(e) =>
+                        onChange={(id) =>
                           setSelectedAccounts((current) => ({
                             ...current,
-                            [claim.id]: e.target.value,
+                            [claim.id]: id,
                           }))
                         }
                         disabled={isDemo}
-                        className="h-9 min-w-[230px]"
-                      >
-                        <option value="">Select account</option>
-                        {accounts.map((account) => (
-                          <option key={account.id} value={account.id}>
-                            {account.account_name || 'Unnamed Account'}
-                          </option>
-                        ))}
-                      </select>
+                        placeholder="Search repair account"
+                      />
                       <button
                         type="button"
                         disabled={isDemo || busyId === claim.id}
@@ -511,6 +515,21 @@ export default function AdminClaimsPage() {
             </tbody>
           </table>
         </div>
+        {claimTotal > CLAIMS_PER_PAGE ? (
+          <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-sm text-slate-600">
+            <span>
+              Page {claimPage + 1} of {claimPages}
+            </span>
+            <div className="flex gap-2">
+              <button type="button" disabled={claimPage === 0} onClick={() => setClaimPage((n) => n - 1)} className="h-9 rounded-lg border border-slate-200 px-3 disabled:opacity-40">
+                Previous
+              </button>
+              <button type="button" disabled={claimPage >= claimPages - 1} onClick={() => setClaimPage((n) => n + 1)} className="h-9 rounded-lg border border-slate-200 px-3 disabled:opacity-40">
+                Next
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { loadAllAccounts } from '@/lib/load-all-accounts';
+import { loadAccountNames } from '@/lib/load-all-accounts';
+import { AccountSearchSelect } from '@/components/account-search-select';
 import { useToast, useConfirm } from '@/components/ui/notifications';
 import { DetailPageSkeleton } from '@/components/ui/skeleton';
 
@@ -11,10 +12,6 @@ type Carrier = {
   organization_name: string;
 };
 
-type Account = {
-  id: string;
-  account_name: string | null;
-};
 
 type RoutingRule = {
   id: string;
@@ -33,7 +30,9 @@ export default function AdminRoutingPage() {
   const [loading, setLoading] = useState(true);
   const [currentRole, setCurrentRole] = useState<string | null>(null);
   const [carriers, setCarriers] = useState<Carrier[]>([]);
-  const [accounts, setAccounts] = useState<Account[]>([]);
+  // Names for the accounts the rules point at; the fallback-account picker searches the database
+  // (4,200+ accounts are never loaded whole).
+  const [accountNames, setAccountNames] = useState<Map<string, string>>(new Map());
   const [rules, setRules] = useState<RoutingRule[]>([]);
   const [newRule, setNewRule] = useState({
     carrier_id: '',
@@ -79,14 +78,12 @@ export default function AdminRoutingPage() {
 
     setCurrentRole(roleData.role);
 
-    const [{ data: carrierRows }, { data: accountRows }, { data: ruleRows }] =
+    const [{ data: carrierRows }, { data: ruleRows }] =
       await Promise.all([
         supabase
           .from('carrier_organizations')
           .select('id, organization_name')
           .order('organization_name'),
-        // Every account, not just the first 1000 (see loadAllAccounts).
-        loadAllAccounts('id, account_name').then((data) => ({ data })),
         supabase
           .from('carrier_claim_routing_rules')
           .select('*')
@@ -94,8 +91,9 @@ export default function AdminRoutingPage() {
       ]);
 
     setCarriers((carrierRows as Carrier[]) || []);
-    setAccounts((accountRows as Account[]) || []);
-    setRules((ruleRows as RoutingRule[]) || []);
+    const loadedRules = (ruleRows as RoutingRule[]) || [];
+    setAccountNames(await loadAccountNames(loadedRules.map((rule) => rule.account_id)));
+    setRules(loadedRules);
     setLoading(false);
   }
 
@@ -104,7 +102,7 @@ export default function AdminRoutingPage() {
   }
 
   function accountName(id: string) {
-    return accounts.find((account) => account.id === id)?.account_name || 'Unknown account';
+    return accountNames.get(id) || 'Unknown account';
   }
 
   async function addRule() {
@@ -189,12 +187,14 @@ export default function AdminRoutingPage() {
             ))}
           </select>
 
-          <select value={newRule.account_id} onChange={(e) => setNewRule((current) => ({ ...current, account_id: e.target.value }))} disabled={isDemo} className="h-11 xl:col-span-2">
-            <option value="">Select fallback account</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>{account.account_name || 'Unnamed Account'}</option>
-            ))}
-          </select>
+          <div className="xl:col-span-2">
+            <AccountSearchSelect
+              value={newRule.account_id}
+              onChange={(id) => setNewRule((current) => ({ ...current, account_id: id }))}
+              disabled={isDemo}
+              placeholder="Search fallback account"
+            />
+          </div>
 
           <input value={newRule.state} onChange={(e) => setNewRule((current) => ({ ...current, state: e.target.value.toUpperCase().slice(0, 2) }))} disabled={isDemo} placeholder="State" className="h-11" />
           <input value={newRule.postal_prefix} onChange={(e) => setNewRule((current) => ({ ...current, postal_prefix: e.target.value }))} disabled={isDemo} placeholder="ZIP prefix" className="h-11" />

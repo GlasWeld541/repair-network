@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { loadAllAccounts } from '@/lib/load-all-accounts';
+import { loadAccountNames } from '@/lib/load-all-accounts';
+import { AccountSearchSelect } from '@/components/account-search-select';
 import { cardExpiryState } from '@/lib/card-expiry';
 import { useToast } from '@/components/ui/notifications';
 import { ListPageSkeleton } from '@/components/ui/skeleton';
@@ -12,6 +13,7 @@ import GlasWeldRevenue from '@/components/glasweld-revenue';
 import PaymentProblems from '@/components/payment-problems';
 
 const GATEWAY_PAGE_SIZE = 50;
+const EVENTS_PAGE_SIZE = 50;
 
 type BillingEvent = {
   id: string;
@@ -97,7 +99,17 @@ export default function AdminBillingPage() {
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
   const [events, setEvents] = useState<BillingEvent[]>([]);
+  // Everything here grows (fee events, accounts, cards), so it is filtered, totalled and paged in
+  // the database: one page of fee events, one page of gateway accounts, and cards only for them.
   const [accounts, setAccounts] = useState<AccountBilling[]>([]);
+  const [eventNames, setEventNames] = useState<Map<string, string>>(new Map());
+  const [eventPage, setEventPage] = useState(0);
+  const [eventTotal, setEventTotal] = useState(0);
+  const [totals, setTotals] = useState({ pending: 0, invoiced: 0, paid: 0, waived: 0, total: 0 });
+  const [gatewayTotal, setGatewayTotal] = useState(0);
+  const [configuredGatewayCount, setConfiguredGatewayCount] = useState(0);
+  const [methodCount, setMethodCount] = useState(0);
+  const [ready, setReady] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodSummary[]>([]);
   const [statusFilter, setStatusFilter] = useState('pending');
   const [accountFilter, setAccountFilter] = useState('');
@@ -141,95 +153,98 @@ export default function AdminBillingPage() {
 
     setRole(roleData.role);
 
-    const [accountRows, { data: eventRows }, { data: paymentMethodRows }] = await Promise.all([
-      loadAllAccounts<AccountBilling>(
-        'id, account_name, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled'
-      ),
+    const [gatewayRes, methodRes] = await Promise.all([
       supabase
-        .from('billing_events')
-        .select('*')
-        .order('occurred_at', { ascending: false })
-        .limit(1000),
-      supabase
-        .from('account_payment_methods')
-        .select(
-          'id, account_id, method_type, nickname, status, is_default, card_brand, last4, exp_month, exp_year, bank_name, routing_last4'
-        )
-        .order('is_default', { ascending: false })
-        .order('created_at', { ascending: false }),
+        .from('accounts')
+        .select('*', { count: 'exact', head: true })
+        .not('payment_gateway_provider', 'is', null)
+        .neq('payment_gateway_provider', 'manual'),
+      supabase.from('account_payment_methods').select('*', { count: 'exact', head: true }),
     ]);
-
-    setAccounts(accountRows);
-    setEvents((eventRows as BillingEvent[]) || []);
-    setPaymentMethods((paymentMethodRows as PaymentMethodSummary[]) || []);
+    setConfiguredGatewayCount(gatewayRes.count ?? 0);
+    setMethodCount(methodRes.count ?? 0);
     setLoading(false);
+    setReady(true);
+    await Promise.all([loadEvents(), loadGateways()]);
+  }
+
+  useEffect(() => {
+    setEventPage(0);
+  }, [statusFilter, accountFilter]);
+
+  useEffect(() => {
+    if (ready) void loadEvents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, statusFilter, accountFilter, eventPage]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const t = setTimeout(() => void loadGateways(), 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, gatewaySearch, expiringOnly, gatewayPage]);
+
+  async function loadEvents() {
+    let q = supabase.from('billing_events').select('*', { count: 'exact' });
+    if (statusFilter !== 'all') q = q.eq('status', statusFilter);
+    if (accountFilter) q = q.eq('account_id', accountFilter);
+    const from = eventPage * EVENTS_PAGE_SIZE;
+    const [{ data, count }, { data: sum }] = await Promise.all([
+      q.order('occurred_at', { ascending: false }).range(from, from + EVENTS_PAGE_SIZE - 1),
+      supabase.rpc('billing_events_summary', { p_status: statusFilter, p_account: accountFilter || null }),
+    ]);
+    const rows = (data as BillingEvent[]) || [];
+    setEvents(rows);
+    setEventTotal(count ?? 0);
+    setTotals((sum as typeof totals) || { pending: 0, invoiced: 0, paid: 0, waived: 0, total: 0 });
+    setEventNames(await loadAccountNames(rows.map((e) => e.account_id)));
+  }
+
+  async function loadGateways() {
+    let q = supabase
+      .from('accounts')
+      .select(
+        'id, account_name, billing_enabled, edi_submission_fee_cents, monthly_billing_enabled, billing_cycle_day, autopay_enabled, payment_gateway_provider, payment_gateway_status, processor_merchant_id, processor_rev_share_bps, repair_platform_fee_bps, replacement_platform_fee_bps, consumer_repair_enabled, consumer_replacement_enabled',
+        { count: 'exact' }
+      );
+    const needle = gatewaySearch.replace(/[(),%*]/g, ' ').trim();
+    if (needle) q = q.ilike('account_name', `%${needle}%`);
+    if (expiringOnly) {
+      const { data: ids } = await supabase.rpc('expiring_default_card_accounts');
+      const list = ((ids as string[] | null) || []).map((v) => (typeof v === 'string' ? v : String(Object.values(v as object)[0])));
+      if (!list.length) {
+        setAccounts([]);
+        setGatewayTotal(0);
+        setPaymentMethods([]);
+        return;
+      }
+      q = q.in('id', list);
+    }
+    const from = gatewayPage * GATEWAY_PAGE_SIZE;
+    const { data, count } = await q.order('account_name').range(from, from + GATEWAY_PAGE_SIZE - 1);
+    const rows = (data as AccountBilling[]) || [];
+    const { data: methods } = rows.length
+      ? await supabase
+          .from('account_payment_methods')
+          .select('id, account_id, method_type, nickname, status, is_default, card_brand, last4, exp_month, exp_year, bank_name, routing_last4')
+          .in('account_id', rows.map((r) => r.id))
+          .order('is_default', { ascending: false })
+          .order('created_at', { ascending: false })
+      : { data: [] };
+    setAccounts(rows);
+    setGatewayTotal(count ?? 0);
+    setPaymentMethods((methods as PaymentMethodSummary[]) || []);
   }
 
   function accountName(accountId: string) {
-    return (
-      accounts.find((account) => account.id === accountId)?.account_name ||
-      'Unknown account'
-    );
+    return eventNames.get(accountId) || accounts.find((account) => account.id === accountId)?.account_name || 'Unknown account';
   }
 
-  const filteredEvents = useMemo(() => {
-    return events.filter((event) => {
-      if (statusFilter !== 'all' && event.status !== statusFilter) return false;
-      if (accountFilter && event.account_id !== accountFilter) return false;
-      return true;
-    });
-  }, [events, statusFilter, accountFilter]);
-
-  const totals = useMemo(() => {
-    return filteredEvents.reduce(
-      (summary, event) => {
-        if (event.status === 'pending') summary.pending += event.amount_cents;
-        if (event.status === 'invoiced') summary.invoiced += event.amount_cents;
-        if (event.status === 'paid') summary.paid += event.amount_cents;
-        if (event.status === 'waived') summary.waived += event.amount_cents;
-        summary.total += event.amount_cents;
-        return summary;
-      },
-      { pending: 0, invoiced: 0, paid: 0, waived: 0, total: 0 }
-    );
-  }, [filteredEvents]);
-
-  const gatewayAccounts = useMemo(
-    () =>
-      accounts.filter(
-        (account) =>
-          account.payment_gateway_provider &&
-          account.payment_gateway_provider !== 'manual'
-      ),
-    [accounts]
-  );
-
-  // The usage filter only needs accounts that actually have fees, not every account on file.
-  const accountsWithEvents = useMemo(() => {
-    const ids = new Set(events.map((event) => event.account_id));
-    return accounts.filter((account) => ids.has(account.id));
-  }, [accounts, events]);
-
-  const matchingGatewayAccounts = useMemo(() => {
-    const q = gatewaySearch.trim().toLowerCase();
-    return accounts.filter((account) => {
-      if (q && !(account.account_name || '').toLowerCase().includes(q)) return false;
-      if (expiringOnly) {
-        const m = defaultPaymentMethod(account.id);
-        if (m?.method_type !== 'card' || cardExpiryState(m.exp_month, m.exp_year) === 'ok') return false;
-      }
-      return true;
-    });
-    // defaultPaymentMethod reads paymentMethods; list it so the filter follows card changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accounts, gatewaySearch, expiringOnly, paymentMethods]);
-
-  const gatewayPageCount = Math.max(1, Math.ceil(matchingGatewayAccounts.length / GATEWAY_PAGE_SIZE));
-  const safeGatewayPage = Math.min(gatewayPage, gatewayPageCount - 1);
-  const pagedGatewayAccounts = matchingGatewayAccounts.slice(
-    safeGatewayPage * GATEWAY_PAGE_SIZE,
-    (safeGatewayPage + 1) * GATEWAY_PAGE_SIZE
-  );
+  const filteredEvents = events;
+  const eventPageCount = Math.max(1, Math.ceil(eventTotal / EVENTS_PAGE_SIZE));
+  const gatewayPageCount = Math.max(1, Math.ceil(gatewayTotal / GATEWAY_PAGE_SIZE));
+  const safeGatewayPage = gatewayPage;
+  const pagedGatewayAccounts = accounts;
 
   function defaultPaymentMethod(accountId: string) {
     return paymentMethods.find(
@@ -316,7 +331,7 @@ export default function AdminBillingPage() {
         <Metric label="Invoiced" value={moneyFromCents(totals.invoiced)} tone="brand" />
         <Metric label="Collected" value={moneyFromCents(totals.paid)} tone="green" />
         <Metric label="Waived" value={moneyFromCents(totals.waived)} />
-        <Metric label="Methods" value={String(paymentMethods.length)} tone="brand" />
+        <Metric label="Methods" value={methodCount.toLocaleString()} tone="brand" />
       </div>
 
       {/* Failed payments first: they are the only thing on this page that needs someone to act. */}
@@ -336,18 +351,7 @@ export default function AdminBillingPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <select
-              value={accountFilter}
-              onChange={(e) => setAccountFilter(e.target.value)}
-              className="h-10 min-w-[220px]"
-            >
-              <option value="">All accounts</option>
-              {accountsWithEvents.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.account_name || 'Unnamed Account'}
-                </option>
-              ))}
-            </select>
+            <AccountSearchSelect value={accountFilter} onChange={setAccountFilter} placeholder="All accounts" />
 
             <select
               value={statusFilter}
@@ -474,6 +478,22 @@ export default function AdminBillingPage() {
             </tbody>
           </table>
         </div>
+        {eventTotal > EVENTS_PAGE_SIZE ? (
+          <div className="mt-3 flex items-center justify-between text-sm text-slate-600">
+            <span>
+              {(eventPage * EVENTS_PAGE_SIZE + 1).toLocaleString()}–{Math.min((eventPage + 1) * EVENTS_PAGE_SIZE, eventTotal).toLocaleString()} of{' '}
+              {eventTotal.toLocaleString()} fees
+            </span>
+            <div className="flex gap-2">
+              <button type="button" disabled={eventPage === 0} onClick={() => setEventPage((n) => n - 1)} className="h-9 rounded-lg border border-slate-200 px-3 disabled:opacity-40">
+                Previous
+              </button>
+              <button type="button" disabled={eventPage >= eventPageCount - 1} onClick={() => setEventPage((n) => n + 1)} className="h-9 rounded-lg border border-slate-200 px-3 disabled:opacity-40">
+                Next
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
@@ -507,8 +527,8 @@ export default function AdminBillingPage() {
             Only cards expired or expiring soon
           </label>
           <span className="text-sm text-slate-500">
-            {matchingGatewayAccounts.length
-              ? `${matchingGatewayAccounts.length.toLocaleString()} account${matchingGatewayAccounts.length === 1 ? '' : 's'} · showing ${(safeGatewayPage * GATEWAY_PAGE_SIZE + 1).toLocaleString()}–${Math.min((safeGatewayPage + 1) * GATEWAY_PAGE_SIZE, matchingGatewayAccounts.length).toLocaleString()}`
+            {gatewayTotal
+              ? `${gatewayTotal.toLocaleString()} account${gatewayTotal === 1 ? '' : 's'} · showing ${(safeGatewayPage * GATEWAY_PAGE_SIZE + 1).toLocaleString()}–${Math.min((safeGatewayPage + 1) * GATEWAY_PAGE_SIZE, gatewayTotal).toLocaleString()}`
               : 'No accounts match.'}
           </span>
         </div>
@@ -620,9 +640,9 @@ export default function AdminBillingPage() {
           </div>
         ) : null}
 
-        {gatewayAccounts.length ? (
+        {configuredGatewayCount ? (
           <div className="mt-4 text-xs text-slate-500">
-            {gatewayAccounts.length} account{gatewayAccounts.length === 1 ? '' : 's'} configured for a processor gateway.
+            {configuredGatewayCount} account{configuredGatewayCount === 1 ? '' : 's'} configured for a processor gateway.
           </div>
         ) : null}
       </section>
