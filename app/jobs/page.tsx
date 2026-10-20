@@ -54,6 +54,26 @@ type JobWithInvoice = Job & {
   invoice: Invoice | null;
 };
 
+type LedgerRow = Job & {
+  invoice_id: string | null;
+  invoice_payment_status: string | null;
+  invoice_submission_status: string | null;
+  ledger_invoice: number;
+  ledger_paid: number;
+};
+
+type LedgerSummary = {
+  count: number;
+  sales: number;
+  paid: number;
+  outstanding: number;
+  providers: { name: string; jobs: number; sales: number; paid: number; outstanding: number }[];
+  carriers: string[];
+};
+
+const EMPTY_SUMMARY: LedgerSummary = { count: 0, sales: 0, paid: 0, outstanding: 0, providers: [], carriers: [] };
+const LEDGER_PAGE = 50;
+
 type Role = 'admin' | 'shop' | 'carrier' | 'demo' | null;
 type ViewMode =
   | 'open'
@@ -129,7 +149,14 @@ export default function JobsPage() {
   const router = useRouter();
   const toast = useToast();
 
+  // One page of the ledger, filtered, sorted and totalled in the database (network.jobs_ledger +
+  // jobs_ledger_summary): jobs grow with every claim, so the browser never loads them all.
   const [jobs, setJobs] = useState<JobWithInvoice[]>([]);
+  const [ledgerPage, setLedgerPage] = useState(0);
+  const [ledgerTotal, setLedgerTotal] = useState(0);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [shopAccountId, setShopAccountId] = useState<string | null>(null);
+  const [summary, setSummary] = useState<LedgerSummary>(EMPTY_SUMMARY);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [role, setRole] = useState<Role>(null);
   const [loading, setLoading] = useState(true);
@@ -200,8 +227,6 @@ export default function JobsPage() {
       return;
     }
 
-    let jobQuery = supabase.from('jobs').select('*');
-
     if (roleData.role === 'shop') {
       if (!roleData.account_id) {
         setJobs([]);
@@ -209,11 +234,8 @@ export default function JobsPage() {
         setLoading(false);
         return;
       }
-
-      jobQuery = jobQuery.eq('assigned_account_id', roleData.account_id);
+      setShopAccountId(roleData.account_id);
     }
-
-    const { data: jobData } = await jobQuery.order('created_at', { ascending: false });
 
     if (roleData.role === 'admin') {
       // Only ACTIVE accounts are assignable / have jobs — scope to them so this doesn't pull
@@ -236,21 +258,87 @@ export default function JobsPage() {
       setNewAccountId(roleData.account_id);
     }
 
-    const jobIds = (jobData || []).map((j) => j.id);
-
-    const { data: invoiceData } = jobIds.length
-      ? await supabase
-          .from('invoices')
-          .select('*')
-          .in('job_id', jobIds)
-      : { data: [] };
-
-    const map = new Map();
-    (invoiceData || []).forEach((i) => map.set(i.job_id, i));
-
-    setJobs((jobData || []).map((j) => ({ ...j, invoice: map.get(j.id) || null })));
-
     setLoading(false);
+  }
+
+  // A filter or sort change starts again from the first page.
+  useEffect(() => {
+    setLedgerPage(0);
+  }, [viewMode, startDate, endDate, providerFilter, carrierFilter, sortKey, sortDir]);
+
+  // Wait for the sign-in check in load() to finish: running both at once makes the auth client's
+  // session lock collide, and the page never left its loading state.
+  useEffect(() => {
+    if (loading) return;
+    if (role === 'admin' || role === 'demo' || (role === 'shop' && shopAccountId)) void loadLedger();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, role, shopAccountId, viewMode, startDate, endDate, providerFilter, carrierFilter, sortKey, sortDir, ledgerPage]);
+
+  async function loadLedger() {
+    setLedgerLoading(true);
+    try {
+      await fetchLedger();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not load jobs.');
+    } finally {
+      setLedgerLoading(false);
+    }
+  }
+
+  async function fetchLedger() {
+    const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+    let q = supabase.from('jobs_ledger').select('*', { count: 'exact' });
+    if (shopAccountId) q = q.eq('assigned_account_id', shopAccountId);
+    if (providerFilter) q = q.eq('assigned_account_id', providerFilter);
+    if (carrierFilter) q = q.eq('insurance_carrier', carrierFilter);
+    if (viewMode === 'ongoing') q = q.or(`job_status.is.null,job_status.in.(${ONGOING_STATUSES.map((v) => `"${v}"`).join(',')})`);
+    else if (viewMode === 'completed') q = q.eq('job_status', 'Completed');
+    else if (viewMode === 'open') q = q.gt('ledger_balance', 0);
+    else if (viewMode === 'submitted') q = q.eq('invoice_submission_status', 'Submitted').gt('ledger_balance', 0);
+    else if (viewMode === 'over30') q = q.gt('ledger_balance', 0).lte('ledger_date', daysAgo(30));
+    else if (viewMode === 'over60') q = q.gt('ledger_balance', 0).lte('ledger_date', daysAgo(60));
+    else if (viewMode === 'paid') q = q.lte('ledger_balance', 0);
+    else {
+      if (startDate) q = q.gte('ledger_date', startDate);
+      if (endDate) q = q.lte('ledger_date', endDate);
+    }
+    const column: Record<SortKey, string> = {
+      date: 'ledger_date', customer: 'customer_name', shop: 'assigned_account_name', status: 'job_status',
+      service: 'service_type', carrier: 'insurance_carrier', invoice: 'ledger_invoice', paid: 'ledger_paid',
+      balance: 'ledger_balance', aging: 'ledger_date',
+    };
+    // Aging is days since the job date, so "most days" is the oldest date first.
+    const ascending = sortKey === 'aging' ? sortDir === 'desc' : sortDir === 'asc';
+    const from = ledgerPage * LEDGER_PAGE;
+    const [{ data, count }, { data: sum }] = await Promise.all([
+      q.order(column[sortKey], { ascending, nullsFirst: false }).order('created_at', { ascending: false }).range(from, from + LEDGER_PAGE - 1),
+      supabase.rpc('jobs_ledger_summary', {
+        p_view: viewMode,
+        p_start: startDate || null,
+        p_end: endDate || null,
+        p_provider: providerFilter || null,
+        p_carrier: carrierFilter || null,
+        p_account: shopAccountId,
+      }),
+    ]);
+    setJobs(
+      ((data as LedgerRow[]) || []).map((r) => ({
+        ...r,
+        invoice: r.invoice_id
+          ? {
+              id: r.invoice_id,
+              job_id: r.id,
+              invoice_amount: r.ledger_invoice,
+              amount_paid: r.ledger_paid,
+              status: null,
+              payment_status: r.invoice_payment_status,
+              submission_status: r.invoice_submission_status,
+            }
+          : null,
+      }))
+    );
+    setLedgerTotal(count ?? 0);
+    setSummary((sum as LedgerSummary) || EMPTY_SUMMARY);
   }
 
   async function createJob() {
@@ -316,105 +404,11 @@ export default function JobsPage() {
     }
   }
 
-  const filtered = useMemo(() => {
-    return jobs.filter((j) => {
-      // Universal narrowing across every view: assigned provider + insurance carrier.
-      if (providerFilter && j.assigned_account_id !== providerFilter) return false;
-      if (carrierFilter && (j.insurance_carrier || '') !== carrierFilter) return false;
-
-      const balance = outstandingAmount(j);
-      const days = daysOutstanding(j);
-      const status = jobStatusOf(j);
-
-      // Work-status views: ongoing = assigned/active (not finished or canceled).
-      if (viewMode === 'ongoing') return ONGOING_STATUSES.includes(status);
-      if (viewMode === 'completed') return status === 'Completed';
-
-      if (viewMode === 'open') return balance > 0;
-      if (viewMode === 'submitted') return j.invoice?.submission_status === 'Submitted' && balance > 0;
-      if (viewMode === 'over30') return balance > 0 && days >= 30;
-      if (viewMode === 'over60') return balance > 0 && days >= 60;
-      if (viewMode === 'paid') return balance <= 0;
-
-      const d = jobDate(j);
-      if (startDate && d < startDate) return false;
-      if (endDate && d > endDate) return false;
-
-      return true;
-    });
-  }, [jobs, viewMode, startDate, endDate, providerFilter, carrierFilter]);
-
-  const sorted = useMemo(() => {
-    const val = (j: JobWithInvoice): string | number => {
-      switch (sortKey) {
-        case 'customer': return (j.customer_name || '').toLowerCase();
-        case 'shop': return (j.assigned_account_name || '').toLowerCase();
-        case 'status': return jobStatusOf(j);
-        case 'service': return j.service_type || '';
-        case 'carrier': return (j.insurance_carrier || '').toLowerCase();
-        case 'invoice': return invoiceAmount(j);
-        case 'paid': return paidAmount(j);
-        case 'balance': return outstandingAmount(j);
-        case 'aging': return daysOutstanding(j);
-        default: return jobDate(j);
-      }
-    };
-    const arr = [...filtered];
-    arr.sort((a, b) => {
-      const va = val(a);
-      const vb = val(b);
-      const c =
-        typeof va === 'number' && typeof vb === 'number'
-          ? va - vb
-          : String(va).localeCompare(String(vb));
-      return sortDir === 'asc' ? c : -c;
-    });
-    return arr;
-  }, [filtered, sortKey, sortDir]);
-
-  const totals = useMemo(() => {
-    return filtered.reduce(
-      (t, j) => {
-        t.sales += invoiceAmount(j);
-        t.paid += paidAmount(j);
-        t.outstanding += outstandingAmount(j);
-        return t;
-      },
-      { sales: 0, paid: 0, outstanding: 0 }
-    );
-  }, [filtered]);
-
-  // Distinct insurance carriers present in the loaded jobs, for the admin filter dropdown.
-  const carrierOptions = useMemo(() => {
-    const set = new Set<string>();
-    jobs.forEach((j) => {
-      const c = (j.insurance_carrier || '').trim();
-      if (c) set.add(c);
-    });
-    return [...set].sort((a, b) => a.localeCompare(b));
-  }, [jobs]);
-
-  // Per-provider rollup over the current filtered view — the "provider performance /
-  // forecasting" panel. Sorted by sales so the biggest earners lead.
-  const providerStats = useMemo(() => {
-    const m = new Map<string, { name: string; jobs: number; sales: number; paid: number; outstanding: number }>();
-    filtered.forEach((j) => {
-      const key = j.assigned_account_id || 'unassigned';
-      const row = m.get(key) || {
-        name: j.assigned_account_name || 'Unassigned',
-        jobs: 0,
-        sales: 0,
-        paid: 0,
-        outstanding: 0,
-      };
-      row.jobs += 1;
-      row.sales += invoiceAmount(j);
-      row.paid += paidAmount(j);
-      row.outstanding += outstandingAmount(j);
-      m.set(key, row);
-    });
-    return [...m.values()].sort((a, b) => b.sales - a.sales);
-  }, [filtered]);
+  const sorted = jobs;
+  const totals = summary;
+  const carrierOptions = summary.carriers;
+  const providerStats = summary.providers;
+  const ledgerPages = Math.max(1, Math.ceil(ledgerTotal / LEDGER_PAGE));
 
   return (
     <div className="space-y-6">
@@ -724,6 +718,33 @@ export default function JobsPage() {
           </tbody>
         </table>
       </div>
+
+      {ledgerTotal > LEDGER_PAGE ? (
+        <div className="flex items-center justify-between text-sm text-slate-600">
+          <span>
+            {(ledgerPage * LEDGER_PAGE + 1).toLocaleString()}–{Math.min((ledgerPage + 1) * LEDGER_PAGE, ledgerTotal).toLocaleString()} of{' '}
+            {ledgerTotal.toLocaleString()} jobs{ledgerLoading ? ' · Updating…' : ''}
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={ledgerPage === 0 || ledgerLoading}
+              onClick={() => setLedgerPage((n) => n - 1)}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-3 disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={ledgerPage >= ledgerPages - 1 || ledgerLoading}
+              onClick={() => setLedgerPage((n) => n + 1)}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-3 disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {/* PROVIDER PERFORMANCE (admin) — per-provider rollup over the current view */}
       {role === 'admin' && !loading && providerStats.length ? (
