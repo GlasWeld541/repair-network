@@ -63,11 +63,34 @@ function statusBadge(status: string) {
   return 'border-slate-200 bg-slate-50 text-slate-700';
 }
 
+// Every login, paged past PostgREST's 1,000-row cap (there are 2,500+ shop logins).
+async function loadAllUserRoles(): Promise<UserRole[]> {
+  const out: UserRole[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('*')
+      .order('user_email')
+      .range(from, from + 999);
+    if (error || !data) break;
+    out.push(...(data as UserRole[]));
+    if (data.length < 1000) break;
+  }
+  return out;
+}
+
 export default function AdminUsersPage() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<AccessRequest[]>([]);
   const [users, setUsers] = useState<UserRole[]>([]);
+  // The list holds every login (2,500+ since the shop logins were seeded), so it is searched and
+  // shown 50 at a time, and the shop / carrier pickers render only on the row being edited. Before
+  // this, every row carried a picker with all ~4,200 accounts: millions of options, which froze
+  // the browser.
+  const [userQuery, setUserQuery] = useState('');
+  const [userPage, setUserPage] = useState(0);
+  const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [carriers, setCarriers] = useState<CarrierRow[]>([]);
   const [selection, setSelection] = useState<Record<string, Record<string, string>>>({});
@@ -129,10 +152,7 @@ export default function AdminUsersPage() {
           .from('user_access_requests')
           .select('*')
           .order('created_at', { ascending: false }),
-        supabase
-          .from('user_roles')
-          .select('*')
-          .order('user_email'),
+        loadAllUserRoles().then((data) => ({ data })),
         // Every account, not just the first 1000 (see loadAllAccounts).
         loadAllAccounts('id, account_name').then((data) => ({ data })),
         supabase
@@ -171,10 +191,29 @@ export default function AdminUsersPage() {
     return selection[id]?.[field] ?? fallback;
   }
 
+  const accountNameById = useMemo(
+    () => new Map(accounts.map((account) => [account.id, account.account_name])),
+    [accounts]
+  );
+
   function accountName(id: string | null) {
     if (!id) return '—';
-    return accounts.find((account) => account.id === id)?.account_name || 'Unknown account';
+    return accountNameById.get(id) || 'Unknown account';
   }
+
+  const USERS_PER_PAGE = 50;
+  const matchingUsers = useMemo(() => {
+    const q = userQuery.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter(
+      (u) =>
+        u.user_email.toLowerCase().includes(q) ||
+        (u.role || '').toLowerCase().includes(q) ||
+        (accountNameById.get(u.account_id || '') || '').toLowerCase().includes(q)
+    );
+  }, [users, userQuery, accountNameById]);
+  const userPages = Math.max(1, Math.ceil(matchingUsers.length / USERS_PER_PAGE));
+  const pagedUsers = matchingUsers.slice(userPage * USERS_PER_PAGE, (userPage + 1) * USERS_PER_PAGE);
 
   function carrierName(id: string | null) {
     if (!id) return '—';
@@ -990,8 +1029,24 @@ export default function AdminUsersPage() {
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
         <div className="border-b border-slate-200 px-5 py-4">
-          <div className="text-sm font-semibold text-slate-900">System Users</div>
-          <div className="mt-1 text-xs text-slate-500">Edit role, linked organization, and access status.</div>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-slate-900">System Users</div>
+              <div className="mt-1 text-xs text-slate-500">
+                Edit role, linked organization, and access status. {matchingUsers.length.toLocaleString()} of{' '}
+                {users.length.toLocaleString()} shown.
+              </div>
+            </div>
+            <input
+              value={userQuery}
+              onChange={(e) => {
+                setUserQuery(e.target.value);
+                setUserPage(0);
+              }}
+              placeholder="Search email, role or account"
+              className="h-9 w-auto min-w-[260px] py-1 text-sm"
+            />
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -1008,7 +1063,7 @@ export default function AdminUsersPage() {
             </thead>
 
             <tbody>
-              {users.map((user) => {
+              {pagedUsers.map((user) => {
                 const selectedRole = getSelected(user.user_email, 'role', user.role);
                 const selectedAccountId = getSelected(user.user_email, 'account_id', user.account_id || '');
                 const selectedCarrierId = getSelected(user.user_email, 'carrier_id', user.carrier_id || '');
@@ -1050,6 +1105,16 @@ export default function AdminUsersPage() {
                     </td>
 
                     <td className="px-5 py-4">
+                      {editingEmail !== user.user_email ? (
+                        <button
+                          type="button"
+                          disabled={isDemo}
+                          onClick={() => setEditingEmail(user.user_email)}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Change
+                        </button>
+                      ) : (
                       <div className="grid gap-2">
                         <select
                           value={selectedAccountId}
@@ -1079,6 +1144,7 @@ export default function AdminUsersPage() {
                           ))}
                         </select>
                       </div>
+                      )}
                     </td>
 
                     <td className="px-5 py-4">
@@ -1154,6 +1220,31 @@ export default function AdminUsersPage() {
             </tbody>
           </table>
         </div>
+        {userPages > 1 ? (
+          <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-sm text-slate-600">
+            <span>
+              Page {userPage + 1} of {userPages}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={userPage === 0}
+                onClick={() => setUserPage((n) => n - 1)}
+                className="h-9 rounded-lg border border-slate-200 px-3 disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                disabled={userPage >= userPages - 1}
+                onClick={() => setUserPage((n) => n + 1)}
+                className="h-9 rounded-lg border border-slate-200 px-3 disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
