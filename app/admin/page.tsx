@@ -98,6 +98,12 @@ export default function AdminDashboardPage() {
       href: '/admin/people',
     },
     {
+      title: 'Control centre',
+      description:
+        'Platform switches without a deploy: Free vs Pro limits, free uses, shop team size, the licensed intake price and testing access.',
+      href: '/admin/control-center',
+    },
+    {
       title: 'Access Requests',
       description:
         'Approve access requests, add Network admins, and give carrier or demo access.',
