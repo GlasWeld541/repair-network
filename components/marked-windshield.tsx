@@ -19,12 +19,18 @@ export default function MarkedWindshield({
 }) {
   return (
     <a href={url} target="_blank" rel="noreferrer" className={`block ${className}`}>
-      <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-        <img src={url} alt="Customer's windshield with the marked damage" className="block h-auto w-full" />
+      {/* Capped height (10/22: a tall phone photo filled the screen). The frame shrinks to the
+          photo's own size, so the pins still land where the customer tapped. */}
+      <div className="relative inline-block max-w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 align-top">
+        <img
+          src={url}
+          alt="Customer's windshield with the marked damage"
+          className="block h-auto max-h-72 w-auto max-w-full"
+        />
         {marks.map((m, i) => (
           <span
             key={i}
-            className="absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-rose-600 text-xs font-bold text-white shadow-[0_0_0_4px_rgba(225,29,72,0.35)]"
+            className="absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-rose-600 text-[10px] font-bold text-white shadow"
             style={{ left: `${m.x * 100}%`, top: `${m.y * 100}%` }}
           >
             {marks.length > 1 ? i + 1 : ''}
