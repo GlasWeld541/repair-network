@@ -136,7 +136,8 @@ export default function Header() {
     pathname === '/start' ||
     pathname.startsWith('/start/') ||
     pathname.startsWith('/rate/') ||
-    pathname === '/auth/handoff'
+    pathname === '/auth/handoff' ||
+    pathname === '/set-password'
   ) {
     return null;
   }

@@ -101,7 +101,8 @@ export default function SetPasswordPage() {
     }
 
     if (toRex) {
-      toast.success('Password set. Sign in to Rex with your email and this password.');
+      // Signed in already (same site as /rex), so this opens Rex straight away.
+      toast.success('Password set. Opening Rex.');
       window.location.href = '/rex/';
       return;
     }
@@ -128,7 +129,9 @@ export default function SetPasswordPage() {
         </h1>
 
         <p className="mt-2 text-sm text-slate-500">
-          Create a password for your GlasWeld Repair Network account.
+          {toRex
+            ? 'Create a password for GlasWeld Rex. You will use it with your email to sign in on any device.'
+            : 'Create a password for your GlasWeld Repair Network account.'}
         </p>
 
         {error ? (
