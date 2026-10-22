@@ -135,7 +135,8 @@ export default function Header() {
   if (
     pathname === '/start' ||
     pathname.startsWith('/start/') ||
-    pathname.startsWith('/rate/')
+    pathname.startsWith('/rate/') ||
+    pathname === '/auth/handoff'
   ) {
     return null;
   }

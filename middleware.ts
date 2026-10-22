@@ -34,6 +34,8 @@ export async function middleware(req: NextRequest) {
     '/request-access',
     '/set-password',
     '/start',
+    // Rex hands its session over here (app/auth/handoff), so the visitor has none yet.
+    '/auth/handoff',
     '/api/consumer-intake',
     // Customer-facing satisfaction rating — reached from an email link (no login), gated only
     // by the unguessable per-job token. (The admin send route /api/jobs/*/request-rating stays
