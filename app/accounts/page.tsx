@@ -436,7 +436,7 @@ function AccountsPageContent() {
           <h1 className="text-3xl font-semibold text-ink">Accounts</h1>
           <p className="text-sm text-slate-500">
             {role === 'admin'
-              ? 'Full access'
+              ? 'Provider accounts: shops and independent techs. Their logins are on People.'
               : role === 'demo'
                 ? 'Demo view only'
                 : 'You only have access to your assigned account.'}

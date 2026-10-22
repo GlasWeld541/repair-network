@@ -94,7 +94,7 @@ export default function AdminDashboardPage() {
     {
       title: 'People',
       description:
-        'Everyone in one list: GlasWeld staff, shop owners and technicians, independent techs. Plan, role, certification and access.',
+        'Everyone in one list: GlasWeld staff and the logins of provider accounts (shop owners, shop technicians, independent techs). Plan, role, certification and access.',
       href: '/admin/people',
     },
     {
@@ -110,9 +110,9 @@ export default function AdminDashboardPage() {
       href: '/admin/users',
     },
     {
-      title: 'Shops',
+      title: 'Accounts',
       description:
-        'Manage repair network shops, accounts, and permissions.',
+        'Every provider account: shops and independent techs. The same list as Accounts in the menu, with billing, payment methods and contacts.',
       href: '/accounts',
     },
     {
